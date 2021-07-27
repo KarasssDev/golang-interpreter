@@ -5,4 +5,8 @@ type name = string
 type t =
   | Var of name  (** Variable [x] *)
   | Abs of name * t  (** Abstraction [λx.t] *)
-  | App of t * t  (** Application [f x] *)
+  | App of t * t
+
+(* Application [f g ] *)
+(** In type definition above the 3rd constructor is intentionally without documentation
+to test linter *)

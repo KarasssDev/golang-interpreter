@@ -21,8 +21,6 @@ Features in progress (and TODOs):
 
 ##### Замечания по стилю кодирования
 
-Пока оно не проверяется в CI, но может неожиданно начать проверяться.
-
 - Если merge request не проходит CI -- проверяться не будет
 - Замечания должны быть откомментированы, иначе проверяться не будет.
   - Если исправлены, должны быть поменчены как "исправлены"
@@ -31,24 +29,24 @@ Features in progress (and TODOs):
   Такие суровые ограничения вводятся, чтобы замечания не игнорировались.
 
 - Иимена типов и функций -- snake_case
-- Имена типов модулей и модулей -- CamelCase 
+- Имена типов модулей и модулей -- CamelCase
 - Ворнинги должны быть пофикшены
 - Не стесняйтесь писать `if ... then ... else` вместо `match ... with true -> .. | false -> ...`
-- Не стесняйтесь писать гварды в мэтчинге, например 
+- Не стесняйтесь писать гварды в мэтчинге, например
 ```ocaml
-match ... with 
+match ... with
 | x when f x -> ...
 | x          -> ...
 | ...
 ```
-вместо 
+вместо
 ```ocaml
-match ... with 
+match ... with
 | x -> if f x then ... else ...
 | ...
 ```
 - Вместо `fun x y -> match y with` лучше писать короче: `fun x -> function`
-- Используйте quoted string literals в тестах, чтобы не экранировать руками 
+- Используйте quoted string literals в тестах, чтобы не экранировать руками
 ```
 ─( 11:21:01 )─< command 1 >────────────────────────────
 utop # {|
@@ -58,22 +56,22 @@ utop # {|
   |};;
 - : string = "\n  int main () {\n    return 0;\n  }\n  "
 ```
-- Не надо писать 
+- Не надо писать
 ```ocaml
-match ... with 
-| x -> 
+match ... with
+| x ->
     Hashtbl.replace tbl key value |> fun () -> ...
 ```
-Лучше 
+Лучше
 ```ocaml
-match ... with 
-| x -> 
-    let () = Hashtbl.replace tbl key value in 
+match ... with
+| x ->
+    let () = Hashtbl.replace tbl key value in
     ...
 ```
 или
 ```ocaml
-match ... with 
+match ... with
 | x -> (
     Hashtbl.replace tbl key value;
     ...
@@ -81,13 +79,13 @@ match ... with
 ```
 или даже
 ```ocaml
-match ... with 
+match ... with
 | x -> begin
     Hashtbl.replace tbl key value;
     ...
   end
 ```
-- Не надо писать 
+- Не надо писать
 ```ocaml
 let x = if long_expression then true else false in ...
 ```

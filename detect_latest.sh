@@ -8,8 +8,14 @@ do
   LASTDIR=`git diff --name-only HEAD~$i HEAD~$n | tail -n 1 | cut -f 1 -d'/'`
   i=$((i+1))
 
-  if [ -d "$LASTDIR" ] && [ "$LASTDIR" != "Scheme" ]; then
-    echo $LASTDIR
+  if [ -d "$LASTDIR" ] && [ "$LASTDIR" != ".github" ]; then
+    echo "latest=$LASTDIR"
     break
+  else
+    >&2 printf "The variant '$LASTDIR' skipped.\n"
+  fi
+
+  if [ $i -gt 20 ]; then
+    exit 2
   fi
 done

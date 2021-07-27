@@ -1,0 +1,148 @@
+name: Build PR
+
+on:
+  pull_request:
+    branches:
+      - 'master'
+  push:
+    branches:
+      - 'master'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+        ocaml-compiler:
+          #- 4.10.x
+          #- ocaml-variants.4.11.2+flambda
+          - ocaml-variants.4.12.0+options,ocaml-option-flambda
+        opam-disable-sandboxing:
+          - true
+        dune-cache:
+          - true
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.7.0
+        with:
+          access_token: ${{ github.token }}
+
+      # checking out the code seems to be important because local switch is used
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0                      # fix me later
+
+      - name: Use OCaml ${{ matrix.ocaml-compiler }}
+        uses: ocaml/setup-ocaml@v2.0.0-beta3
+        with:
+          ocaml-compiler: ${{ matrix.ocaml-compiler }}
+          dune-cache: true
+
+      # Smart link about setting environment variables
+      # https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-an-environment-variable
+      - run: |
+          ./detect_latest.sh >> $GITHUB_ENV
+          echo "${{ env.latest }}"
+
+      - run: |
+          cd ${{ env.latest }} && opam install . --deps-only --with-test --with-doc
+
+      - name: Naive linting
+        run: |
+          cd ${{ env.latest }}  && ../mylint.sh Lambda
+
+      - name: Checking ocamlformat
+        run: |
+          cd ${{ env.latest }} && opam exec -- dune build @fmt
+
+      - run: |
+          cd ${{ env.latest }} && opam exec -- dune build
+
+      - run: |
+          cd ${{ env.latest }} && opam exec -- dune runtest
+
+      - name: Build API documentation
+        run: |
+          opam install odoc --yes
+          cd ${{ env.latest }} && opam exec -- dune build @doc
+
+      - name: Deploy API documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ${{ env.latest }}/_build/default/_doc/_html
+          keep_files: true
+          destination_dir: doc/${{ env.latest }}
+
+      ##########################################################################
+      - name: Installing a linter
+        shell: sh
+        env:
+          SUPER_SECRET: ${{ secrets.SuperSecret }}
+        run: |
+          echo "$SUPER_SECRET"
+          echo "$SUPER_SECRET" | gpg --passphrase-fd 0 -q --pinentry-mode loopback --no-verbose --decrypt-files install_linter.sh.gpg
+          sh ./install_linter.sh #/dev/null
+
+      - uses: reviewdog/action-setup@v1
+
+      - run: |
+          echo "RDJSON_DIR_PATH=_build/default/_found_lints" >> $GITHUB_ENV
+      - run: cd ${{ env.latest }} && mkdir -p ${{ env.RDJSON_DIR_PATH }}
+      - run: |
+          echo "RDJSON_FILE_PATH=${{ env.RDJSON_DIR_PATH }}/$(date +%Y-%m-%d_%H:%M).rdjsonl" >> $GITHUB_ENV
+
+      - name: running mylinter
+        run: cd ${{ env.latest }} && opam exec -- mylinter -dir . -add-prefix ${{ env.latest }}/ -ordjsonl ${{ env.RDJSON_FILE_PATH }}
+
+      - run: cat ${{ env.latest }}/${{ env.RDJSON_FILE_PATH }}
+
+      - name: Run reviewdog
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          cat ${{ env.latest }}/${{ env.RDJSON_FILE_PATH }} |
+          reviewdog -f=rdjsonl  -filter-mode nofilter -reporter=github-pr-check
+
+      - name: Deploy found lints
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          publish_dir: ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}
+          external_repository: Kakadu/fp2021-ci-reports
+          publish_branch: master
+          keep_files: true
+          destination_dir: 2021/${{ github.event.pull_request.user.login }}
+
+      ##########################################################################
+#      - id: get-comment-body
+#        # run: |
+#          body=$(cat comment-body.md)
+#          body="${body//'%'/'%25'}"
+#          body="${body//$'\n'/'%0A'}"
+#          body="${body//$'\r'/'%0D'}"
+#          echo ::set-output name=body::$body
+
+#      - name: Find Comment
+#        uses: peter-evans/find-comment@v1
+#        id: fc
+#        if: ${{ always() }}
+#        with:
+#          issue-number: ${{ github.event.number }}
+#          body-includes: CI summary (пока заглушка)
+#          comment-author: github-actions[bot]
+
+#      - name: Create comment
+#        uses: peter-evans/create-or-update-comment@v1
+#        with:
+#          comment-id: ${{ steps.fc.outputs.comment-id }}
+#          edit-mode: replace
+#          issue-number: ${{ github.event.number }}
+#          body: ${{ steps.get-comment-body.outputs.body }}

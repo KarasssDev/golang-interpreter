@@ -1,4 +1,4 @@
-.PHONY: repl tests test celan
+.PHONY: repl tests test fmt lint celan
 
 all:
 	dune build
@@ -16,6 +16,9 @@ clean:
 
 fmt:
 	dune build @fmt --auto-promote
+
+lint:
+	dune build @lint --force
 
 release:
 	dune build --profile=release

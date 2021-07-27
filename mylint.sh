@@ -14,6 +14,9 @@ fi
 if [ "$(opam lint -s $PKG_OPAM)" != "" ]; then
   echo "File $PKG_OPAM is not updated well. Command 'opam lint -s $PKG_OPAM' should print nothing"
   opam lint $PKG_OPAM
+  if  [ "$LASTDIR" != "Lambda" ]; then
+    exit 2
+  fi
 else
   echo "Checking $PKG_OPAM passed."
 fi

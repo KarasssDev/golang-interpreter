@@ -1,0 +1,7 @@
+.merlin
+.vscode
+_build
+
+.bloop
+.metals
+

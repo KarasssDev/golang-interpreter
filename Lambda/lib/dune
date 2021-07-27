@@ -1,0 +1,9 @@
+(library
+ (name lambda_lib)
+ (public_name Lambda.Lib)
+ (modules Ast Lambda Interpret Parser Printast Pprintast utils Tests)
+ (modules_without_implementation ast)
+ (inline_tests)
+ (libraries base)
+ (preprocess
+  (pps ppx_expect)))

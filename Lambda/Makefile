@@ -23,3 +23,4 @@ lint:
 release:
 	dune build --profile=release
 	dune runtest --profile=release
+

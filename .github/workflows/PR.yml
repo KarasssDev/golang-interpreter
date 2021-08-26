@@ -39,12 +39,24 @@ jobs:
         with:
           fetch-depth: 0                      # fix me later
 
+
+
       - name: Use OCaml ${{ matrix.ocaml-compiler }}
         uses: ocaml/setup-ocaml@v2.0.0-beta3
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
           dune-cache: true
 
+      ########## Installing a linter
+      - uses: actions/checkout@v2
+        with:
+          repository: ${{ secrets.NAME_OF_LINTER_REPO }}
+          token: ${{ secrets.ACCESS_TOKEN }}
+          path: mylinter
+      - run: opam pin add ./mylinter --no-action
+      - run: opam install mylinter --yes
+
+      ############# Detecting and compiling fp2021
       # Smart link about setting environment variables
       # https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-an-environment-variable
       - run: |
@@ -56,7 +68,7 @@ jobs:
 
       - name: Naive linting
         run: |
-          cd ${{ env.latest }}  && ../mylint.sh Lambda
+          cd ${{ env.latest }} && ../lint_filesystem.sh Lambda
 
       - name: Checking ocamlformat
         run: |
@@ -80,16 +92,6 @@ jobs:
           publish_dir: ${{ env.latest }}/_build/default/_doc/_html
           keep_files: true
           destination_dir: doc/${{ env.latest }}
-
-      ##########################################################################
-      - name: Installing a linter
-        shell: sh
-        env:
-          SUPER_SECRET: ${{ secrets.SuperSecret }}
-        run: |
-          echo "$SUPER_SECRET"
-          echo "$SUPER_SECRET" | gpg --passphrase-fd 0 -q --pinentry-mode loopback --no-verbose --decrypt-files install_linter.sh.gpg
-          sh ./install_linter.sh #/dev/null
 
       - uses: reviewdog/action-setup@v1
 

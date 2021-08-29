@@ -11,8 +11,11 @@ if [ ! -f "$PKG_OPAM" ]; then
     exit 1
 fi
 
-if [ "$(opam lint -s $PKG_OPAM)" != "" ]; then
-  echo "File $PKG_OPAM is not updated well. Command 'opam lint -s $PKG_OPAM' should print nothing"
+# A few warnings were disabled
+# 21: Field 'opam-version' doesn't match the current version
+OPAM_LINT_CMD="opam lint --warnings=-21 -s $PKG_OPAM"
+if [ "$($OPAM_LINT_CMD)" != "" ]; then
+  echo "File $PKG_OPAM is not updated well. Command '$OPAM_LINT_CMD' should print nothing"
   opam lint $PKG_OPAM
   if  [ "$LASTDIR" != "Lambda" ]; then
     exit 2

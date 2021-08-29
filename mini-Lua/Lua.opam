@@ -1,0 +1,25 @@
+opam-version: "2.0.8"
+name: "Lua"
+version: "0.0.1"
+synopsis: """ Implementation of mini-lua """
+#description: """ """
+maintainer: "https://github.com/achains"
+license: "LGPL-3.0-or-later"
+homepage: "not specified"
+#doc: "https://ocaml-ppx.github.io/ppxlib/"
+bug-reports: "not specified"
+depends: [
+  "ocaml" {>= "4.04.1"}
+  #"base"
+  "ppx_expect"
+  "dune"
+  "opal"
+  "ocamlformat" { build }
+]
+
+
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]

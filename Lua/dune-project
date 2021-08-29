@@ -8,6 +8,8 @@
 
 (authors "Arthur")
 (maintainers "https://github.com/achains")
+(homepage "https://github.com/achains/mini-Lua")
+(bug_reports "https://github.com/achains/mini-Lua")
 
 (package
  (name Lua) ; FIXME and regenerate .opam file using 'dune build @install'

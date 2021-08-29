@@ -7,7 +7,12 @@
 (license LGPL-3.0-only)
 
 (authors "FIXME Vasya Pupkin")
+
 (maintainers "FIXME Vasya Pupkin")
+
+(bug_reports "FIXME where to put bug reports about the code")
+
+(homepage "FIXME Homepage")
 
 (package
  (name Lambda) ; FIXME and regenerate .opam file using 'dune build @install'
@@ -16,7 +21,7 @@
   "FIXME. A longer description, for example, which are the most interesing features being supported, etc.")
  (version 0.1)
  (depends
-  dune 
+  dune
   angstrom
   (ppx_inline_test :with-test)
   ppx_expect

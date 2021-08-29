@@ -59,7 +59,7 @@ module PExpression = struct
     >> return (Const (VBool true))
     <|> (token "false" >> return (Const (VBool false)))
 
-  let const_null = token "nil" >> return @@ Const (VNull)
+  let const_null = token "nil" >> return @@ Const VNull
 
   let const_var = ident => fun x -> Var x
 
@@ -182,7 +182,7 @@ module PStatement = struct
   and return_stmt =
     token "return" >> expr
     >>= (fun e -> return (Return e))
-    <|> (token "return" >> return (Return  (Const VNull)))
+    <|> (token "return" >> return (Return (Const VNull)))
 
   and block_stmt input =
     ( token "do" >> sep_by stmt spaces >>= fun body ->

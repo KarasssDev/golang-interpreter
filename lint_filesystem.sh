@@ -13,7 +13,7 @@ fi
 
 # A few warnings were disabled
 # 21: Field 'opam-version' doesn't match the current version
-OPAM_LINT_CMD="opam lint --warnings=-21 -s $PKG_OPAM"
+OPAM_LINT_CMD="opam lint --warnings=-21-23 -s $PKG_OPAM"
 if [ "$($OPAM_LINT_CMD)" != "" ]; then
   echo "File $PKG_OPAM is not updated well. Command '$OPAM_LINT_CMD' should print nothing"
   opam lint $PKG_OPAM

@@ -1,16 +1,15 @@
 exception Unbound_Variable of string
 
 type arop = Sum | Sub | Mul | Div | FDiv | Mod
-[@@deriving show { with_path = false }]
+[@@deriving show {with_path= false}]
 
-type logop = And | Or [@@deriving show { with_path = false }]
-
-type unop = Not [@@deriving show { with_path = false }]
+type logop = And | Or [@@deriving show {with_path= false}]
+type unop = Not [@@deriving show {with_path= false}]
 
 type relop = Eq | Neq | Le | Leq | Ge | Geq
-[@@deriving show { with_path = false }]
+[@@deriving show {with_path= false}]
 
-type name = string [@@deriving show { with_path = false }]
+type name = string [@@deriving show {with_path= false}]
 
 type value =
   | VBool of bool

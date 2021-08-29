@@ -4,9 +4,7 @@ module type MONAD = sig
   type 'a t
 
   val return : 'a -> 'a t
-
   val ( >>= ) : 'a t -> ('a -> 'b t) -> 'b t
-
   val ( >> ) : 'a t -> 'b t -> 'b t
 end
 
@@ -20,11 +18,8 @@ module Result = struct
   type 'a t = ('a, string) Result.t
 
   let ( >>= ) = Result.bind
-
   let return = Result.ok
-
   let error = Result.error
-
   let ( >> ) x f = x >>= fun _ -> f
 end
 
@@ -81,17 +76,11 @@ module Eval (M : MONADERROR) = struct
     | _ -> error "Unsupported operands type for (%)"
 
   let ( <<< ) _ _ = return (VBool true)
-
   let ( <<<= ) _ _ = return (VBool true)
-
   let ( >>> ) _ _ = return (VBool true)
-
   let ( >>>= ) _ _ = return (VBool true)
-
   let ( === ) _ _ = return (VBool true)
-
   let ( !=== ) _ _ = return (VBool true)
-
   let is_true = function VBool false -> false | VNull -> false | _ -> true
 
   let string_of_value = function
@@ -104,21 +93,20 @@ module Eval (M : MONADERROR) = struct
   (* ==== Enviroment ==== *)
 
   module Env = struct
-    type name = string [@@deriving show { with_path = false }]
-
+    type name = string [@@deriving show {with_path= false}]
     type variables = (name, expr) Hashtbl.t
 
-    type enviroment = { var_ht : variables; func_ht : variables }
+    type enviroment = {var_ht: variables; func_ht: variables}
 
     and env_lst = enviroment list
 
     let rec find_var varname = function
       | [] -> error "Variable not found"
       | hd :: tl -> (
-          match Hashtbl.find_opt hd varname with
-          | Some (Const v) -> return @@ v
-          | Some _ -> error "Invalid enviroment value"
-          | None -> find_var varname tl)
+        match Hashtbl.find_opt hd varname with
+        | Some (Const v) -> return @@ v
+        | Some _ -> error "Invalid enviroment value"
+        | None -> find_var varname tl )
   end
 
   let rec eval_expr env = function
@@ -130,9 +118,9 @@ module Eval (M : MONADERROR) = struct
           | Mul -> ( ** )
           | Div -> ( /// )
           | FDiv -> ( // )
-          | Mod -> ( %% )
-        in
-        eval_expr env lhs >>= fun e_lhs ->
+          | Mod -> ( %% ) in
+        eval_expr env lhs
+        >>= fun e_lhs ->
         eval_expr env rhs >>= fun e_rhs -> (get_op op) e_lhs e_rhs
     | RelOp (op, lhs, rhs) ->
         let get_op = function
@@ -141,14 +129,16 @@ module Eval (M : MONADERROR) = struct
           | Ge -> ( >>> )
           | Geq -> ( >>>= )
           | Eq -> ( === )
-          | Neq -> ( !===)
-        in
-        eval_expr env lhs >>= fun e_lhs ->
+          | Neq -> ( !=== ) in
+        eval_expr env lhs
+        >>= fun e_lhs ->
         eval_expr env rhs >>= fun e_rhs -> (get_op op) e_lhs e_rhs
     | LogOp (op, lhs, rhs) ->
         let get_op = function And -> ( && ) | Or -> ( || ) in
-        eval_expr env lhs >>= fun e_lhs ->
-        eval_expr env rhs >>= fun e_rhs ->
+        eval_expr env lhs
+        >>= fun e_lhs ->
+        eval_expr env rhs
+        >>= fun e_rhs ->
         return @@ VBool ((get_op op) (is_true e_lhs) (is_true e_rhs))
     | UnOp (_, x) ->
         eval_expr env x >>= fun e_x -> return @@ VBool (not (is_true e_x))
@@ -161,16 +151,19 @@ module Eval (M : MONADERROR) = struct
   and append_table ht env key = function
     | [] -> return @@ VTable ht
     | hd :: tl -> (
-        match hd with
-        | Assign (x, y) ->
-            eval_expr env x >>= fun lhs ->
-            eval_expr env y >>= fun rhs ->
-            Hashtbl.replace ht (string_of_value lhs) rhs;
-            append_table ht env key tl
-        | _ ->
-            eval_expr env hd >>= fun v ->
-            Hashtbl.replace ht (string_of_int key) v;
-            append_table ht env (key + 1) tl)
+      match hd with
+      | Assign (x, y) ->
+          eval_expr env x
+          >>= fun lhs ->
+          eval_expr env y
+          >>= fun rhs ->
+          Hashtbl.replace ht (string_of_value lhs) rhs;
+          append_table ht env key tl
+      | _ ->
+          eval_expr env hd
+          >>= fun v ->
+          Hashtbl.replace ht (string_of_int key) v;
+          append_table ht env (key + 1) tl )
 
   and create_table env elist =
     let ht = Hashtbl.create 100 in

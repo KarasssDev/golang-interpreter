@@ -85,13 +85,13 @@ jobs:
           opam install odoc --yes
           cd ${{ env.latest }} && opam exec -- dune build @doc
 
-      - name: Deploy API documentation
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ${{ env.latest }}/_build/default/_doc/_html
-          keep_files: true
-          destination_dir: doc/${{ env.latest }}
+      #- name: Deploy API documentation
+      #  uses: peaceiris/actions-gh-pages@v3
+      #  with:
+      #    github_token: ${{ secrets.GITHUB_TOKEN }}
+      #    publish_dir: ${{ env.latest }}/_build/default/_doc/_html
+      #    keep_files: true
+      #    destination_dir: doc/${{ env.latest }}
 
       - uses: reviewdog/action-setup@v1
 
@@ -113,15 +113,15 @@ jobs:
           cat ${{ env.latest }}/${{ env.RDJSON_FILE_PATH }} |
           reviewdog -f=rdjsonl  -filter-mode nofilter -reporter=github-pr-check
 
-      - name: Deploy found lints
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-          publish_dir: ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}
-          external_repository: Kakadu/fp2021-ci-reports
-          publish_branch: master
-          keep_files: true
-          destination_dir: 2021/${{ github.event.pull_request.user.login }}
+      #- name: Deploy found lints
+      #  uses: peaceiris/actions-gh-pages@v3
+      #  with:
+      #    deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+      #    publish_dir: ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}
+      #    external_repository: Kakadu/fp2021-ci-reports
+      #    publish_branch: master
+      #    keep_files: true
+      #    destination_dir: 2021/${{ github.event.pull_request.user.login }}
 
       ##########################################################################
 #      - id: get-comment-body

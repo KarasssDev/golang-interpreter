@@ -50,11 +50,11 @@ jobs:
       ########## Installing a linter
       - uses: actions/checkout@v2
         with:
-          repository: ${{ secrets.NAME_OF_LINTER_REPO }}
-          token: ${{ secrets.ACCESS_TOKEN }}
+          repository: Kakadu/mylinter
           path: mylinter
       - run: opam pin add ./mylinter --no-action
-      - run: opam install mylinter --yes
+      - name: Installing a linter
+        run: opam install mylinter --yes
 
       ############# Detecting and compiling fp2021
       # Smart link about setting environment variables

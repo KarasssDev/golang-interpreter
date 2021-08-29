@@ -1,0 +1,18 @@
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A -w -3-9-32-58)))
+ (release
+  (flags
+   (:standard -warn-error -A -w -58))))
+
+(executable
+ (name REPL)
+ (public_name REPL)
+ (modules REPL)
+ (libraries Lua.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(cram
+ (deps ./REPL.exe %{bin:REPL}))

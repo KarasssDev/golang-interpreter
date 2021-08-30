@@ -25,6 +25,8 @@ jobs:
           - true
 
     runs-on: ${{ matrix.os }}
+    env:
+      REVIEWDOG_TOKEN: 232b1588ed9db71d
 
     steps:
 
@@ -38,8 +40,6 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 0                      # fix me later
-
-
 
       - name: Use OCaml ${{ matrix.ocaml-compiler }}
         uses: ocaml/setup-ocaml@v2.0.0-beta3
@@ -107,11 +107,11 @@ jobs:
       - run: cat ${{ env.latest }}/${{ env.RDJSON_FILE_PATH }}
 
       - name: Run reviewdog
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        #env:
+        #  REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           cat ${{ env.latest }}/${{ env.RDJSON_FILE_PATH }} |
-          reviewdog -f=rdjsonl  -filter-mode nofilter -reporter=github-pr-check
+          reviewdog -f=rdjsonl -filter-mode nofilter -reporter=github-pr-check
 
       #- name: Deploy found lints
       #  uses: peaceiris/actions-gh-pages@v3

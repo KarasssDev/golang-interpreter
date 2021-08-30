@@ -4,9 +4,6 @@ on:
   pull_request:
     branches:
       - 'master'
-  push:
-    branches:
-      - 'master'
 
 jobs:
   build:
@@ -56,6 +53,16 @@ jobs:
       - name: Installing a linter
         run: opam install mylinter --yes
 
+      #- run: |
+      #    body=$(cat artifacts-deployment-key)
+      #    body="${body//'%'/'%25'}"
+      #    body="${body//$'\n'/'%0A'}"
+      #    body="${body//$'\r'/'%0D'}"
+      #    echo "ARTIFACTS_PK=$body" >> $GITHUB_ENV
+
+      #- run: |
+      #    echo "${{ env.ARTIFACTS_PK }}"
+
       ############# Detecting and compiling fp2021
       # Smart link about setting environment variables
       # https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-an-environment-variable
@@ -63,8 +70,10 @@ jobs:
           ./detect_latest.sh >> $GITHUB_ENV
           echo "${{ env.latest }}"
 
-      - run: |
-          cd ${{ env.latest }} && opam install . --deps-only --with-test --with-doc
+      - name: Installing dependencies
+        run: cd ${{ env.latest }} && opam install . --deps-only --with-test --with-doc
+      - name: Installing linter
+        run: opam install mylinter --yes --with-doc
 
       - name: Naive linting
         run: |
@@ -74,24 +83,16 @@ jobs:
         run: |
           cd ${{ env.latest }} && opam exec -- dune build @fmt
 
-      - run: |
-          cd ${{ env.latest }} && opam exec -- dune build
+      - name: Compiling ${{ env.latest }}...
+        run: cd ${{ env.latest }} && opam exec -- dune build
 
-      - run: |
-          cd ${{ env.latest }} && opam exec -- dune runtest
+      - name: Running tests in ${{ env.latest }}...
+        run: cd ${{ env.latest }} && opam exec -- dune runtest
 
-      - name: Build API documentation
+      - name: Build API documentation for ${{ env.latest }}...
         run: |
           opam install odoc --yes
           cd ${{ env.latest }} && opam exec -- dune build @doc
-
-      #- name: Deploy API documentation
-      #  uses: peaceiris/actions-gh-pages@v3
-      #  with:
-      #    github_token: ${{ secrets.GITHUB_TOKEN }}
-      #    publish_dir: ${{ env.latest }}/_build/default/_doc/_html
-      #    keep_files: true
-      #    destination_dir: doc/${{ env.latest }}
 
       - uses: reviewdog/action-setup@v1
 
@@ -99,29 +100,59 @@ jobs:
           echo "RDJSON_DIR_PATH=_build/default/_found_lints" >> $GITHUB_ENV
       - run: cd ${{ env.latest }} && mkdir -p ${{ env.RDJSON_DIR_PATH }}
       - run: |
-          echo "RDJSON_FILE_PATH=${{ env.RDJSON_DIR_PATH }}/$(date +%Y-%m-%d_%H:%M).rdjsonl" >> $GITHUB_ENV
+          #echo "RDJSON_FILE_PATH=${{ env.RDJSON_DIR_PATH }}/$(date +%Y-%m-%d_%H_%M).rdjsonl" >> $GITHUB_ENV
+          echo "RDJSON_FILE_PATH=${{ env.RDJSON_DIR_PATH }}/lints.rdjsonl" >> $GITHUB_ENV
 
-      - name: running mylinter
+      - name: Running linter in ${{ env.latest }}...
         run: cd ${{ env.latest }} && opam exec -- mylinter -dir . -add-prefix ${{ env.latest }}/ -ordjsonl ${{ env.RDJSON_FILE_PATH }}
 
       - run: cat ${{ env.latest }}/${{ env.RDJSON_FILE_PATH }}
+      - run: echo ${{ env.latest }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/projectname.txt
+      - run: echo ${{ github.event.pull_request.user.login }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/piarast.txt
+      - run: echo ${{ github.event.number }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/PR_number.txt
+        # TODO: maybe PR_number is not required
 
       - name: Run reviewdog
-        #env:
-        #  REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           cat ${{ env.latest }}/${{ env.RDJSON_FILE_PATH }} |
           reviewdog -f=rdjsonl -filter-mode nofilter -reporter=github-pr-check
 
+      - uses: actions/upload-artifact@v2
+        with:
+          name: other_stuff
+          path: |
+            ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}
+
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: docs
+          path: |
+            ${{ env.latest }}/_build/default/_doc/_html
+            ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/projectname.txt
+            ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/PR_number.txt
+
       #- name: Deploy found lints
       #  uses: peaceiris/actions-gh-pages@v3
       #  with:
-      #    deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+      #    deploy_key: ${{ env.ARTIFACTS_PK }}
       #    publish_dir: ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}
-      #    external_repository: Kakadu/fp2021-ci-reports
+      #    external_repository: Kakadu/fp2021-ci-artifacts
       #    publish_branch: master
       #    keep_files: true
       #    destination_dir: 2021/${{ github.event.pull_request.user.login }}
+
+      #- name: Deploy API documentation
+      #  uses: peaceiris/actions-gh-pages@v3
+      #  with:
+      #    deploy_key: ${{ env.ARTIFACTS_PK }}
+      #    publish_dir: ${{ env.latest }}/_build/default/_doc/_html
+      #    external_repository: Kakadu/fp2021-ci-artifacts
+      #    publish_branch: master
+      #    keep_files: true
+      #    destination_dir: doc/${{ env.latest }}
 
       ##########################################################################
 #      - id: get-comment-body

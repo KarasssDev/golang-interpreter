@@ -1,0 +1,172 @@
+name: Comment on the PR
+
+# read-write repo token
+# access to secrets
+on:
+  workflow_run:
+    workflows: ["Build PR"]
+    types:
+      - completed
+
+jobs:
+  upload_lints:
+    runs-on: ubuntu-latest
+    if: >
+      ${{ github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' }}
+    env:
+      REVIEWDOG_TOKEN: 232b1588ed9db71d
+    steps:
+      - name: 'Download artifact'
+        uses: actions/github-script@v3.1.0
+        with:
+          script: |
+            console.log(${{ github.event.workflow_run.id }});
+            var artifacts = await github.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: ${{ github.event.workflow_run.id }},
+            });
+            var matchArtifact = artifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "other_stuff";
+            })[0];
+            var download = await github.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            var fs = require('fs');
+            fs.writeFileSync('${{ github.workspace }}/other_stuff.zip', Buffer.from(download.data));
+
+      - run: unzip other_stuff.zip
+      - run: |
+          echo "LANG_NAME=$(cat projectname.txt)" >> $GITHUB_ENV
+          echo "PIARAST_NAME=$(cat piarast.txt)" >> $GITHUB_ENV
+          echo "CI_PULL_REQUEST=$(cat PR_number.txt)" >> $GITHUB_ENV
+      - run: |
+          echo "${{ env.LANG_NAME }}"
+          echo "${{ env.PIARAST_NAME }}"
+          echo "${{ env.CI_PULL_REQUEST }}"
+
+
+      - uses: reviewdog/action-setup@v1
+      - name: Run reviewdog
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          cat lints.rdjsonl |
+          reviewdog -f=rdjsonl -filter-mode nofilter -reporter=github-pr-review
+
+      # TODO: Maybe not deploy empty lint files
+      - run: |
+          echo "LINTS_NAME=$(date +%Y-%m-%d_%H_%M).json" >> $GITHUB_ENV
+      - run: |
+          mkdir -p lints
+          cp lints.rdjsonl lints/${{ env.LINTS_NAME }}
+      - name: Deploy found lints
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          publish_dir: ./lints
+          external_repository: Kakadu/fp2021-ci-artifacts
+          publish_branch: master
+          keep_files: true
+          destination_dir: 2021/${{ github.PIARAST_NAME }}/
+
+  ###################################################################################################
+  upload_docs:
+    runs-on: ubuntu-latest
+    if: >
+      ${{ github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: 'Download artifact'
+        uses: actions/github-script@v3.1.0
+        with:
+          script: |
+            console.log(${{ github.event.workflow_run.id }});
+            var artifacts = await github.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: ${{ github.event.workflow_run.id }},
+            });
+            var matchArtifact = artifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "docs";
+            })[0];
+            var download = await github.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            var fs = require('fs');
+            fs.writeFileSync('${{ github.workspace }}/docs.zip', Buffer.from(download.data));
+
+      - run: |
+          mkdir docs
+          cd docs && unzip ../docs.zip
+      - run: |
+          echo "LANG_NAME=$(cat docs/_found_lints/projectname.txt)" >> $GITHUB_ENV
+          echo "PR_NUMBER=$(cat docs/_found_lints/PR_number.txt)" >> $GITHUB_ENV
+      - run: |
+          echo "${{ env.LANG_NAME }}"
+          echo "${{ env.PR_NUMBER }}"
+
+      - name: Deploy documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          publish_dir: ./docs/_doc/_html
+          external_repository: Kakadu/fp2021
+          publish_branch: gh-pages
+          enable_jekyll: false
+          keep_files: true
+          destination_dir: docs/${{ env.LANG_NAME }}/
+
+      # - name: 'Comment on PR'
+      #   uses: actions/github-script@v3
+      #   with:
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+      #     script: |
+      #       var fs = require('fs');
+      #       var issue_number = Number(fs.readFileSync('docs/_found_lints/PR_number.txt'));
+      #       await github.issues.createComment({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         issue_number: issue_number,
+      #         body: 'Everything is OK. Thank you for the PR!'
+      #       });
+
+      - shell: bash
+        run: >
+          cat > text.md <<-EOF
+              Документация построена, должна скоро появиться в https://kakadu.github.io/fp2021/docs/${{ env.LANG_NAME }}
+
+
+          EOF
+
+      - id: get-comment-body
+        run: |
+          body=$(cat text.md)
+          body="${body//'%'/'%25'}"
+          body="${body//$'\n'/'%0A'}"
+          body="${body//$'\r'/'%0D'}"
+          echo ::set-output name=body::$body
+
+      - name: Find Comment
+        uses: peter-evans/find-comment@v1
+        id: fc
+        if: ${{ always() }}
+        with:
+          issue-number: ${{ env.PR_NUMBER }}
+          body-includes: Документация построена
+          comment-author: github-actions[bot]
+
+      - name: Create comment
+        uses: peter-evans/create-or-update-comment@v1
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          edit-mode: replace
+          issue-number: ${{ env.PR_NUMBER }}
+          body: ${{ steps.get-comment-body.outputs.body }}

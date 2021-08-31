@@ -96,12 +96,9 @@ jobs:
 
       - uses: reviewdog/action-setup@v1
 
-      - run: |
-          echo "RDJSON_DIR_PATH=_build/default/_found_lints" >> $GITHUB_ENV
+      - run: echo "RDJSON_DIR_PATH=_build/default/_found_lints" >> $GITHUB_ENV
       - run: cd ${{ env.latest }} && mkdir -p ${{ env.RDJSON_DIR_PATH }}
-      - run: |
-          #echo "RDJSON_FILE_PATH=${{ env.RDJSON_DIR_PATH }}/$(date +%Y-%m-%d_%H_%M).rdjsonl" >> $GITHUB_ENV
-          echo "RDJSON_FILE_PATH=${{ env.RDJSON_DIR_PATH }}/lints.rdjsonl" >> $GITHUB_ENV
+      - run: echo "RDJSON_FILE_PATH=${{ env.RDJSON_DIR_PATH }}/lints.rdjsonl" >> $GITHUB_ENV
 
       - name: Running linter in ${{ env.latest }}...
         run: cd ${{ env.latest }} && opam exec -- mylinter -dir . -add-prefix ${{ env.latest }}/ -ordjsonl ${{ env.RDJSON_FILE_PATH }}
@@ -111,7 +108,8 @@ jobs:
       - run: echo ${{ github.event.pull_request.user.login }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/piarast.txt
       - run: echo ${{ github.event.number }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/PR_number.txt
         # TODO: maybe PR_number is not required
-      - run: echo $(git rev-parse HEAD) > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
+      - run: echo $(git rev-parse HEAD~1) > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
+          # we use commit previous from head because HEAD is merge commit by some reason
 
       - run: cat ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
       - run: PAGER= git log

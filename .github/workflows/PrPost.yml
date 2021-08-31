@@ -55,7 +55,6 @@ jobs:
           echo "CI_COMMIT = ${{ env.CI_COMMIT }}"
           echo "CI_REPO_OWNER = ${{ env.CI_REPO_OWNER }}"
 
-
       - uses: reviewdog/action-setup@v1
       - name: Run reviewdog
         env:
@@ -148,9 +147,7 @@ jobs:
       - shell: bash
         run: >
           cat > text.md <<-EOF
-              Документация построена, должна скоро появиться в https://kakadu.github.io/fp2021/docs/${{ env.LANG_NAME }}
-
-
+              Документация построена $(TZ='Europe/Moscow' date), должна скоро появиться в https://kakadu.github.io/fp2021/docs/${{ env.LANG_NAME }}
           EOF
 
       - id: get-comment-body

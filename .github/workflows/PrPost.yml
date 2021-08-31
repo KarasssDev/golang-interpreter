@@ -122,13 +122,13 @@ jobs:
       - name: Deploy documentation
         uses: peaceiris/actions-gh-pages@v3
         with:
-          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          #deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
           publish_dir: ./docs/_doc/_html
-          external_repository: Kakadu/fp2021
+          #external_repository: Kakadu/fp2021
           publish_branch: gh-pages
           enable_jekyll: false
           keep_files: true
-          destination_dir: docs/${{ env.LANG_NAME }}/
+          destination_dir: docs/${{ env.LANG_NAME }}
 
       # - name: 'Comment on PR'
       #   uses: actions/github-script@v3

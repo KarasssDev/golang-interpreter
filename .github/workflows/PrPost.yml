@@ -61,7 +61,7 @@ jobs:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           cat lints.rdjsonl |
-          reviewdog -f=rdjsonl -filter-mode nofilter -reporter=github-pr-review
+          reviewdog -f=rdjsonl -filter-mode nofilter -reporter=github-pr-review -guess
 
       # TODO: Maybe not deploy empty lint files
       - run: |

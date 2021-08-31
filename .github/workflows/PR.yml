@@ -111,6 +111,7 @@ jobs:
       - run: echo ${{ github.event.pull_request.user.login }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/piarast.txt
       - run: echo ${{ github.event.number }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/PR_number.txt
         # TODO: maybe PR_number is not required
+      - run: echo $(git rev-parse HEAD) > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
 
       - name: Run reviewdog
         env:
@@ -133,6 +134,7 @@ jobs:
             ${{ env.latest }}/_build/default/_doc/_html
             ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/projectname.txt
             ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/PR_number.txt
+            ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
 
       #- name: Deploy found lints
       #  uses: peaceiris/actions-gh-pages@v3

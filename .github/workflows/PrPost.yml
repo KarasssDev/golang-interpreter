@@ -44,10 +44,16 @@ jobs:
           echo "LANG_NAME=$(cat projectname.txt)" >> $GITHUB_ENV
           echo "PIARAST_NAME=$(cat piarast.txt)" >> $GITHUB_ENV
           echo "CI_PULL_REQUEST=$(cat PR_number.txt)" >> $GITHUB_ENV
+          echo "CI_COMMIT=$(cat CI_COMMIT.txt)" >> $GITHUB_ENV
+          echo "CI_REPO_OWNER=Kakadu" >> $GITHUB_ENV
+          echo "CI_REPO_NAME=fp2021" >> $GITHUB_ENV
+
       - run: |
           echo "${{ env.LANG_NAME }}"
           echo "${{ env.PIARAST_NAME }}"
-          echo "${{ env.CI_PULL_REQUEST }}"
+          echo "CI_PULL_REQUEST = ${{ env.CI_PULL_REQUEST }}"
+          echo "CI_COMMIT = ${{ env.CI_COMMIT }}"
+          echo "CI_REPO_OWNER = ${{ env.CI_REPO_OWNER }}"
 
 
       - uses: reviewdog/action-setup@v1

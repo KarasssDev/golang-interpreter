@@ -122,7 +122,7 @@ jobs:
       - name: Deploy documentation
         uses: peaceiris/actions-gh-pages@v3
         with:
-          #deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
           publish_dir: ./docs/_doc/_html
           external_repository: Kakadu/fp2021
           publish_branch: gh-pages

@@ -111,7 +111,8 @@ jobs:
       - run: echo $(git rev-parse HEAD~1) > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
           # we use commit previous from head because HEAD is merge commit by some reason
 
-      - run: cat ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
+      - run: echo $(git rev-parse HEAD)
+      - run: echo $(git rev-parse HEAD~1)
       - run: PAGER= git log
 
       - name: Run reviewdog

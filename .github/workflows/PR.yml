@@ -108,11 +108,12 @@ jobs:
       - run: echo ${{ github.event.pull_request.user.login }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/piarast.txt
       - run: echo ${{ github.event.number }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/PR_number.txt
         # TODO: maybe PR_number is not required
-      - run: echo $(git rev-parse HEAD~1) > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
+      - run: echo ${{ env.GITHUB_SHA }} > ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
           # we use commit previous from head because HEAD is merge commit by some reason
 
       - run: echo $(git rev-parse HEAD)
       - run: echo $(git rev-parse HEAD~1)
+      - run: echo ${{ env.GITHUB_SHA }}
       - run: PAGER= git log
 
       - name: Run reviewdog

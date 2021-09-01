@@ -139,6 +139,9 @@ jobs:
             ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/PR_number.txt
             ${{ env.latest }}/${{ env.RDJSON_DIR_PATH }}/CI_COMMIT.txt
 
+      - name: Installing a clone detector
+        run: npm install -g jscpd
+
       #- name: Deploy found lints
       #  uses: peaceiris/actions-gh-pages@v3
       #  with:

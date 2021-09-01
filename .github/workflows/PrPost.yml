@@ -121,28 +121,15 @@ jobs:
       - name: Deploy documentation
         uses: peaceiris/actions-gh-pages@v3
         with:
-          #deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}  # used only to publish in local repo
           publish_dir: ./docs/_doc/_html
-          #external_repository: Kakadu/fp2021
           publish_branch: gh-pages
           enable_jekyll: false
           keep_files: true
           destination_dir: docs/${{ env.LANG_NAME }}
-
-      # - name: 'Comment on PR'
-      #   uses: actions/github-script@v3
-      #   with:
-      #     github-token: ${{ secrets.GITHUB_TOKEN }}
-      #     script: |
-      #       var fs = require('fs');
-      #       var issue_number = Number(fs.readFileSync('docs/_found_lints/PR_number.txt'));
-      #       await github.issues.createComment({
-      #         owner: context.repo.owner,
-      #         repo: context.repo.repo,
-      #         issue_number: issue_number,
-      #         body: 'Everything is OK. Thank you for the PR!'
-      #       });
+          commit_message: Deploying documentation for ${{ env.LANG_NAME }}
+          user_name: 'fp2021[bot]'
+          user_email: 'fp2021[bot]@users.noreply.github.com'
 
       - shell: bash
         run: >

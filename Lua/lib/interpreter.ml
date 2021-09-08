@@ -343,9 +343,8 @@ module Eval (M : MONADERROR) = struct
         | Some _ -> Hashtbl.replace env.vars n v ) in
     match env with
     | None -> error "Operation out of scope"
-    | Some e ->
-        if is_global then (set_global n v e; return env)
-        else (Hashtbl.replace e.vars n v; return env)
+    | Some e when is_global -> set_global n v e; return env
+    | Some e -> Hashtbl.replace e.vars n v; return env
 
   and eval_if env = function
     | [] -> return env

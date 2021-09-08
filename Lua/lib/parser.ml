@@ -189,10 +189,13 @@ module PStatement = struct
     >>= fun var ->
     token "="
     >> sep_by1 expr (token ",")
-    >>= function
-    | conds when List.length conds < 2 || List.length conds > 3 -> mzero
-    | conds ->
-        block_stmt >>= fun body -> return (ForNumerical (var, conds, body)) )
+    >>= fun conds ->
+    match conds with
+    | [_; _] ->
+        block_stmt >>= fun body -> return (ForNumerical (var, conds, body))
+    | [_; _; _] ->
+        block_stmt >>= fun body -> return (ForNumerical (var, conds, body))
+    | _ -> mzero )
       input
 
   (* TODO: Think how to avoid list @ concat *)

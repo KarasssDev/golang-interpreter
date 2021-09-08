@@ -26,8 +26,10 @@ module PExpression = struct
     >>= function s when List.mem s reserved -> mzero | s -> return s
 
   (* Atomic expressions *)
-  let const_int = int_parser >>= fun n -> return (Const (VInt n))
-  let const_float = float_parser >>= fun n -> return (Const (VFloat n))
+  let const_int =
+    int_parser >>= fun n -> return (Const (VNumber (float_of_int n)))
+
+  let const_float = float_parser >>= fun n -> return (Const (VNumber n))
   let const_number = const_float <|> const_int
 
   let const_bool =
@@ -44,7 +46,7 @@ module PExpression = struct
       List.iter (Buffer.add_char buf) chars;
       Buffer.contents buf in
     token "\""
-    >> many (satisfy (fun c -> c != '\"'))
+    >> many (satisfy (fun c -> c <> '\"'))
     >>= fun list -> token "\"" >> return (Const (VString (string_of_chars list)))
 
   (* Arithmetic operators *)
@@ -83,7 +85,7 @@ module PExpression = struct
 
   and unary_expr input =
     ( token "-" >> lexeme primary
-    >>= (fun x -> return (ArOp (Sub, Const (VInt 0), x)))
+    >>= (fun x -> return (ArOp (Sub, Const (VNumber 0.), x)))
     <|> (token "not" >> lexeme primary >>= fun x -> return (UnOp (Not, x)))
     <|> primary )
       input
@@ -98,7 +100,7 @@ module PExpression = struct
 
   and create_table input =
     ( token "{"
-    >> sep_by1 expr (token ",")
+    >> sep_by expr (token ",")
     >>= fun table_elems -> token "}" >> return (TableCreate table_elems) )
       input
 
@@ -106,7 +108,7 @@ module PExpression = struct
     ( ident
     >>= fun table_name ->
     token "[" >> expr
-    >>= fun pos -> token "]" >> return (TableAccess (Var table_name, pos)) )
+    >>= fun pos -> token "]" >> return (TableAccess (table_name, pos)) )
       input
 
   and call_func input =
@@ -114,7 +116,7 @@ module PExpression = struct
     >>= fun func_name ->
     token "("
     >> sep_by expr (token ",")
-    >>= fun args -> token ")" >> return (CallFunc (Var func_name, args)) )
+    >>= fun args -> token ")" >> return (CallFunc (func_name, args)) )
       input
 
   and assign input =
@@ -187,13 +189,10 @@ module PStatement = struct
     >>= fun var ->
     token "="
     >> sep_by1 expr (token ",")
-    >>= fun conds ->
-    match conds with
-    | [_; _] ->
-        block_stmt >>= fun body -> return (ForNumerical (Var var, conds, body))
-    | [_; _; _] ->
-        block_stmt >>= fun body -> return (ForNumerical (Var var, conds, body))
-    | _ -> mzero )
+    >>= function
+    | conds when List.length conds < 2 || List.length conds > 3 -> mzero
+    | conds ->
+        block_stmt >>= fun body -> return (ForNumerical (var, conds, body)) )
       input
 
   (* TODO: Think how to avoid list @ concat *)
@@ -233,10 +232,13 @@ module PStatement = struct
       input
 
   (* Lua-program parser *)
-  let parse_all input =
-    ( sep_by stmt spaces
-    >>= fun result ->
-    (* print_string (show_statement (Block result)); *)
-    return (Block result) )
-      input
+
+  let prog = sep_by stmt spaces << (spaces << eof ())
+
+  let parse_prog input =
+    match apply prog input with
+    | Some res ->
+        (* print_string("\n===\n" ^ show_statement(Block res) ^ "\n===\n"); *)
+        Some (Block res)
+    | None -> None
 end

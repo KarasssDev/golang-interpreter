@@ -13,9 +13,9 @@
 
 (package
  (name Lua) ; FIXME and regenerate .opam file using 'dune build @install'
- (synopsis "FIXME An interpreter for language")
+ (synopsis "An interpreter for Lua")
  (description
-  "FIXME. A longer description, for example, which are the most interesing features being supported, etc.")
+  "Interpreter supports lua tables, high order functions, basic control constructs")
  (version 0.1)
  (depends
   (dune

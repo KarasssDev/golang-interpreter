@@ -3,17 +3,14 @@ open Parser
 open Parser.PExpression
 open Parser.PStatement
 
-(* Expression tests *)
+(* ==== Expression tests ==== *)
 
-let%test _ = apply float_parser "1." = Some 1.
-let%test _ = apply int_parser "  1" = Some 1
-let%test _ = apply float_parser ".15" = None
 let%test _ = apply ident "_Test_1_" = Some "_Test_1_"
 let%test _ = apply ident "if" = None
 let%test _ = apply ident "123Test" = None
-let%test _ = apply const_number "1.15" = Some (Const (VFloat 1.15))
+let%test _ = apply const_number "1.15" = Some (Const (VNumber 1.15))
 let%test _ = apply const_number " .15" = None
-let%test _ = apply const_number "  3" = Some (Const (VInt 3))
+let%test _ = apply const_number "  3" = Some (Const (VNumber 3.))
 let%test _ = apply const_bool "true  " = Some (Const (VBool true))
 let%test _ = apply const_null "nil" = Some (Const VNull)
 
@@ -24,24 +21,27 @@ let%test _ = apply const_string "\"\"" = Some (Const (VString ""))
 
 let%test _ =
   apply create_table "{a = 5}"
-  = Some (TableCreate [Assign (Var "a", Const (VInt 5))])
+  = Some (TableCreate [Assign (Var "a", Const (VNumber 5.))])
 
 let%test _ =
-  apply table_access "data[3]" = Some (TableAccess (Var "data", Const (VInt 3)))
+  apply table_access "data[3]" = Some (TableAccess ("data", Const (VNumber 3.)))
 
-let%test _ = apply expr "-5" = Some (ArOp (Sub, Const (VInt 0), Const (VInt 5)))
-let%test _ = apply expr "a = 5" = Some (Assign (Var "a", Const (VInt 5)))
+let%test _ =
+  apply expr "-5" = Some (ArOp (Sub, Const (VNumber 0.), Const (VNumber 5.)))
+
+let%test _ = apply expr "a = 5" = Some (Assign (Var "a", Const (VNumber 5.)))
 
 let%test _ =
   apply expr "a = {b = 5}"
-  = Some (Assign (Var "a", TableCreate [Assign (Var "b", Const (VInt 5))]))
+  = Some (Assign (Var "a", TableCreate [Assign (Var "b", Const (VNumber 5.))]))
 
 let%test _ =
   apply call_func "foo   (a=3, 5)"
   = Some
-      (CallFunc (Var "foo", [Assign (Var "a", Const (VInt 3)); Const (VInt 5)]))
+      (CallFunc
+         ("foo", [Assign (Var "a", Const (VNumber 3.)); Const (VNumber 5.)]) )
 
-(* Statement tests *)
+(* ==== Statement tests ==== *)
 
 let%test _ = apply return_stmt "return a" = Some (Return (Var "a"))
 let%test _ = apply return_stmt "return" = Some (Return (Const VNull))
@@ -49,21 +49,22 @@ let%test _ = apply break_stmt "break" = Some Break
 
 let%test _ =
   apply var_dec_stmt "a, b = 1, 2"
-  = Some (VarDec [(Var "a", Const (VInt 1)); (Var "b", Const (VInt 2))])
+  = Some (VarDec [(Var "a", Const (VNumber 1.)); (Var "b", Const (VNumber 2.))])
 
 let%test _ =
   apply var_dec_stmt "a, b = 1"
-  = Some (VarDec [(Var "a", Const (VInt 1)); (Var "b", Const VNull)])
+  = Some (VarDec [(Var "a", Const (VNumber 1.)); (Var "b", Const VNull)])
 
 let%test _ =
-  apply var_dec_stmt "a = 1, 2" = Some (VarDec [(Var "a", Const (VInt 1))])
+  apply var_dec_stmt "a = 1, 2" = Some (VarDec [(Var "a", Const (VNumber 1.))])
 
 let%test _ =
   apply block_stmt "do a = 1, 2 end"
-  = Some (Block [VarDec [(Var "a", Const (VInt 1))]])
+  = Some (Block [VarDec [(Var "a", Const (VNumber 1.))]])
 
 let%test _ =
-  apply expr_stmt "a = 3" = Some (Expression (Assign (Var "a", Const (VInt 3))))
+  apply expr_stmt "a = 3"
+  = Some (Expression (Assign (Var "a", Const (VNumber 3.))))
 
 let%test _ =
   apply while_stmt "while a == true do a = false end"
@@ -76,9 +77,11 @@ let%test _ =
   apply for_num_stmt "for i = 1,5,2 do 1 2 end"
   = Some
       (ForNumerical
-         ( Var "i"
-         , [Const (VInt 1); Const (VInt 5); Const (VInt 2)]
-         , Block [Expression (Const (VInt 1)); Expression (Const (VInt 2))] ) )
+         ( "i"
+         , [Const (VNumber 1.); Const (VNumber 5.); Const (VNumber 2.)]
+         , Block
+             [Expression (Const (VNumber 1.)); Expression (Const (VNumber 2.))]
+         ) )
 
 let%test _ = apply for_num_stmt "for i = 1 do 1 end" = None
 
@@ -111,11 +114,10 @@ let%test _ =
   = Some
       (FuncDec ("a", ["x"; "y"], Block [Return (ArOp (Sum, Var "x", Var "y"))]))
 
-(* Parse all *)
+(* === Parse Lua Program tests === *)
 
-(* factorial.lua *)
 let%test _ =
-  apply parse_all
+  parse_prog
     "\n\
      function fact (n)\n\
     \    if n == 0 then\n\
@@ -137,8 +139,8 @@ let%test _ =
              , ["n"]
              , Block
                  [ If
-                     [ ( RelOp (Eq, Var "n", Const (VInt 0))
-                       , Block [Return (Const (VInt 1))] )
+                     [ ( RelOp (Eq, Var "n", Const (VNumber 0.))
+                       , Block [Return (Const (VNumber 1.))] )
                      ; ( Const (VBool true)
                        , Block
                            [ Return
@@ -146,40 +148,36 @@ let%test _ =
                                   ( Mul
                                   , Var "n"
                                   , CallFunc
-                                      ( Var "fact"
-                                      , [ArOp (Sub, Var "n", Const (VInt 1))] )
-                                  ) ) ] ) ] ] )
+                                      ( "fact"
+                                      , [ArOp (Sub, Var "n", Const (VNumber 1.))]
+                                      ) ) ) ] ) ] ] )
          ; VarDec
              [ ( Var "data"
                , TableCreate
-                   [ Const (VInt 1); Const (VInt 2); Const (VInt 3)
-                   ; Const (VInt 4); Const (VInt 5); Const (VInt 6)
-                   ; Const (VInt 7) ] ) ]; VarDec [(Var "s", Const (VInt 0))]
+                   [ Const (VNumber 1.); Const (VNumber 2.); Const (VNumber 3.)
+                   ; Const (VNumber 4.); Const (VNumber 5.); Const (VNumber 6.)
+                   ; Const (VNumber 7.) ] ) ]
+         ; VarDec [(Var "s", Const (VNumber 0.))]
          ; VarDec
              [ ( Var "s"
                , ArOp
                    ( Sum
                    , Var "s"
-                   , CallFunc (Var "fact", [TableAccess (Var "data", Var "i")])
-                   ) ) ]
+                   , CallFunc ("fact", [TableAccess ("data", Var "i")]) ) ) ]
          ; ForNumerical
-             ( Var "i"
-             , [Const (VInt 1); Const (VInt 7)]
+             ( "i"
+             , [Const (VNumber 1.); Const (VNumber 7.)]
              , Block
                  [ VarDec
                      [ ( Var "s"
                        , ArOp
                            ( Sum
                            , Var "s"
-                           , CallFunc
-                               (Var "fact", [TableAccess (Var "data", Var "i")])
+                           , CallFunc ("fact", [TableAccess ("data", Var "i")])
                            ) ) ] ] ) ] )
 
-(* use_local.lua *)
-let () = print_newline (); print_newline ()
-
 let%test _ =
-  apply parse_all
+  parse_prog
     {|  
 x = 10
 
@@ -194,14 +192,48 @@ print(x)
 |}
   = Some
       (Block
-         [ VarDec [(Var "x", Const (VInt 10))]
+         [ VarDec [(Var "x", Const (VNumber 10.))]
          ; FuncDec
              ( "xChanger"
              , ["value"]
              , Block
                  [ Local (VarDec [(Var "x", Var "value")])
-                 ; Expression (CallFunc (Var "print", [Var "x"])) ] )
-         ; Expression (CallFunc (Var "xChanger", [Const (VInt 5)]))
-         ; Expression (CallFunc (Var "print", [Var "x"])) ] )
+                 ; Expression (CallFunc ("print", [Var "x"])) ] )
+         ; Expression (CallFunc ("xChanger", [Const (VNumber 5.)]))
+         ; Expression (CallFunc ("print", [Var "x"])) ] )
 
-let () = print_newline ()
+let%test _ =
+  parse_prog
+    {|
+function binop(x, y, op)
+  local result = op(x, y)
+  return result
+end
+
+function prod(x, y)
+  return x * y
+end
+
+
+a = 5
+b = 4
+print(binop(a, b, prod))    
+|}
+  = Some
+      (Block
+         [ FuncDec
+             ( "binop"
+             , ["x"; "y"; "op"]
+             , Block
+                 [ Local
+                     (VarDec
+                        [(Var "result", CallFunc ("op", [Var "x"; Var "y"]))] )
+                 ; Return (Var "result") ] )
+         ; FuncDec
+             ("prod", ["x"; "y"], Block [Return (ArOp (Mul, Var "x", Var "y"))])
+         ; VarDec [(Var "a", Const (VNumber 5.))]
+         ; VarDec [(Var "b", Const (VNumber 4.))]
+         ; Expression
+             (CallFunc
+                ("print", [CallFunc ("binop", [Var "a"; Var "b"; Var "prod"])])
+             ) ] )

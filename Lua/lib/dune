@@ -7,7 +7,7 @@
 (library
  (name lua_lib)
  (public_name Lua.Lib)
- (modules Ast Parser Interpreter Tests)
+ (modules Ast Parser Interpreter Tests Hashtbl_p)
  (inline_tests)
  (libraries opal base)
  (preprocess

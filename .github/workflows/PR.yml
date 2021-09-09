@@ -44,6 +44,9 @@ jobs:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
           dune-cache: true
 
+      - name: Initialize submodules
+        run: git submodule update --init
+
       ########## Installing a linter
       - uses: actions/checkout@v2
         with:
@@ -52,16 +55,6 @@ jobs:
       - run: opam pin add ./mylinter --no-action
       - name: Installing a linter
         run: opam install mylinter --yes
-
-      #- run: |
-      #    body=$(cat artifacts-deployment-key)
-      #    body="${body//'%'/'%25'}"
-      #    body="${body//$'\n'/'%0A'}"
-      #    body="${body//$'\r'/'%0D'}"
-      #    echo "ARTIFACTS_PK=$body" >> $GITHUB_ENV
-
-      #- run: |
-      #    echo "${{ env.ARTIFACTS_PK }}"
 
       ############# Detecting and compiling fp2021
       # Smart link about setting environment variables
@@ -144,11 +137,16 @@ jobs:
 
       - name: Looking for clones
         run: python3 ./find_clones.py ${{ env.latest }}
+      - run: echo ${{ github.event.number }} > PR_number.txt
+
+      - run: cat jscpd_report.txt
 
       - uses: actions/upload-artifact@v2
         with:
           name: jscpd_report
-          path: jscpd_report.txt
+          path: |
+            jscpd_report.txt
+            PR_number.txt
 
       #- name: Deploy found lints
       #  uses: peaceiris/actions-gh-pages@v3

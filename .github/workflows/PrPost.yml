@@ -161,3 +161,67 @@ jobs:
           edit-mode: replace
           issue-number: ${{ env.PR_NUMBER }}
           body: ${{ steps.get-comment-body.outputs.body }}
+
+  ###################################################################################################
+  process_clones:
+    runs-on: ubuntu-latest
+    if: >
+      ${{ github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: 'Download artifact'
+        uses: actions/github-script@v3.1.0
+        with:
+          script: |
+            console.log(${{ github.event.workflow_run.id }});
+            var artifacts = await github.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: ${{ github.event.workflow_run.id }},
+            });
+            var matchArtifact = artifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "jscpd_report";
+            })[0];
+            var download = await github.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            var fs = require('fs');
+            fs.writeFileSync('${{ github.workspace }}/jscpd_report.zip', Buffer.from(download.data));
+
+      - run: unzip jscpd_report.zip
+
+      - id: get-comment-body
+        run: |
+          body=$(cat jscpd_report.txt)
+          body="${body//'%'/'%25'}"
+          body="${body//$'\n'/'%0A'}"
+          body="${body//$'\r'/'%0D'}"
+          echo ::set-output name=body::$body
+
+      - name: Find Comment
+        uses: peter-evans/find-comment@v1
+        id: fc
+        if: ${{ always() }}
+        with:
+          issue-number: ${{ env.PR_NUMBER }}
+          body-includes: peter-evans/create-or-update-comment
+          comment-author: github-actions[bot]
+
+      - name: Delete old comment
+        uses: jungwinter/comment@v1
+        if: ${{ steps.fc.outputs.comment-id != '' }}
+        with:
+          type: delete
+          comment_id: ${{ steps.create.outputs.id }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create comment
+        uses: peter-evans/create-or-update-comment@v1
+        with:
+          #comment-id: ${{ steps.fc.outputs.comment-id }}
+          edit-mode: replace
+          issue-number: ${{ env.PR_NUMBER }}
+          body: ${{ steps.get-comment-body.outputs.body }}

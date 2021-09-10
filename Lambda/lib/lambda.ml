@@ -35,9 +35,9 @@ let subst x ~by:v =
   helper
 
 type strat =
-  { on_var: strat -> name -> t
-  ; on_abs: strat -> name -> t -> t
-  ; on_app: strat -> t -> t -> t }
+  { on_var: strat -> name -> string t
+  ; on_abs: strat -> name -> string t -> string t
+  ; on_app: strat -> string t -> string t -> string t }
 
 let apply_strat st = function
   | Var name -> st.on_var st name

@@ -4,7 +4,7 @@ open Base
 open Utils
 
 module Interpret (M : MONAD_FAIL) : sig
-  val run : Ast.t -> (int, Utils.error) M.t
+  val run : _ Ast.t -> (int, Utils.error) M.t
 end = struct
   let run _ =
     (* implement interpreter here *)
@@ -14,7 +14,9 @@ end
 let parse_and_run str =
   let ans =
     let module I = Interpret (Result) in
-    let open Result.Syntax in
-    let* ast = Parser.parse str in
-    I.run ast in
+    match Parser.parse str with
+    | Caml.Result.Ok ast -> I.run ast
+    | Caml.Result.Error _ ->
+        Format.eprintf "Parsing error\n%!";
+        exit 1 in
   ans

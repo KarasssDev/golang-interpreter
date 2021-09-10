@@ -24,6 +24,7 @@
   dune
   angstrom
   (ppx_inline_test :with-test)
+  qcheck-core
   ppx_expect
   (odoc :with-doc)
   (ocamlformat :build)

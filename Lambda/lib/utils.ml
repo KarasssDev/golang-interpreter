@@ -41,3 +41,7 @@ end = struct
 
   module Syntax = struct let ( let* ) x f = bind x ~f end
 end
+
+let var x = Var x
+let abs x l = Abs (x, l)
+let app l r = App (l, r)

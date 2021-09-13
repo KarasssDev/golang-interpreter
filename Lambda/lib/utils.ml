@@ -8,15 +8,22 @@ let free_vars =
   let rec helper acc = function
     | Var s -> s :: acc
     | Abs (s, l) -> acc @ list_remove s (helper [] l)
-    | App (l, r) -> helper (helper acc r) l in
+    | App (l, r) -> helper (helper acc r) l
+  in
   helper []
+;;
 
 let is_free_in x term = List.mem (free_vars term) x ~equal:String.equal
 
 type error =
-  | UnknownVariable of string  (** just for example *)
+  | UnknownVariable of string (** just for example *)
   | ParsingErrorDescription
 
+let var x = Var x
+let abs x l = Abs (x, l)
+let app l r = App (l, r)
+
+(* TODO: rework this *)
 module type MONAD_FAIL = sig
   include Base.Monad.S2
 
@@ -39,9 +46,7 @@ end = struct
 
   let error msg = Error msg
 
-  module Syntax = struct let ( let* ) x f = bind x ~f end
+  module Syntax = struct
+    let ( let* ) x f = bind x ~f
+  end
 end
-
-let var x = Var x
-let abs x l = Abs (x, l)
-let app l r = App (l, r)

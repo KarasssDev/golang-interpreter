@@ -9,6 +9,7 @@ end = struct
   let run _ =
     (* implement interpreter here *)
     if true then M.error (UnknownVariable "var") else failwith "not implemented"
+  ;;
 end
 
 let parse_and_run str =
@@ -17,6 +18,8 @@ let parse_and_run str =
     match Parser.parse str with
     | Caml.Result.Ok ast -> I.run ast
     | Caml.Result.Error _ ->
-        Format.eprintf "Parsing error\n%!";
-        exit 1 in
+      Format.eprintf "Parsing error\n%!";
+      exit 1
+  in
   ans
+;;

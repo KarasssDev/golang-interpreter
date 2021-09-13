@@ -1,5 +1,6 @@
 open Ast
 open Hashtbl_p
+open Var_zipper
 
 module type MONAD = sig
   type 'a t
@@ -27,99 +28,49 @@ end
 module Eval (M : MONADERROR) = struct
   open M
 
-  let ( ++ ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VNumber (x +. y)
-    | VNumber x, VString y -> return @@ VNumber (x +. float_of_string y)
-    | VString x, VNumber y -> return @@ VNumber (float_of_string x +. y)
-    | _ -> error "Unsupported operands type for (+)"
-
-  let ( -- ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VNumber (x -. y)
-    | VNumber x, VString y -> return @@ VNumber (x -. float_of_string y)
-    | VString x, VNumber y -> return @@ VNumber (float_of_string x -. y)
-    | _ -> error "Unsupported operands type for (-)"
-
-  let ( ** ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VNumber (x *. y)
-    | VNumber x, VString y -> return @@ VNumber (x *. float_of_string y)
-    | VString x, VNumber y -> return @@ VNumber (float_of_string x *. y)
-    | _ -> error "Unsupported operands type for (*)"
-
-  let ( // ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VNumber (x /. y)
-    | VNumber x, VString y -> return @@ VNumber (x /. float_of_string y)
-    | VString x, VNumber y -> return @@ VNumber (float_of_string x /. y)
-    | _ -> error "Unsupported operands type for (/)"
+  let transform_to_number x y err_msg =
+    let string_is_number x =
+      try
+        float_of_string x |> ignore;
+        true
+      with Failure _ -> false in
+    match (x, y) with
+    | VNumber x, VNumber y -> Ok (x, y)
+    | VNumber x, VString y when string_is_number y -> Ok (x, float_of_string y)
+    | VString x, VNumber y when string_is_number x -> Ok (float_of_string x, y)
+    | _ -> Error err_msg
 
   (* Integer division *)
-  let ( /// ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VNumber (Float.floor (x /. y))
-    | VNumber x, VString y ->
-        return @@ VNumber (Float.floor (x /. float_of_string y))
-    | VString x, VNumber y ->
-        return @@ VNumber (Float.floor (float_of_string x /. y))
-    | _ -> error "Unsupported operands type for (//)"
+  let ( /// ) x y = Float.floor (x /. y)
 
   (* Remainder *)
-  let ( %% ) lhs rhs =
-    lhs /// rhs
-    >>= function
-    | VNumber int_part -> (
+  let ( %% ) x y =
+    let int_part = x /// y in
+    x -. (int_part *. y)
+
+  let compare_values lhs rhs op =
+    let get_op = function
+      | Le -> return ( < )
+      | Leq -> return ( <= )
+      | Ge -> return ( > )
+      | Geq -> return ( >= )
+      | Eq -> return ( = )
+      | Neq -> return ( <> ) in
+    match op with
+    | Le | Leq | Ge | Geq -> (
       match (lhs, rhs) with
-      | VNumber x, VNumber y -> return @@ VNumber (x -. (int_part *. y))
-      | VNumber x, VString y ->
-          return @@ VNumber (x -. (int_part *. float_of_string y))
-      | VString x, VNumber y ->
-          return @@ VNumber (float_of_string x -. (int_part *. y))
-      | _, _ -> error "Unsupported opearnds type for (%)" )
-    | _ -> error "Unsupported opearnds type for (%)"
-
-  let ( <<< ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VBool (x < y)
-    | VNumber x, VString y -> return @@ VBool (x < float_of_string y)
-    | VString x, VNumber y -> return @@ VBool (float_of_string x < y)
-    | _ -> error "Uncomparable types"
-
-  let ( <<<= ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VBool (x <= y)
-    | VNumber x, VString y -> return @@ VBool (x <= float_of_string y)
-    | VString x, VNumber y -> return @@ VBool (float_of_string x <= y)
-    | _ -> error "Uncomparable types"
-
-  let ( >>> ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VBool (x > y)
-    | VNumber x, VString y -> return @@ VBool (x > float_of_string y)
-    | VString x, VNumber y -> return @@ VBool (float_of_string x > y)
-    | _ -> error "Uncomparable types"
-
-  let ( >>>= ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VBool (x >= y)
-    | VNumber x, VString y -> return @@ VBool (x >= float_of_string y)
-    | VString x, VNumber y -> return @@ VBool (float_of_string x >= y)
-    | _ -> error "Uncomparable types"
-
-  let ( === ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VBool (x = y)
-    | VNumber x, VString y -> return @@ VBool (x = float_of_string y)
-    | VString x, VNumber y -> return @@ VBool (float_of_string x = y)
-    | _ -> error "Uncomparable types"
-
-  let ( !=== ) lhs rhs =
-    match (lhs, rhs) with
-    | VNumber x, VNumber y -> return @@ VBool (x <> y)
-    | VNumber x, VString y -> return @@ VBool (x <> float_of_string y)
-    | VString x, VNumber y -> return @@ VBool (float_of_string x <> y)
-    | _ -> error "Uncomparable types"
+      | VNumber x, VNumber y -> get_op op >>= fun op -> return @@ VBool (op x y)
+      | VString x, VString y -> get_op op >>= fun op -> return @@ VBool (op x y)
+      | _, _ ->
+          error
+            "Error: Comparison can be performed only between numbers or strings"
+      )
+    | Eq | Neq -> (
+      match (lhs, rhs) with
+      | VNumber x, VNumber y -> get_op op >>= fun op -> return @@ VBool (op x y)
+      | VString x, VString y -> get_op op >>= fun op -> return @@ VBool (op x y)
+      | VBool x, VBool y -> get_op op >>= fun op -> return @@ VBool (op x y)
+      | _ -> return @@ VBool false )
 
   let is_true = function VBool false -> false | VNull -> false | _ -> true
 
@@ -131,7 +82,7 @@ module Eval (M : MONADERROR) = struct
     | VFunction _ -> "<function>"
     | VNull -> "nil"
 
-  (* ==== Enviroment ==== *)
+  (* ==== Environment ==== *)
 
   type variables = (name, value) Hashtbl_p.t
   [@@deriving show {with_path= false}]
@@ -139,48 +90,47 @@ module Eval (M : MONADERROR) = struct
   type jump_statement = Default | Return | Break
   [@@deriving show {with_path= false}]
 
-  type enviroment =
+  type environment =
     { vars: variables
     ; last_value: value
-    ; prev_env: enviroment option
+    ; prev_env: environment option
     ; is_func: bool
     ; is_loop: bool
     ; jump_stmt: jump_statement
-    ; last_env: enviroment option }
+    ; last_env: environment option }
   (* last_env is needed in case we want to show variables scope after interpretation *)
   [@@deriving show {with_path= false}]
 
   let rec find_var varname = function
-    | None -> return @@ VNull
+    | None -> return VNull
     | Some env -> (
       match Hashtbl.find_opt env.vars varname with
-      | Some v -> return @@ v
+      | Some v -> return v
       | None -> find_var varname env.prev_env )
 
   let rec eval_expr env = function
     | Const v -> return v
-    | ArOp (op, lhs, rhs) ->
+    | ArOp (op, lhs, rhs) -> (
         let get_op = function
-          | Sum -> ( ++ )
-          | Sub -> ( -- )
-          | Mul -> ( ** )
-          | Div -> ( /// )
-          | FDiv -> ( // )
-          | Mod -> ( %% ) in
+          | Sum -> (( +. ), "Error: Unsupported operands type for (+)")
+          | Sub -> (( -. ), "Error: Unsupported operands type for (-)")
+          | Mul -> (( *. ), "Error: Unsupported operands type for (*)")
+          | Div -> (( /// ), "Error: Unsupported operands type for (//)")
+          | FDiv -> (( /. ), "Error: Unsupported operands type for (/)")
+          | Mod -> (( %% ), "Error: Unsupported operands type for (%)") in
         eval_expr env lhs
         >>= fun e_lhs ->
-        eval_expr env rhs >>= fun e_rhs -> (get_op op) e_lhs e_rhs
+        eval_expr env rhs
+        >>= fun e_rhs ->
+        match get_op op with
+        | op, err_msg -> (
+          match transform_to_number e_lhs e_rhs err_msg with
+          | Ok (x, y) -> return @@ VNumber (op x y)
+          | Error msg -> error msg ) )
     | RelOp (op, lhs, rhs) ->
-        let get_op = function
-          | Le -> ( <<< )
-          | Leq -> ( <<<= )
-          | Ge -> ( >>> )
-          | Geq -> ( >>>= )
-          | Eq -> ( === )
-          | Neq -> ( !=== ) in
         eval_expr env lhs
         >>= fun e_lhs ->
-        eval_expr env rhs >>= fun e_rhs -> (get_op op) e_lhs e_rhs
+        eval_expr env rhs >>= fun e_rhs -> compare_values e_lhs e_rhs op
     | LogOp (op, lhs, rhs) ->
         let get_op = function And -> ( && ) | Or -> ( || ) in
         eval_expr env lhs
@@ -199,7 +149,7 @@ module Eval (M : MONADERROR) = struct
         get_env e
         >>= fun env ->
         match env.jump_stmt with
-        | Return -> return @@ env.last_value
+        | Return -> return env.last_value
         | _ -> return VNull )
     | _ -> error "Unexpected expression"
 
@@ -227,8 +177,8 @@ module Eval (M : MONADERROR) = struct
   and table_find env tname texpr =
     let find_opt ht key =
       match Hashtbl.find_opt ht key with
-      | Some v -> return @@ v
-      | None -> return @@ VNull in
+      | Some v -> return v
+      | None -> return VNull in
     find_var tname env
     >>= function
     | VTable ht -> (
@@ -240,22 +190,13 @@ module Eval (M : MONADERROR) = struct
     | _ -> error "Attempt to index non-table value"
 
   and func_call env fname fargs =
-    let create_vardec lnames lexprs =
-      let rec helper l1 l2 acc =
-        match (l1, l2) with
-        | [], [] -> acc
-        | hd1 :: tl1, hd2 :: tl2 -> (hd1, hd2) :: helper tl1 tl2 acc
-        | hd1 :: tl1, [] -> (hd1, Const VNull) :: helper tl1 [] acc
-        | [], _ :: _ -> acc in
-      helper lnames lexprs [] in
     find_var fname env
     >>= function
     | VFunction (name_args, body) ->
         let var_args = List.map (fun x -> Var x) name_args in
         let block_with_vardec = function
           | Block b ->
-              return
-              @@ Block (Local (VarDec (create_vardec var_args fargs)) :: b)
+              return @@ Block (Local (VarDec (var_zipper var_args fargs)) :: b)
           | _ -> error "Expected function body" in
         block_with_vardec body
         >>= fun b ->
@@ -302,15 +243,14 @@ module Eval (M : MONADERROR) = struct
   and create_next_env = function
     | None ->
         return
-        @@ { vars= Hashtbl.create 16
-           ; last_value= VNull
-           ; prev_env= None
-           ; is_func= false
-           ; is_loop= false
-           ; jump_stmt= Default
-           ; last_env= None }
-    | Some env ->
-        return @@ {env with prev_env= Some env; vars= Hashtbl.create 16}
+          { vars= Hashtbl.create 16
+          ; last_value= VNull
+          ; prev_env= None
+          ; is_func= false
+          ; is_loop= false
+          ; jump_stmt= Default
+          ; last_env= None }
+    | Some env -> return {env with prev_env= Some env; vars= Hashtbl.create 16}
 
   and eval_vardec is_global env = function
     | [] -> get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
@@ -359,7 +299,7 @@ module Eval (M : MONADERROR) = struct
     get_env env
     >>= fun env ->
     match block with
-    | [] -> return @@ env.prev_env
+    | [] -> return env.prev_env
     | [tl] -> (
       match tl with
       | Return v when env.is_func -> eval_return env v
@@ -396,10 +336,10 @@ module Eval (M : MONADERROR) = struct
         | Break -> eval_break env
         | _ -> eval_block (Some env) tl )
 
-  (* === This function sets last enviroment to show as a result of interpreter === *)
+  (* === This function sets last environment to show as a result of interpreter === *)
   and set_last_env env =
     match env.prev_env with
-    | None -> print_string (show_enviroment env)
+    | None -> print_string (show_environment env)
     | Some _ -> ()
 
   and eval_return env e =
@@ -476,7 +416,7 @@ module Eval (M : MONADERROR) = struct
     | Some p -> (
         eval_stmt None p
         >>= function
-        | None -> error "Result enviroment is empty" | Some e -> return @@ e )
+        | None -> error "Result environment is empty" | Some e -> return e )
 end
 
 open Eval (Result)
@@ -485,5 +425,5 @@ open Eval (Result)
 
 let eval parsed_prog =
   match eval_prog parsed_prog with
-  | Ok res -> print_endline @@ show_enviroment res
+  | Ok res -> print_endline @@ show_environment res
   | Error m -> print_endline m

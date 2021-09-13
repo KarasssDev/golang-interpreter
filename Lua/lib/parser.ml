@@ -1,5 +1,6 @@
 open Ast
 open Opal
+open Var_zipper
 
 let reserved =
   [ "and"; "break"; "do"; "else"; "elseif"; "end"; "false"; "for"; "function"
@@ -166,15 +167,6 @@ module PStatement = struct
     >> sep_by expr (token ",")
     >>= fun values -> return (VarDec (var_zipper vars values)) )
       input
-
-  and var_zipper l1 l2 =
-    let rec helper l1 l2 acc =
-      match (l1, l2) with
-      | [], [] -> acc
-      | hd1 :: tl1, hd2 :: tl2 -> (hd1, hd2) :: helper tl1 tl2 acc
-      | hd1 :: tl1, [] -> (hd1, Const VNull) :: helper tl1 [] acc
-      | [], _ :: _ -> acc in
-    helper l1 l2 []
 
   and expr_stmt input = (expr >>= fun e -> return (Expression e)) input
 

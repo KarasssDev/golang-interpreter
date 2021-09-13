@@ -85,10 +85,10 @@ module Eval (M : MONADERROR) = struct
   (* ==== Environment ==== *)
 
   type variables = (name, value) Hashtbl_p.t
-  [@@deriving show {with_path= false}]
+  [@@deriving show {with_path = false}]
 
   type jump_statement = Default | Return | Break
-  [@@deriving show {with_path= false}]
+  [@@deriving show {with_path = false}]
 
   type environment =
     { vars: variables
@@ -99,7 +99,7 @@ module Eval (M : MONADERROR) = struct
     ; jump_stmt: jump_statement
     ; last_env: environment option }
   (* last_env is needed in case we want to show variables scope after interpretation *)
-  [@@deriving show {with_path= false}]
+  [@@deriving show {with_path = false}]
 
   let rec find_var varname = function
     | None -> return VNull
@@ -200,41 +200,41 @@ module Eval (M : MONADERROR) = struct
           | _ -> error "Expected function body" in
         block_with_vardec body
         >>= fun b ->
-        get_env env >>= fun en -> eval_stmt (Some {en with is_func= true}) b
+        get_env env >>= fun en -> eval_stmt (Some {en with is_func = true}) b
     | _ -> error "Attempt to call not a function value"
 
   and eval_stmt env = function
     | Expression e ->
         eval_expr env e
         >>= fun v ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= v}
+        get_env env >>= fun en -> return @@ Some {en with last_value = v}
     | VarDec el ->
         eval_vardec true env el
         >>= fun env ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
+        get_env env >>= fun en -> return @@ Some {en with last_value = VNull}
     | Local (VarDec el) ->
         eval_vardec false env el
         >>= fun env ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
+        get_env env >>= fun en -> return @@ Some {en with last_value = VNull}
     | FuncDec (n, args, b) ->
         assign n (VFunction (args, b)) true env
         >>= fun _ ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
+        get_env env >>= fun en -> return @@ Some {en with last_value = VNull}
     | Local (FuncDec (n, args, b)) ->
         assign n (VFunction (args, b)) false env
         >>= fun _ ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
+        get_env env >>= fun en -> return @@ Some {en with last_value = VNull}
     | Local _ -> error "Invalid local statement"
     | If if_lst -> eval_if env if_lst
     | ForNumerical (fvar, finit, body) ->
         get_env env
-        >>= fun env -> eval_for fvar finit body (Some {env with is_loop= true})
+        >>= fun env -> eval_for fvar finit body (Some {env with is_loop = true})
     | Block b -> create_next_env env >>= fun e -> eval_block (Some e) b
     | Return _ -> error "Unexpected return statement"
     | Break -> error "Unexpected break statement"
     | While (cond, body) ->
         get_env env
-        >>= fun env -> eval_while cond body (Some {env with is_loop= true})
+        >>= fun env -> eval_while cond body (Some {env with is_loop = true})
 
   and get_env = function
     | None -> error "Operation out of scope"
@@ -243,17 +243,17 @@ module Eval (M : MONADERROR) = struct
   and create_next_env = function
     | None ->
         return
-          { vars= Hashtbl.create 16
-          ; last_value= VNull
-          ; prev_env= None
-          ; is_func= false
-          ; is_loop= false
-          ; jump_stmt= Default
-          ; last_env= None }
-    | Some env -> return {env with prev_env= Some env; vars= Hashtbl.create 16}
+          { vars = Hashtbl.create 16
+          ; last_value = VNull
+          ; prev_env = None
+          ; is_func = false
+          ; is_loop = false
+          ; jump_stmt = Default
+          ; last_env = None }
+    | Some env -> return {env with prev_env = Some env; vars = Hashtbl.create 16}
 
   and eval_vardec is_global env = function
-    | [] -> get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
+    | [] -> get_env env >>= fun en -> return @@ Some {en with last_value = VNull}
     | hd :: tl -> (
       match hd with
       | Var x, e ->
@@ -316,7 +316,8 @@ module Eval (M : MONADERROR) = struct
               get_env env.prev_env
               >>= fun pr_env ->
               return
-              @@ Some {pr_env with last_value= env.last_value; jump_stmt= Return}
+              @@ Some
+                   {pr_env with last_value = env.last_value; jump_stmt = Return}
           | Break -> eval_break env
           | _ -> (
             match env.prev_env with
@@ -332,7 +333,7 @@ module Eval (M : MONADERROR) = struct
             get_env env.prev_env
             >>= fun pr_env ->
             return
-            @@ Some {pr_env with last_value= env.last_value; jump_stmt= Return}
+            @@ Some {pr_env with last_value = env.last_value; jump_stmt = Return}
         | Break -> eval_break env
         | _ -> eval_block (Some env) tl )
 
@@ -347,11 +348,11 @@ module Eval (M : MONADERROR) = struct
     >>= fun v ->
     get_env env.prev_env
     >>= fun pr_env ->
-    return @@ Some {pr_env with last_value= v; jump_stmt= Return}
+    return @@ Some {pr_env with last_value = v; jump_stmt = Return}
 
   and eval_break env =
     get_env env.prev_env
-    >>= fun pr_env -> return @@ Some {pr_env with jump_stmt= Break}
+    >>= fun pr_env -> return @@ Some {pr_env with jump_stmt = Break}
 
   and eval_while cond body env =
     eval_expr env cond
@@ -362,8 +363,8 @@ module Eval (M : MONADERROR) = struct
       get_env env
       >>= fun env ->
       match env.jump_stmt with
-      | Break -> return @@ Some {env with jump_stmt= Default}
-      | Return -> return @@ Some {env with jump_stmt= Return}
+      | Break -> return @@ Some {env with jump_stmt = Default}
+      | Return -> return @@ Some {env with jump_stmt = Return}
       | _ -> eval_while cond body (Some env)
     else return env
 
@@ -404,8 +405,8 @@ module Eval (M : MONADERROR) = struct
         get_env env
         >>= fun env ->
         match env.jump_stmt with
-        | Break -> return @@ Some {env with jump_stmt= Default}
-        | Return -> return @@ Some {env with jump_stmt= Return}
+        | Break -> return @@ Some {env with jump_stmt = Default}
+        | Return -> return @@ Some {env with jump_stmt = Return}
         | _ -> helper (start +. step) stop step body (Some env) in
     match finit with
     | [start; stop; step] -> helper start stop step body env

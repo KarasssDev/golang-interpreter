@@ -1,15 +1,15 @@
 open Hashtbl_p
 
 type arop = Sum | Sub | Mul | Div | FDiv | Mod
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]
 
-type logop = And | Or [@@deriving show {with_path= false}]
-type unop = Not [@@deriving show {with_path= false}]
+type logop = And | Or [@@deriving show {with_path = false}]
+type unop = Not [@@deriving show {with_path = false}]
 
 type relop = Eq | Neq | Le | Leq | Ge | Geq
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]
 
-type name = string [@@deriving show {with_path= false}]
+type name = string [@@deriving show {with_path = false}]
 
 type value =
   | VBool of bool
@@ -19,7 +19,7 @@ type value =
   (* name list -- function arguments, statement -- function body*)
   | VFunction of name list * statement
   | VNull
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]
 
 and expr =
   | Const of value
@@ -35,7 +35,7 @@ and expr =
   (* name([expr list]), where 'name' is name of the function and 'expr list' is passed arguments*)
   | CallFunc of name * expr list
   | Assign of expr * expr
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]
 
 and statement =
   (* if expr1 then stmt1 elseif expr2 then stmt2 end*)
@@ -56,4 +56,4 @@ and statement =
   | Block of statement list
   (* name -- name of function, name list -- function arguments, statement -- function body*)
   | FuncDec of name * name list * statement
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]

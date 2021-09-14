@@ -18,8 +18,8 @@ let parse_and_run str =
     match Parser.parse str with
     | Caml.Result.Ok ast -> I.run ast
     | Caml.Result.Error _ ->
-      Format.eprintf "Parsing error\n%!";
-      exit 1
+      Caml.Format.eprintf "Parsing error\n%!";
+      Caml.exit 1
   in
   ans
 ;;

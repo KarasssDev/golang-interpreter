@@ -8,7 +8,7 @@ module Interpret (M : MONAD_FAIL) : sig
 end = struct
   let run _ =
     (* implement interpreter here *)
-    if true then M.error (UnknownVariable "var") else failwith "not implemented"
+    if true then M.fail (UnknownVariable "var") else failwith "not implemented"
   ;;
 end
 

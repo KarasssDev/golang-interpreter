@@ -231,8 +231,7 @@ let var_decl =
     token "[" *> take_while1 is_digit <* token "]" >>= fun intt ->
     return @@ int_of_string intt
   in
-  let rec get_value idd t =
-    match t with
+  let rec get_value idd = function
     | CT_INT -> expr >>= fun num -> return @@ VAR_DECL (idd, CT_INT, Some num)
     | CT_CHAR ->
         char_value

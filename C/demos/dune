@@ -1,0 +1,16 @@
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A -w -26)
+   (-short-paths))))
+
+(executable
+ (name demoParser)
+ (modules demoParser)
+ (libraries C.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+
+(cram
+ (deps ./demoParser.exe))

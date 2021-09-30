@@ -106,8 +106,5 @@ let test =
 
 let () =
   match test with
-  | Ok prog ->
-      print_string @@ show_c_prog prog
-  | Error _ ->
-      print_string "syntax error"
-
+  | Ok prog -> print_string @@ show_c_prog prog
+  | Error _ -> print_string "syntax error"

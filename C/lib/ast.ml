@@ -5,9 +5,10 @@ type c_types =
   | CT_PTR of c_types
   | CT_ARRAY of int * c_types
   | CT_VOID
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
-type c_args = CARGS of c_types * string [@@deriving show {with_path= false}]
+type c_args = CARGS of c_types * string
+[@@deriving show { with_path = false }]
 
 type c_values =
   | CINT of int
@@ -15,7 +16,7 @@ type c_values =
   | CARRAY of (int * c_values) list
   | CNULL
   | CVOID
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
 type c_expr =
   | ADD of c_expr * c_expr
@@ -39,13 +40,13 @@ type c_expr =
   | DEREFERENCE of c_expr
   | ADDRESS of c_expr
   | INDEXER of string * c_expr
-  | ACCESOR of c_expr * c_expr 
+  | ACCESOR of c_expr * c_expr
   | INITIALIZER of c_expr list
   | EPOST_INCR of string * int
   | EPREF_INCR of string * int
   | EPOST_DECR of string * int
   | EPREF_DECR of string * int
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
 type c_statements =
   | VAR_DECL of string * c_types * c_expr option
@@ -56,7 +57,7 @@ type c_statements =
   | IF of c_expr * c_statements
   | IF_ELSE of c_expr * c_statements * c_statements
   | WHILE of c_expr * c_statements
-  | FOR of c_statements * c_expr * c_statements * c_statements 
+  | FOR of c_statements * c_expr * c_statements * c_statements
   | STRUCT of string * c_args list
   | T_ASSIGN of c_expr * c_expr
   | ASSIGN_SUB of c_expr * c_expr
@@ -70,7 +71,7 @@ type c_statements =
   | PREF_INCR of c_expr
   | POST_DECR of c_expr
   | PREF_DECR of c_expr
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
 and c_prog =
   | C_PROG of c_prog list
@@ -78,4 +79,4 @@ and c_prog =
   | TOP_STRUCT_DECL of string * c_args list
   | TOP_FUNC_DECL of c_types * string * c_args list * c_statements
   | TOP_VAR_DECL of string * c_types * c_expr option
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]

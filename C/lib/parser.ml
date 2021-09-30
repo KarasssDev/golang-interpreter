@@ -7,10 +7,9 @@ let is_keyword = function
   | "break" | "case" | "continue" | "return" | "else" | "for" | "if" | "while"
     ->
       true
-  | _ ->
-      false
+  | _ -> false
 
-let types_keywords = ["int"; "char"; "void"]
+let types_keywords = [ "int"; "char"; "void" ]
 
 let is_whitespace = function ' ' | '\t' -> true | _ -> false
 
@@ -19,10 +18,8 @@ let is_end_of_line = function '\n' | '\r' -> true | _ -> false
 let is_digit = function '0' .. '9' -> true | _ -> false
 
 let is_valid_id_char = function
-  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' ->
-      true
-  | _ ->
-      false
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
+  | _ -> false
 
 let space = take_while is_whitespace
 
@@ -33,44 +30,32 @@ let token s = space *> string s
 let number =
   let integer = take_while1 is_digit in
   let sign =
-    peek_char
-    >>= function
-    | Some '-' ->
-        advance 1 >>| fun () -> "-"
-    | Some '+' ->
-        advance 1 >>| fun () -> "+"
-    | Some c when is_digit c ->
-        return ""
-    | _ ->
-        fail "Sign or digit expected"
+    peek_char >>= function
+    | Some '-' -> advance 1 >>| fun () -> "-"
+    | Some '+' -> advance 1 >>| fun () -> "+"
+    | Some c when is_digit c -> return ""
+    | _ -> fail "Sign or digit expected"
   in
-  space *> sign
-  >>= fun sign ->
+  space *> sign >>= fun sign ->
   integer >>= fun whole -> return @@ CINT (int_of_string @@ sign ^ whole)
 
 let identifier =
   let is_valid_first_char = function
-    | 'a' .. 'z' | 'A' .. 'Z' | '_' ->
-        true
-    | _ ->
-        false
+    | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
+    | _ -> false
   in
-  space *> peek_char
-  >>= function
+  space *> peek_char >>= function
   | Some c when is_valid_first_char c ->
-      take_while is_valid_id_char
-      >>= fun id ->
+      take_while is_valid_id_char >>= fun id ->
       if is_keyword id then
-        pos
-        >>= fun col ->
+        pos >>= fun col ->
         fail ("ERROR: " ^ Int.to_string col ^ " " ^ id ^ " is a reserved word")
       else return id
-  | _ ->
-      pos >>= fun num -> fail (Int.to_string num ^ " invalid identifier")
+  | _ -> pos >>= fun num -> fail (Int.to_string num ^ " invalid identifier")
 
 let include_stats =
-  space *> string "#include " *> char '<' *> identifier
-  >>= fun id -> string ".h" >>= (fun part -> return @@ id ^ part) <* char '>'
+  space *> string "#include " *> char '<' *> identifier >>= fun id ->
+  string ".h" >>= (fun part -> return @@ id ^ part) <* char '>'
 
 let indexer idd expr =
   token "[" *> expr <* token "]" >>= fun exp -> return @@ INDEXER (idd, exp)
@@ -140,35 +125,32 @@ let expr =
       let arrow_cast l r = ACCESOR (DEREFERENCE l, r) in
       let accesor =
         let accessible = indxr_vname <|> var_name in
-        accessible
-        >>= fun h ->
-        many1 @@ (token "." *> accessible)
-        >>= fun a -> return @@ List.fold_left access h a
+        accessible >>= fun h ->
+        many1 @@ (token "." *> accessible) >>= fun a ->
+        return @@ List.fold_left access h a
       in
       let indexer_exp = identifier >>= fun idd -> indexer idd expr in
       let arrow =
-        parens var_name <|> var_name
-        >>= fun h ->
-        many @@ (token "->" *> (parens var_name <|> var_name))
-        >>= fun a -> return @@ List.fold_left arrow_cast h a
+        parens var_name <|> var_name >>= fun h ->
+        many @@ (token "->" *> (parens var_name <|> var_name)) >>= fun a ->
+        return @@ List.fold_left arrow_cast h a
       in
       let func_call =
-        accesor <|> arrow <|> indexer_exp <|> var_name
-        >>= fun idd ->
-        token "(" *> sep_by (token ",") expr
-        <* token ")"
-        >>= fun arg_list -> return @@ FUNC_CALL (idd, arg_list)
+        accesor <|> arrow <|> indexer_exp <|> var_name >>= fun idd ->
+        token "(" *> sep_by (token ",") expr <* token ")" >>= fun arg_list ->
+        return @@ FUNC_CALL (idd, arg_list)
       in
       let literal_num = number >>= fun num -> return @@ LITERAL num in
       let literal_char = char_value >>= fun cchar -> return @@ LITERAL cchar in
       let const =
-        space *> peek_char_fail
-        >>= function '\'' -> literal_char | _ -> literal_num
+        space *> peek_char_fail >>= function
+        | '\'' -> literal_char
+        | _ -> literal_num
       in
       let defr_op =
-        token "*" *> expr
-        >>= function
-        | ACCESOR _ -> fail "accesor ptr" | dexp -> return @@ DEREFERENCE dexp
+        token "*" *> expr >>= function
+        | ACCESOR _ -> fail "accesor ptr"
+        | dexp -> return @@ DEREFERENCE dexp
       in
       let addr_op =
         token "&" *> var_name >>= fun pvar -> return @@ ADDRESS pvar
@@ -176,21 +158,23 @@ let expr =
       let null = token "NULL" *> (return @@ LITERAL CNULL) in
       let other =
         choice
-          [ null
-          ; func_call
-          ; defr_op
-          ; accesor
-          ; arrow
-          ; indexer_exp
-          ; addr_op
-          ; var_name
-          ; const ]
+          [
+            null;
+            func_call;
+            defr_op;
+            accesor;
+            arrow;
+            indexer_exp;
+            addr_op;
+            var_name;
+            const;
+          ]
       in
       let power =
         let predict =
           space *> peek_char_fail >>= function '(' -> parens expr | _ -> other
         in
-        choice [predict; other]
+        choice [ predict; other ]
       in
       let term1 = chainl1 power factop in
       let arexpr = chainl1 term1 termop in
@@ -198,22 +182,21 @@ let expr =
       let bfactor =
         fix (fun bfactor ->
             let nnot = _not <* space <*> bfactor in
-            choice [nnot; compare] )
+            choice [ nnot; compare ])
       in
       let bterm = chainl1 bfactor (_and <* space) in
-      chainl1 bterm (_or <* space) )
+      chainl1 bterm (_or <* space))
 
 (* STATEMENTS PARSING FUNCTIONS *)
 
 let rec build_ptr n acc = if n = 0 then acc else build_ptr (n - 1) (CT_PTR acc)
 
 let ptr value =
-  space *> many (token "*")
-  >>= fun num_ptrs -> return (build_ptr (List.length num_ptrs) value)
+  space *> many (token "*") >>= fun num_ptrs ->
+  return (build_ptr (List.length num_ptrs) value)
 
 let token_datatypes =
-  pos
-  >>= fun col ->
+  pos >>= fun col ->
   token "int" *> ptr CT_INT
   <|> token "char" *> ptr CT_CHAR
   <|> token "void" *> ptr CT_VOID
@@ -222,15 +205,15 @@ let token_datatypes =
 
 let struct_decl =
   let tkd =
-    token_datatypes
-    >>= fun tdd -> identifier >>= fun idd -> return @@ CARGS (tdd, idd)
+    token_datatypes >>= fun tdd ->
+    identifier >>= fun idd -> return @@ CARGS (tdd, idd)
   in
   let content =
     token "{"
     *> skip_while (fun c -> is_whitespace c || is_end_of_line c)
     *> many1
-         ( tkd <* token ";"
-         <* skip_while (fun c -> is_whitespace c || is_end_of_line c) )
+         (tkd <* token ";"
+         <* skip_while (fun c -> is_whitespace c || is_end_of_line c))
     >>= fun cont_ls -> token "}" *> return cont_ls
   in
   skip_while (fun c -> is_whitespace c || is_end_of_line c)
@@ -241,88 +224,65 @@ let struct_decl =
 
 let var_decl =
   let struct_initialize =
-    token "{" *> space *> sep_by1 (token "," *> space) expr
-    >>= fun ls_init -> token "}" *> (return @@ INITIALIZER ls_init)
+    token "{" *> space *> sep_by1 (token "," *> space) expr >>= fun ls_init ->
+    token "}" *> (return @@ INITIALIZER ls_init)
   in
   let p_array =
-    token "[" *> take_while1 is_digit
-    <* token "]"
-    >>= fun intt -> return @@ int_of_string intt
+    token "[" *> take_while1 is_digit <* token "]" >>= fun intt ->
+    return @@ int_of_string intt
   in
   let rec get_value idd t =
     match t with
-    | CT_INT ->
-        expr >>= fun num -> return @@ VAR_DECL (idd, CT_INT, Some num)
+    | CT_INT -> expr >>= fun num -> return @@ VAR_DECL (idd, CT_INT, Some num)
     | CT_CHAR ->
         char_value
         >>= (fun ch -> return @@ VAR_DECL (idd, CT_CHAR, Some (LITERAL ch)))
-        <|> ( expr
-            >>= fun e ->
-            match e with
-            | LITERAL CNULL ->
-                return @@ VAR_DECL (idd, CT_CHAR, Some e)
-            | _ ->
-                fail "char can't be an expression" )
+        <|> ( expr >>= fun e ->
+              match e with
+              | LITERAL CNULL -> return @@ VAR_DECL (idd, CT_CHAR, Some e)
+              | _ -> fail "char can't be an expression" )
     | CT_PTR typ -> (
-        get_value idd typ
-        >>= fun t ->
+        get_value idd typ >>= fun t ->
         match t with
-        | VAR_DECL (idd, tt, v) ->
-            return @@ VAR_DECL (idd, CT_PTR tt, v)
-        | _ ->
-            fail "Wrong Initial value" )
+        | VAR_DECL (idd, tt, v) -> return @@ VAR_DECL (idd, CT_PTR tt, v)
+        | _ -> fail "Wrong Initial value")
     | CT_ARRAY (len, bt) ->
         return @@ VAR_DECL (idd, CT_ARRAY (len, bt), Some (LITERAL (CARRAY [])))
     | CT_STRUCT name -> (
-        struct_initialize <|> expr
-        >>= fun init_ls ->
+        struct_initialize <|> expr >>= fun init_ls ->
         match init_ls with
         | INITIALIZER _ | FUNC_CALL _ | DEREFERENCE _ | LITERAL CNULL ->
             return @@ VAR_DECL (idd, CT_STRUCT name, Some init_ls)
-        | _ ->
-            fail "Struct can't be an expression" )
-    | CT_VOID ->
-        fail "VOID cannot be a type for variable declaration"
+        | _ -> fail "Struct can't be an expression")
+    | CT_VOID -> fail "VOID cannot be a type for variable declaration"
   in
   let rec is_initialized idd t =
-    space *> peek_char
-    >>= function
-    | Some '[' ->
-        p_array >>= fun arl -> is_initialized idd (CT_ARRAY (arl, t))
+    space *> peek_char >>= function
+    | Some '[' -> p_array >>= fun arl -> is_initialized idd (CT_ARRAY (arl, t))
     | Some '=' ->
         advance 1 *> space *> get_value idd t >>= fun v -> token ";" *> return v
     | Some ';' -> (
         advance 1
         *>
         match t with
-        | CT_ARRAY _ ->
-            return (VAR_DECL (idd, t, Some (LITERAL (CARRAY []))))
-        | _ ->
-            return (VAR_DECL (idd, t, None)) )
-    | None | _ ->
-        fail "ERROR"
+        | CT_ARRAY _ -> return (VAR_DECL (idd, t, Some (LITERAL (CARRAY []))))
+        | _ -> return (VAR_DECL (idd, t, None)))
+    | None | _ -> fail "ERROR"
   in
-  token_datatypes
-  >>= fun t ->
+  token_datatypes >>= fun t ->
   match t with
-  | CT_VOID ->
-      fail "VOID cannot be a type for variable declaration"
-  | _ ->
-      identifier >>= fun idd -> is_initialized idd t
+  | CT_VOID -> fail "VOID cannot be a type for variable declaration"
+  | _ -> identifier >>= fun idd -> is_initialized idd t
 
 let arg_decl =
-  token_datatypes <* space
-  >>= fun td -> identifier >>= fun idd -> return @@ CARGS (td, idd)
+  token_datatypes <* space >>= fun td ->
+  identifier >>= fun idd -> return @@ CARGS (td, idd)
 
 let return_ =
-  token "return" *> space *> peek_char
-  >>= function
-  | Some ';' ->
-      advance 1 *> (return @@ RETURN (LITERAL CVOID))
-  | Some _ ->
-      expr >>= fun exp -> token ";" *> (return @@ RETURN exp)
-  | _ ->
-      fail "Unrecognized char at return instruction"
+  token "return" *> space *> peek_char >>= function
+  | Some ';' -> advance 1 *> (return @@ RETURN (LITERAL CVOID))
+  | Some _ -> expr >>= fun exp -> token ";" *> (return @@ RETURN exp)
+  | _ -> fail "Unrecognized char at return instruction"
 
 let var_assign_proc_call no_ends_semic =
   let rec build_def n acc =
@@ -337,46 +297,33 @@ let var_assign_proc_call no_ends_semic =
   let func_call f = token ";" >>= fun _ -> return @@ EXPRESSION f in
   let assign_left_cons num_ptrs left_cons =
     let assign_op op =
-      expr
-      >>= fun r ->
+      expr >>= fun r ->
       if no_ends_semic then return @@ op r else token ";" *> (return @@ op r)
     in
     let assign_unop un_op num_ptrs left_cons =
       let ret = return @@ un_op num_ptrs left_cons (LITERAL (CINT 1)) in
       if no_ends_semic then ret else ret <* token ";"
     in
-    space *> peek_char_fail <* space
-    >>= function
-    | '=' ->
-        token "=" *> (assign_op @@ assign num_ptrs left_cons)
+    space *> peek_char_fail <* space >>= function
+    | '=' -> token "=" *> (assign_op @@ assign num_ptrs left_cons)
     | '+' ->
         advance 1 *> token "=" *> (assign_op @@ ass_add num_ptrs left_cons)
         <|> advance 1 *> token "+" *> assign_unop ass_add num_ptrs left_cons
     | '-' ->
         advance 1 *> token "=" *> (assign_op @@ ass_sub num_ptrs left_cons)
         <|> advance 1 *> token "-" *> assign_unop ass_sub num_ptrs left_cons
-    | '*' ->
-        advance 1 *> token "=" *> (assign_op @@ ass_mul num_ptrs left_cons)
-    | '/' ->
-        advance 1 *> token "=" *> (assign_op @@ ass_div num_ptrs left_cons)
-    | '%' ->
-        advance 1 *> token "=" *> (assign_op @@ ass_mod num_ptrs left_cons)
-    | otherwise ->
-        fail @@ String.make 1 otherwise ^ " ..?"
+    | '*' -> advance 1 *> token "=" *> (assign_op @@ ass_mul num_ptrs left_cons)
+    | '/' -> advance 1 *> token "=" *> (assign_op @@ ass_div num_ptrs left_cons)
+    | '%' -> advance 1 *> token "=" *> (assign_op @@ ass_mod num_ptrs left_cons)
+    | otherwise -> fail @@ String.make 1 otherwise ^ " ..?"
   in
-  many (token "*")
-  >>= fun num_ptrs ->
-  expr
-  >>= fun e ->
+  many (token "*") >>= fun num_ptrs ->
+  expr >>= fun e ->
   match e with
-  | FUNC_CALL _ when num_ptrs == [] ->
-      func_call e
-  | ACCESOR _ when num_ptrs == [] ->
-      assign_left_cons (List.length num_ptrs) e
-  | INDEXER _ | VAR_NAME _ ->
-      assign_left_cons (List.length num_ptrs) e
-  | _ ->
-      fail "a"
+  | FUNC_CALL _ when num_ptrs == [] -> func_call e
+  | ACCESOR _ when num_ptrs == [] -> assign_left_cons (List.length num_ptrs) e
+  | INDEXER _ | VAR_NAME _ -> assign_left_cons (List.length num_ptrs) e
+  | _ -> fail "a"
 
 let del_space_newline =
   take_while (fun c -> is_whitespace c || is_end_of_line c)
@@ -388,12 +335,9 @@ let block stmtss =
   >>= fun stat_list -> del_space_newline *> (return @@ T_BLOCK stat_list)
 
 let func_decl stmtss =
-  token_datatypes
-  >>= fun ret_typ ->
-  space *> identifier
-  >>= fun idd ->
-  token "(" *> sep_by (token ",") arg_decl
-  <* token ")" *> skip_many end_of_line
+  token_datatypes >>= fun ret_typ ->
+  space *> identifier >>= fun idd ->
+  token "(" *> sep_by (token ",") arg_decl <* token ")" *> skip_many end_of_line
   >>= fun arg_ls ->
   skip_while (fun c -> is_whitespace c || is_end_of_line c) *> block stmtss
   >>= fun blk ->
@@ -401,26 +345,19 @@ let func_decl stmtss =
   *> (return @@ TOP_FUNC_DECL (ret_typ, idd, arg_ls, blk))
 
 let if_stmt stmts =
-  token "if" *> token "(" *> expr
-  <* token ")"
-  >>= fun rel_expr -> block stmts >>= fun blk -> return @@ IF (rel_expr, blk)
+  token "if" *> token "(" *> expr <* token ")" >>= fun rel_expr ->
+  block stmts >>= fun blk -> return @@ IF (rel_expr, blk)
 
 let if_else_stmts stmtss =
-  token "if" *> token "(" *> expr
-  <* token ")"
-  >>= fun rel_expr ->
-  block stmtss
-  >>= fun blk_if ->
-  token "else" *> block stmtss
-  >>= fun blk_else -> return @@ IF_ELSE (rel_expr, blk_if, blk_else)
+  token "if" *> token "(" *> expr <* token ")" >>= fun rel_expr ->
+  block stmtss >>= fun blk_if ->
+  token "else" *> block stmtss >>= fun blk_else ->
+  return @@ IF_ELSE (rel_expr, blk_if, blk_else)
 
 let for_statement stmtss =
-  token "for" *> token "(" *> var_decl
-  >>= fun var ->
-  expr
-  >>= fun re ->
-  token ";" *> var_assign_proc_call true
-  >>= fun step ->
+  token "for" *> token "(" *> var_decl >>= fun var ->
+  expr >>= fun re ->
+  token ";" *> var_assign_proc_call true >>= fun step ->
   token ")"
   *> skip_while (fun c -> is_whitespace c || is_end_of_line c)
   *> block stmtss
@@ -431,34 +368,30 @@ let _continue = token "continue" *> token ";" *> return CONTINUE
 let _break = token "break" *> token ";" *> return BREAK
 
 let while_stmt stmtss =
-  token "while" *> token "(" *> expr
-  <* token ")"
-  >>= fun re -> block stmtss >>= fun blk -> return @@ WHILE (re, blk)
+  token "while" *> token "(" *> expr <* token ")" >>= fun re ->
+  block stmtss >>= fun blk -> return @@ WHILE (re, blk)
 
 let top_decl_c (retype, name, args, blk) =
   TOP_FUNC_DECL (retype, name, args, blk)
 
 let multi_includes =
-  many1 (include_stats <* end_of_line)
-  >>= fun includes_list -> return @@ C_INCLUDE includes_list
+  many1 (include_stats <* end_of_line) >>= fun includes_list ->
+  return @@ C_INCLUDE includes_list
 
 let stmts =
   fix (fun stmts ->
       block stmts <|> if_else_stmts stmts <|> if_stmt stmts <|> while_stmt stmts
       <|> for_statement stmts <|> var_assign_proc_call false <|> var_decl
-      <|> _continue <|> _break <|> return_ )
+      <|> _continue <|> _break <|> return_)
 
 let top_decl_var =
-  var_decl
-  >>= function
+  var_decl >>= function
   | VAR_DECL (idd, typ, right_cons) ->
       return @@ TOP_VAR_DECL (idd, typ, right_cons)
-  | _ ->
-      fail "Not a var"
+  | _ -> fail "Not a var"
 
 let prog =
-  del_space_newline *> multi_includes
-  >>= fun mincl ->
+  del_space_newline *> multi_includes >>= fun mincl ->
   del_space_newline
   *> sep_by del_space_newline (func_decl stmts <|> struct_decl <|> top_decl_var)
   >>= fun f_decl -> return @@ C_PROG (mincl :: f_decl)

@@ -242,10 +242,9 @@ let var_decl =
               | LITERAL CNULL -> return @@ VAR_DECL (idd, CT_CHAR, Some e)
               | _ -> fail "char can't be an expression" )
     | CT_PTR typ -> (
-        get_value idd typ >>= fun t ->
-        match t with
-        | VAR_DECL (idd, tt, v) -> return @@ VAR_DECL (idd, CT_PTR tt, v)
-        | _ -> fail "Wrong Initial value")
+        get_value idd typ >>= function
+          | VAR_DECL (idd, tt, v) -> return @@ VAR_DECL (idd, CT_PTR tt, v)
+          | _ -> fail "Wrong Initial value")
     | CT_ARRAY (len, bt) ->
         return @@ VAR_DECL (idd, CT_ARRAY (len, bt), Some (LITERAL (CARRAY [])))
     | CT_STRUCT name -> (

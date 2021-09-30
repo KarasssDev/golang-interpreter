@@ -203,7 +203,7 @@ let expr =
       let bterm = chainl1 bfactor (_and <* space) in
       chainl1 bterm (_or <* space) )
 
-  (* STATEMENTS PARSING FUNCTIONS *)
+(* STATEMENTS PARSING FUNCTIONS *)
 
 let rec build_ptr n acc = if n = 0 then acc else build_ptr (n - 1) (CT_PTR acc)
 
@@ -362,7 +362,7 @@ let var_assign_proc_call no_ends_semic =
     | '%' ->
         advance 1 *> token "=" *> (assign_op @@ ass_mod num_ptrs left_cons)
     | otherwise ->
-        fail @@ (String.make 1 otherwise) ^ " ..?"
+        fail @@ String.make 1 otherwise ^ " ..?"
   in
   many (token "*")
   >>= fun num_ptrs ->
@@ -444,8 +444,7 @@ let multi_includes =
 
 let stmts =
   fix (fun stmts ->
-      block stmts <|> if_else_stmts stmts <|> if_stmt stmts
-      <|> while_stmt stmts
+      block stmts <|> if_else_stmts stmts <|> if_stmt stmts <|> while_stmt stmts
       <|> for_statement stmts <|> var_assign_proc_call false <|> var_decl
       <|> _continue <|> _break <|> return_ )
 

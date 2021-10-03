@@ -266,15 +266,13 @@ let struct_initialize =
   token "{" *> space *> sep_by1 (token "," *> space) expr >>= fun ls_init ->
   token "}" *> (return @@ INITIALIZER ls_init)
 
-let rec length l = match l with [] -> 0 | _ :: t -> 1 + length t
-
 let var_decl =
   let p_array =
     token "[" *> take_while1 is_digit <* token "]" >>= fun intt ->
     return @@ int_of_string intt
   in
   let transformate ls =
-    let size = length ls in
+    let size = List.length ls in
     let rec helper acc i =
       if i < size then helper (acc @ [ (i, List.nth ls i) ]) (i + 1) else acc
     in

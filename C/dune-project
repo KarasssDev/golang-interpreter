@@ -6,19 +6,19 @@
 
 (license LGPL-3.0-only)
 
-(authors "FIXME Vasya Pupkin")
+(authors "Andrew Olejnikov")
 
-(maintainers "FIXME Vasya Pupkin")
+(maintainers "a.oleynikov@outlook.com")
 
-(bug_reports "FIXME where to put bug reports about the code")
+(bug_reports "soon")
 
-(homepage "FIXME Homepage")
+(homepage "soon")
 
 (package
  (name C) ; FIXME and regenerate .opam file using 'dune build @install'
- (synopsis "FIXME An interpreter for language")
+ (synopsis "C_mini")
  (description
-  "FIXME. A longer description, for example, which are the most interesing features being supported, etc.")
+  "soon")
  (version 0.1)
  (depends
   dune

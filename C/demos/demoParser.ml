@@ -16,21 +16,21 @@ let test =
       
       struct node *head;
       
-      struct node *one = malloc(sizeof(node));
+      struct node *one = malloc(sizeof(struct node));
       
-      struct node *two = malloc(sizeof(node));
+      struct node *two = malloc(sizeof(struct node));
       
-      struct node *three = malloc(sizeof(node));
+      struct node *three = malloc(sizeof(struct node));
       
       void insertAtBeginning(struct Node** head_ref, int new_data) {
-        struct Node* new_node = malloc(sizeof(Node));
+        struct Node* new_node = malloc(sizeof(struct Node));
         new_node->data = new_data;
         new_node->next = *head_ref;
         *head_ref = new_node;
       }
 
       void insertAtEnd(struct Node** head_ref, int new_data) {
-        struct Node* new_node = malloc(sizeof(Node));
+        struct Node* new_node = malloc(sizeof(struct Node));
         struct Node* last = *head_ref;
 
         new_node->data = new_data;
@@ -99,6 +99,9 @@ let test =
         int item_to_find = 3;
         searchNode(&head, item_to_find);
 
+        memcpy(&(*(p+i)), &(*(p+j)), (n - constant) * sizeof(int));
+        
+        int a[];
         return 0;
       }
 
@@ -106,5 +109,5 @@ let test =
 
 let () =
   match test with
-  | Ok prog -> print_string @@ show_c_prog prog
+  | Ok prog -> print_string @@ show_prog prog
   | Error _ -> print_string "syntax error"

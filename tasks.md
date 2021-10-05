@@ -245,9 +245,10 @@
 1. C# c паттерн-мэтчингом
 1. MSIL
 1. Makefiles  -- может оказаться чересчур просто
-1. С# с многофайловостью, мультиметодами и экстеншинами
-1. OCaml с первоклассными модулями
-2. Aspectual Caml?
+1. С# с многофайловостью, [мультиметодами](https://en.wikipedia.org/wiki/Multiple_dispatch#C#) и экстеншинами
+1. C# c классами, интерфейсами, [new методами](https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/new-modifier)? Может быть [Goto](https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/goto)?
+3. OCaml с первоклассными модулями
+4. Aspectual Caml?
 
 
 ##### Прочие замечания

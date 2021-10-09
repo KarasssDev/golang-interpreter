@@ -4,8 +4,8 @@
   { vars = [["s" -> (VNumber 100.)
     
   ]]
-  ; last_value = VNull; prev_env = None; is_func = false; is_loop = true;
-  jump_stmt = Default; last_env = None
+  ; last_value = VNull; is_func = false; is_loop = true; jump_stmt = Default;
+  last_env = None
   }
   $ ./demoWhile.exe
   { vars =
@@ -34,14 +34,14 @@
   "result" -> (VBool false)
   
   ]]
-  ; last_value = VNull; prev_env = None; is_func = false; is_loop = false;
-  jump_stmt = Default; last_env = None
+  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default;
+  last_env = None
   }
 
   $ ./demoBreak.exe
   { vars = [["s" -> (VNumber 1.)
     
   ]]
-  ; last_value = VNull; prev_env = None; is_func = false; is_loop = true;
-  jump_stmt = Default; last_env = None
+  ; last_value = VNull; is_func = false; is_loop = true; jump_stmt = Default;
+  last_env = None
   }

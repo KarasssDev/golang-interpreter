@@ -35,10 +35,12 @@ module Eval (M : MONADERROR) = struct
         true
       with Failure _ -> false in
     match (x, y) with
-    | VNumber x, VNumber y -> Ok (x, y)
-    | VNumber x, VString y when string_is_number y -> Ok (x, float_of_string y)
-    | VString x, VNumber y when string_is_number x -> Ok (float_of_string x, y)
-    | _ -> Error err_msg
+    | VNumber x, VNumber y -> return (x, y)
+    | VNumber x, VString y when string_is_number y ->
+        return (x, float_of_string y)
+    | VString x, VNumber y when string_is_number x ->
+        return (float_of_string x, y)
+    | _ -> error err_msg
 
   (* Integer division *)
   let ( /// ) x y = Float.floor (x /. y)
@@ -93,7 +95,6 @@ module Eval (M : MONADERROR) = struct
   type environment =
     { vars: variables
     ; last_value: value
-    ; prev_env: environment option
     ; is_func: bool
     ; is_loop: bool
     ; jump_stmt: jump_statement
@@ -101,14 +102,16 @@ module Eval (M : MONADERROR) = struct
   (* last_env is needed in case we want to show variables scope after interpretation *)
   [@@deriving show {with_path= false}]
 
-  let rec find_var varname = function
-    | None -> return VNull
-    | Some env -> (
-      match Hashtbl.find_opt env.vars varname with
-      | Some v -> return v
-      | None -> find_var varname env.prev_env )
+  type env_lst = environment list
 
-  let rec eval_expr env = function
+  let rec find_var varname = function
+    | [] -> return VNull
+    | hd_env :: tl -> (
+      match Hashtbl.find_opt hd_env.vars varname with
+      | Some v -> return v
+      | None -> find_var varname tl )
+
+  let rec eval_expr env_lst = function
     | Const v -> return v
     | ArOp (op, lhs, rhs) -> (
         let get_op = function
@@ -118,40 +121,39 @@ module Eval (M : MONADERROR) = struct
           | Div -> (( /// ), "Error: Unsupported operands type for (//)")
           | FDiv -> (( /. ), "Error: Unsupported operands type for (/)")
           | Mod -> (( %% ), "Error: Unsupported operands type for (%)") in
-        eval_expr env lhs
+        eval_expr env_lst lhs
         >>= fun e_lhs ->
-        eval_expr env rhs
+        eval_expr env_lst rhs
         >>= fun e_rhs ->
         match get_op op with
-        | op, err_msg -> (
-          match transform_to_number e_lhs e_rhs err_msg with
-          | Ok (x, y) -> return @@ VNumber (op x y)
-          | Error msg -> error msg ) )
+        | op, err_msg ->
+            transform_to_number e_lhs e_rhs err_msg
+            >>= fun (x, y) -> return @@ VNumber (op x y) )
     | RelOp (op, lhs, rhs) ->
-        eval_expr env lhs
+        eval_expr env_lst lhs
         >>= fun e_lhs ->
-        eval_expr env rhs >>= fun e_rhs -> compare_values e_lhs e_rhs op
+        eval_expr env_lst rhs >>= fun e_rhs -> compare_values e_lhs e_rhs op
     | LogOp (op, lhs, rhs) ->
         let get_op = function And -> ( && ) | Or -> ( || ) in
-        eval_expr env lhs
+        eval_expr env_lst lhs
         >>= fun e_lhs ->
-        eval_expr env rhs
+        eval_expr env_lst rhs
         >>= fun e_rhs ->
         return @@ VBool ((get_op op) (is_true e_lhs) (is_true e_rhs))
     | UnOp (_, x) ->
-        eval_expr env x >>= fun e_x -> return @@ VBool (not (is_true e_x))
-    | Var v -> find_var v env
-    | TableCreate el -> table_create env el
-    | TableAccess (tname, texpr) -> table_find env tname texpr
+        eval_expr env_lst x >>= fun e_x -> return @@ VBool (not (is_true e_x))
+    | Var v -> find_var v env_lst
+    | TableCreate el -> table_create env_lst el
+    | TableAccess (tname, texpr) -> table_find env_lst tname texpr
     | CallFunc (n, el) -> (
-        func_call env n el
+        func_call env_lst n el
         >>= fun e ->
-        get_env e
+        get_cur_env e
         >>= fun env ->
         match env.jump_stmt with
         | Return -> return env.last_value
         | _ -> return VNull )
-    | _ -> error "Unexpected expression"
+    | _ -> error "Error: Unexpected expression"
 
   and table_append ht env key = function
     | [] -> return @@ VTable ht
@@ -186,237 +188,263 @@ module Eval (M : MONADERROR) = struct
         >>= function
         | VNumber key -> find_opt ht (string_of_float key)
         | VString key -> find_opt ht key
-        | _ -> error "Invalid key value" )
-    | _ -> error "Attempt to index non-table value"
+        | _ -> error "Error: Invalid key value" )
+    | _ -> error "Error: Attempt to index non-table value"
 
-  and func_call env fname fargs =
-    find_var fname env
+  and func_call env_lst fname fargs =
+    find_var fname env_lst
     >>= function
     | VFunction (name_args, body) ->
         let var_args = List.map (fun x -> Var x) name_args in
         let block_with_vardec = function
           | Block b ->
               return @@ Block (Local (VarDec (var_zipper var_args fargs)) :: b)
-          | _ -> error "Expected function body" in
+          | _ -> error "Error: Expected function body" in
         block_with_vardec body
         >>= fun b ->
-        get_env env >>= fun en -> eval_stmt (Some {en with is_func= true}) b
-    | _ -> error "Attempt to call not a function value"
+        set_hd_is_func ~is_func:true env_lst
+        >>= fun env_lst -> eval_stmt env_lst b
+    | _ -> error "Error: Attempt to call not a function value"
 
-  and eval_stmt env = function
+  and set_hd_is_func ?(is_func = true) = function
+    | [] ->
+        error
+          "Error: Can't modify environment head with <is_func>. Head is absent!"
+    | hd :: tl -> return @@ ({hd with is_func} :: tl)
+
+  and set_hd_is_loop ?(is_loop = true) = function
+    | [] ->
+        error
+          "Error: Can't modify environment head with <is_loop>. Head is absent!"
+    | hd :: tl -> return @@ ({hd with is_loop} :: tl)
+
+  and set_hd_last_value last_value = function
+    | [] ->
+        error
+          "Error: Can't modify environment head with <last_value>. Head is \
+           absent!"
+    | hd :: tl -> return @@ ({hd with last_value} :: tl)
+
+  and set_hd_vars vars = function
+    | [] ->
+        error
+          "Error: Can't modify environment head with <vars>. Head is absent!"
+    | hd :: tl -> return @@ ({hd with vars} :: tl)
+
+  and set_hd_jump_stmt jump_stmt = function
+    | [] ->
+        error
+          "Error: Can't modify environment head with <jump_stmt>. Head is \
+           absent!"
+    | hd :: tl -> return @@ ({hd with jump_stmt} :: tl)
+
+  and modify_hd_vars value = function
+    | [] ->
+        error "Error: Can't modify environment head variables. Head is absent!"
+    | hd :: _ -> (
+      match value with name, vle -> return @@ Hashtbl.replace hd.vars name vle )
+
+  and get_prev_env = function [] -> [] | _ :: tl -> tl
+
+  and get_cur_env = function
+    | [] -> error "Error: Current environment is absent!"
+    | hd :: _ -> return hd
+
+  and eval_stmt env_lst = function
     | Expression e ->
-        eval_expr env e
+        eval_expr env_lst e
         >>= fun v ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= v}
-    | VarDec el ->
-        eval_vardec true env el
-        >>= fun env ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
-    | Local (VarDec el) ->
-        eval_vardec false env el
-        >>= fun env ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
+        set_hd_last_value v env_lst >>= fun env_lst -> return env_lst
+    | VarDec el -> eval_vardec true env_lst el
+    | Local (VarDec el) -> eval_vardec false env_lst el
     | FuncDec (n, args, b) ->
-        assign n (VFunction (args, b)) true env
-        >>= fun _ ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
+        assign n (VFunction (args, b)) true env_lst
+        >>= fun _ -> set_hd_last_value VNull env_lst
     | Local (FuncDec (n, args, b)) ->
-        assign n (VFunction (args, b)) false env
-        >>= fun _ ->
-        get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
-    | Local _ -> error "Invalid local statement"
-    | If if_lst -> eval_if env if_lst
+        assign n (VFunction (args, b)) false env_lst
+        >>= fun _ -> set_hd_last_value VNull env_lst
+    | Local _ -> error "Error: Invalid local statement"
+    | If if_lst -> eval_if env_lst if_lst
     | ForNumerical (fvar, finit, body) ->
-        get_env env
-        >>= fun env -> eval_for fvar finit body (Some {env with is_loop= true})
-    | Block b -> create_next_env env >>= fun e -> eval_block (Some e) b
-    | Return _ -> error "Unexpected return statement"
-    | Break -> error "Unexpected break statement"
+        set_hd_is_loop env_lst
+        >>= fun env_lst -> eval_for fvar finit body env_lst
+    | Block b -> create_next_env env_lst >>= fun env_lst -> eval_block env_lst b
+    | Return _ -> error "Error: Unexpected return statement"
+    | Break -> error "Error: Unexpected break statement"
     | While (cond, body) ->
-        get_env env
-        >>= fun env -> eval_while cond body (Some {env with is_loop= true})
-
-  and get_env = function
-    | None -> error "Operation out of scope"
-    | Some env -> return env
+        set_hd_is_loop env_lst >>= fun env_lst -> eval_while cond body env_lst
 
   and create_next_env = function
-    | None ->
+    | [] ->
         return
-          { vars= Hashtbl.create 16
-          ; last_value= VNull
-          ; prev_env= None
-          ; is_func= false
-          ; is_loop= false
-          ; jump_stmt= Default
-          ; last_env= None }
-    | Some env -> return {env with prev_env= Some env; vars= Hashtbl.create 16}
+          [ { vars= Hashtbl.create 16
+            ; last_value= VNull
+            ; is_func= false
+            ; is_loop= false
+            ; jump_stmt= Default
+            ; last_env= None } ]
+    | hd_env :: tl ->
+        return @@ ({hd_env with vars= Hashtbl.create 16} :: hd_env :: tl)
 
-  and eval_vardec is_global env = function
-    | [] -> get_env env >>= fun en -> return @@ Some {en with last_value= VNull}
+  and eval_vardec is_global env_lst = function
+    | [] -> set_hd_last_value VNull env_lst >>= fun env_lst -> return env_lst
     | hd :: tl -> (
       match hd with
       | Var x, e ->
-          eval_expr env e
+          eval_expr env_lst e
           >>= fun v ->
-          assign x v is_global env >>= fun en -> eval_vardec is_global en tl
+          assign x v is_global env_lst >>= fun en -> eval_vardec is_global en tl
       | TableAccess (tname, index), e -> (
-          eval_expr env e
+          eval_expr env_lst e
           >>= fun val_to_assign ->
-          eval_expr env index
+          eval_expr env_lst index
           >>= fun key ->
-          find_var tname env
+          find_var tname env_lst
           >>= function
           | VTable t ->
               Hashtbl.replace t (string_of_value key) val_to_assign;
-              eval_vardec is_global env tl
+              eval_vardec is_global env_lst tl
           | _ -> error "Attempt to index non-table value" )
       | _ -> error "Wrong type to assign to" )
 
-  and assign n v is_global env =
-    let rec set_global n v env =
-      match env.prev_env with
-      | None -> Hashtbl.replace env.vars n v
-      | Some pe -> (
-        match Hashtbl.find_opt env.vars n with
-        | None -> set_global n v pe
-        | Some _ -> Hashtbl.replace env.vars n v ) in
-    match env with
-    | None -> error "Operation out of scope"
-    | Some e when is_global -> set_global n v e; return env
-    | Some e -> Hashtbl.replace e.vars n v; return env
+  and assign n v is_global env_lst =
+    let rec set_global n v = function
+      | [] -> ()
+      | [hd] -> Hashtbl.replace hd.vars n v
+      | hd :: tl -> (
+        match Hashtbl.find_opt hd.vars n with
+        | None -> set_global n v tl
+        | Some _ -> Hashtbl.replace hd.vars n v ) in
+    if is_global then (set_global n v env_lst; return env_lst)
+    else modify_hd_vars (n, v) env_lst >>= fun _ -> return env_lst
 
-  and eval_if env = function
-    | [] -> return env
+  and eval_if env_lst = function
+    | [] -> return env_lst
     | hd :: tl -> (
       match hd with
       | cond, st ->
-          eval_expr env cond
+          eval_expr env_lst cond
           >>= fun cond ->
-          if is_true cond then eval_stmt env st else eval_if env tl )
+          if is_true cond then eval_stmt env_lst st else eval_if env_lst tl )
 
-  and eval_block env block =
-    get_env env
-    >>= fun env ->
-    match block with
-    | [] -> return env.prev_env
+  and eval_block env_lst = function
+    | [] -> return @@ get_prev_env env_lst
     | [tl] -> (
-      match tl with
-      | Return v when env.is_func -> eval_return env v
-      | Break when env.is_loop -> eval_break env
-      | Break -> error "Error: Break statement is out of loop body"
-      | Return _ -> error "Error: Return statement is out of function body"
-      | _ -> (
-          eval_stmt (Some env) tl
-          >>= fun env ->
-          get_env env
-          >>= fun env ->
-          match env.jump_stmt with
-          | Return ->
-              get_env env.prev_env
-              >>= fun pr_env ->
-              return
-              @@ Some {pr_env with last_value= env.last_value; jump_stmt= Return}
-          | Break -> eval_break env
-          | _ -> (
-            match env.prev_env with
-            | None -> return @@ Some env
-            | Some pr_env -> return @@ Some pr_env ) ) )
+        get_cur_env env_lst
+        >>= fun cur_env ->
+        match tl with
+        | Return v when cur_env.is_func -> eval_return env_lst v
+        | Break when cur_env.is_loop -> eval_break env_lst
+        | Break -> error "Error: Unexpected break statement"
+        | Return _ -> error "Error: Unexpected return statement"
+        | _ -> (
+            eval_stmt env_lst tl
+            >>= fun env_lst ->
+            get_cur_env env_lst
+            >>= fun cur_env ->
+            match cur_env.jump_stmt with
+            | Return ->
+                let prev_env = get_prev_env env_lst in
+                set_hd_last_value cur_env.last_value prev_env
+                >>= fun prev_env -> set_hd_jump_stmt Return prev_env
+            | Break -> eval_break env_lst
+            | _ -> (
+                let prev_env = get_prev_env env_lst in
+                match prev_env with
+                | [] -> return env_lst
+                | _ -> return prev_env ) ) )
     | hd :: tl -> (
-        eval_stmt (Some env) hd
-        >>= fun env ->
-        get_env env
-        >>= fun env ->
-        match env.jump_stmt with
+        eval_stmt env_lst hd
+        >>= fun env_lst ->
+        get_cur_env env_lst
+        >>= fun cur_env ->
+        match cur_env.jump_stmt with
         | Return ->
-            get_env env.prev_env
-            >>= fun pr_env ->
-            return
-            @@ Some {pr_env with last_value= env.last_value; jump_stmt= Return}
-        | Break -> eval_break env
-        | _ -> eval_block (Some env) tl )
+            let prev_env = get_prev_env env_lst in
+            set_hd_last_value cur_env.last_value prev_env
+            >>= fun prev_env -> set_hd_jump_stmt Return prev_env
+        | Break -> eval_break env_lst
+        | _ -> eval_block env_lst tl )
 
-  (* === This function sets last environment to show as a result of interpreter === *)
-  and set_last_env env =
-    match env.prev_env with
-    | None -> print_string (show_environment env)
-    | Some _ -> ()
-
-  and eval_return env e =
-    eval_expr (Some env) e
+  and eval_return env_lst e =
+    eval_expr env_lst e
     >>= fun v ->
-    get_env env.prev_env
-    >>= fun pr_env ->
-    return @@ Some {pr_env with last_value= v; jump_stmt= Return}
+    let prev_env = get_prev_env env_lst in
+    set_hd_last_value v prev_env
+    >>= fun prev_env -> set_hd_jump_stmt Return prev_env
 
-  and eval_break env =
-    get_env env.prev_env
-    >>= fun pr_env -> return @@ Some {pr_env with jump_stmt= Break}
+  and eval_break env_lst =
+    let prev_env = get_prev_env env_lst in
+    set_hd_jump_stmt Break prev_env
 
-  and eval_while cond body env =
-    eval_expr env cond
+  and eval_while cond body env_lst =
+    eval_expr env_lst cond
     >>= fun predicate ->
     if is_true predicate then
-      eval_stmt env body
-      >>= fun env ->
-      get_env env
-      >>= fun env ->
-      match env.jump_stmt with
-      | Break -> return @@ Some {env with jump_stmt= Default}
-      | Return -> return @@ Some {env with jump_stmt= Return}
-      | _ -> eval_while cond body (Some env)
-    else return env
+      eval_stmt env_lst body
+      >>= fun env_lst ->
+      get_cur_env env_lst
+      >>= fun cur_env ->
+      match cur_env.jump_stmt with
+      | Break -> set_hd_jump_stmt Default env_lst
+      | Return -> set_hd_jump_stmt Return env_lst
+      | _ -> eval_while cond body env_lst
+    else return env_lst
 
-  and eval_for fvar finit body env =
-    let check_expr_number env num =
-      eval_expr env num
+  and eval_for fvar finit body env_lst =
+    let check_expr_number env_lst num =
+      eval_expr env_lst num
       >>= function
       | VNumber v -> return v
       | _ -> error "bad 'for' initial value (number expected)" in
     let cond_to_floats = function
       | [start; stop; step] ->
-          check_expr_number env start
+          check_expr_number env_lst start
           >>= fun start ->
-          check_expr_number env stop
+          check_expr_number env_lst stop
           >>= fun stop ->
-          check_expr_number env step >>= fun step -> return [start; stop; step]
+          check_expr_number env_lst step
+          >>= fun step -> return [start; stop; step]
       | [start; stop] ->
-          check_expr_number env start
+          check_expr_number env_lst start
           >>= fun start ->
-          check_expr_number env stop >>= fun stop -> return [start; stop; 1.]
+          check_expr_number env_lst stop >>= fun stop -> return [start; stop; 1.]
       | _ -> error "Bad 'for' constructor" in
-    cond_to_floats finit >>= fun finit -> for_numerical fvar finit body env
+    cond_to_floats finit >>= fun finit -> for_numerical fvar finit body env_lst
 
-  and for_numerical fvar finit body env =
+  and for_numerical fvar finit body env_lst =
     let create_local_vardec var value = Local (VarDec [(var, value)]) in
     let declare_init fvar start = function
       | Block b ->
           return
           @@ Block (create_local_vardec (Var fvar) (Const (VNumber start)) :: b)
       | _ -> error "Expected for body" in
-    let rec helper start stop step body env =
-      if start > stop then return env
+    let rec helper start stop step body env_lst =
+      if start > stop then return env_lst
       else
         declare_init fvar start body
         >>= fun body_with_init ->
-        eval_stmt env body_with_init
-        >>= fun env ->
-        get_env env
-        >>= fun env ->
-        match env.jump_stmt with
-        | Break -> return @@ Some {env with jump_stmt= Default}
-        | Return -> return @@ Some {env with jump_stmt= Return}
-        | _ -> helper (start +. step) stop step body (Some env) in
+        eval_stmt env_lst body_with_init
+        >>= fun env_lst ->
+        get_cur_env env_lst
+        >>= fun cur_env ->
+        match cur_env.jump_stmt with
+        | Break -> set_hd_jump_stmt Default env_lst
+        | Return -> set_hd_jump_stmt Return env_lst
+        | _ -> helper (start +. step) stop step body env_lst in
     match finit with
-    | [start; stop; step] -> helper start stop step body env
+    | [start; stop; step] -> helper start stop step body env_lst
     | _ -> error "Bad 'for' constructor"
+
+  and debug_print_env_lst = function
+    | [] -> print_endline "[ ]"
+    | hd :: tl ->
+        print_endline (show_environment hd);
+        debug_print_env_lst tl
 
   and eval_prog = function
     | None -> error "Syntax error occured"
-    | Some p -> (
-        eval_stmt None p
-        >>= function
-        | None -> error "Result environment is empty" | Some e -> return e )
+    | Some p -> eval_stmt [] p
 end
 
 open Eval (Result)
@@ -425,5 +453,5 @@ open Eval (Result)
 
 let eval parsed_prog =
   match eval_prog parsed_prog with
-  | Ok res -> print_endline @@ show_environment res
-  | Error m -> print_endline m
+  | Ok res -> print_endline @@ show_environment @@ List.hd res
+  | Error msg -> print_endline msg

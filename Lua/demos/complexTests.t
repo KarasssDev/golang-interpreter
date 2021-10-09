@@ -17,8 +17,8 @@ Complex tests of lua interpreter available features
       (Block [(Return (ArOp (Sub, (Var "x"), (Var "y"))))])))
   
   ]]
-  ; last_value = VNull; prev_env = None; is_func = false; is_loop = false;
-  jump_stmt = Default; last_env = None
+  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default;
+  last_env = None
   }
 
   $ ./demoEratosthenes.exe
@@ -269,8 +269,8 @@ Complex tests of lua interpreter available features
   )
   
   ]]
-  ; last_value = VNull; prev_env = None; is_func = false; is_loop = true;
-  jump_stmt = Default; last_env = None
+  ; last_value = VNull; is_func = false; is_loop = true; jump_stmt = Default;
+  last_env = None
   }
 
   $ ./demoFactorial.exe
@@ -292,6 +292,6 @@ Complex tests of lua interpreter available features
   "c" -> (VNumber 120.)
   
   ]]
-  ; last_value = VNull; prev_env = None; is_func = false; is_loop = false;
-  jump_stmt = Default; last_env = None
+  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default;
+  last_env = None
   }

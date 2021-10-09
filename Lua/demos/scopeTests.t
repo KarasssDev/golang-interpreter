@@ -4,6 +4,6 @@ Variable scope tests (local)
   { vars = [["x" -> (VNumber 5.)
     
   ]]
-  ; last_value = VNull; prev_env = None; is_func = false; is_loop = false;
-  jump_stmt = Default; last_env = None
+  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default;
+  last_env = None
   }

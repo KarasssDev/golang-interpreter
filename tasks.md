@@ -281,6 +281,7 @@
 1. Aspect C# ?
 1. C# c [Goto](https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/goto) и ещё чем-нибудь
 1. Scala где есть и аргументы call-by-value, и аргументы call-by-name. И ещё что-нибудь
+1. Refinement types by [Ranjit Jhala](https://github.com/ranjitjhala/sprite-lang)
 
 
 ##### Прочие замечания

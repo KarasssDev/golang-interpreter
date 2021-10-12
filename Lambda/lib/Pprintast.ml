@@ -14,17 +14,38 @@ let pp =
     | Abs (x, Abs (y, Var z)) when y = z && x <> z -> Format.fprintf fmt "⊥"
     | Abs (f, Abs (x, Var z)) when x = z && x <> f -> Format.fprintf fmt "0"
     | Abs (f, Abs (x, App (Var g, Var z))) when x = z && x <> f && g = f ->
-        Format.fprintf fmt "1"
+      Format.fprintf fmt "1"
     | Abs (f, Abs (x, App (Var g, App (Var h, Var z))))
-      when x = z && x <> f && g = f && h = g ->
-        Format.fprintf fmt "2"
+      when x = z && x <> f && g = f && h = g -> Format.fprintf fmt "2"
     | Abs (v1, Abs (v2, Abs (v3, Abs (v4, t)))) ->
-        Format.fprintf fmt "(λ %a %a %a %a -> %a)" (mangle t) v1 (mangle t) v2
-          (mangle t) v3 (mangle t) v4 pp t
+      Format.fprintf
+        fmt
+        "(λ %a %a %a %a -> %a)"
+        (mangle t)
+        v1
+        (mangle t)
+        v2
+        (mangle t)
+        v3
+        (mangle t)
+        v4
+        pp
+        t
     | Abs (v1, Abs (v2, Abs (v3, t))) ->
-        Format.fprintf fmt "(λ %a %a %a -> %a)" (mangle t) v1 (mangle t) v2
-          (mangle t) v3 pp t
+      Format.fprintf
+        fmt
+        "(λ %a %a %a -> %a)"
+        (mangle t)
+        v1
+        (mangle t)
+        v2
+        (mangle t)
+        v3
+        pp
+        t
     | Abs (v1, Abs (v2, t)) ->
-        Format.fprintf fmt "(λ %a %a -> %a)" (mangle t) v1 (mangle t) v2 pp t
-    | Abs (x, t) -> Format.fprintf fmt "(λ %a -> %a)" (mangle t) x pp t in
+      Format.fprintf fmt "(λ %a %a -> %a)" (mangle t) v1 (mangle t) v2 pp t
+    | Abs (x, t) -> Format.fprintf fmt "(λ %a -> %a)" (mangle t) x pp t
+  in
   pp
+;;

@@ -14,7 +14,7 @@
  (name demoParse)
  (modules demoParse)
  (public_name demoParse)
- (libraries lambda_lib))
+ (libraries lambda_lib stdio))
 
 (cram
  (deps ./demoNO.exe ./demoAO.exe ./demoParse.exe))

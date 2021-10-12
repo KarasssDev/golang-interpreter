@@ -70,7 +70,7 @@ jobs:
 
       - name: Naive linting
         run: |
-          cd ${{ env.latest }} && ../lint_filesystem.sh ${{ env.latest }}
+          cd ${{ env.latest }} && ../lint_filesystem.py ${{ env.latest }}
 
       - name: Checking ocamlformat
         run: |

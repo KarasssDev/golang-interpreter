@@ -21,6 +21,11 @@ type value =
   | VNull
 [@@deriving show {with_path= false}]
 
+and if_stmt =
+  | If of expr * statement
+  | Elif of expr * statement
+  | Else of statement
+
 and expr =
   | Const of value
   | Var of name
@@ -38,9 +43,9 @@ and expr =
 [@@deriving show {with_path= false}]
 
 and statement =
-  (* if expr1 then stmt1 elseif expr2 then stmt2 end*)
-  (* [(expr1, stmt1); (expr2, stmt2); ...]*)
-  | If of (expr * statement) list
+  (* if expr1 then stmt1 elseif expr2 then stmt2 else stmt3 end*)
+  (* [If(expr1, stmt1); Elif(expr2, stmt2); Else(stmt3)]*)
+  | IfElseBlock of if_stmt list
   (* while expr do statement end *)
   | While of expr * statement
   (* for i = 1, 5, 2 do ... end *)

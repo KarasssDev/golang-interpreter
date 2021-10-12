@@ -88,22 +88,24 @@ let%test _ = apply for_num_stmt "for i = 1 do 1 end" = None
 let%test _ =
   apply if_stmt "if true then false elseif false then true false else false end"
   = Some
-      (If
-         [ (Const (VBool true), Block [Expression (Const (VBool false))])
-         ; ( Const (VBool false)
-           , Block
-               [ Expression (Const (VBool true))
-               ; Expression (Const (VBool false)) ] )
-         ; (Const (VBool true), Block [Expression (Const (VBool false))]) ] )
+      (IfElseBlock
+         [ If (Const (VBool true), Block [Expression (Const (VBool false))])
+         ; Elif
+             ( Const (VBool false)
+             , Block
+                 [ Expression (Const (VBool true))
+                 ; Expression (Const (VBool false)) ] )
+         ; Else (Block [Expression (Const (VBool false))]) ] )
 
 let%test _ = apply if_stmt "if true then false" = None
 
 let%test _ =
   apply if_stmt "if true then false elseif false then false end"
   = Some
-      (If
-         [ (Const (VBool true), Block [Expression (Const (VBool false))])
-         ; (Const (VBool false), Block [Expression (Const (VBool false))]) ] )
+      (IfElseBlock
+         [ If (Const (VBool true), Block [Expression (Const (VBool false))])
+         ; Elif (Const (VBool false), Block [Expression (Const (VBool false))])
+         ] )
 
 let%test _ =
   apply if_stmt "if true then false else false elseif true then false end"
@@ -138,19 +140,21 @@ let%test _ =
              ( "fact"
              , ["n"]
              , Block
-                 [ If
-                     [ ( RelOp (Eq, Var "n", Const (VNumber 0.))
-                       , Block [Return (Const (VNumber 1.))] )
-                     ; ( Const (VBool true)
-                       , Block
-                           [ Return
-                               (ArOp
-                                  ( Mul
-                                  , Var "n"
-                                  , CallFunc
-                                      ( "fact"
-                                      , [ArOp (Sub, Var "n", Const (VNumber 1.))]
-                                      ) ) ) ] ) ] ] )
+                 [ IfElseBlock
+                     [ If
+                         ( RelOp (Eq, Var "n", Const (VNumber 0.))
+                         , Block [Return (Const (VNumber 1.))] )
+                     ; Else
+                         (Block
+                            [ Return
+                                (ArOp
+                                   ( Mul
+                                   , Var "n"
+                                   , CallFunc
+                                       ( "fact"
+                                       , [ ArOp
+                                             (Sub, Var "n", Const (VNumber 1.))
+                                         ] ) ) ) ] ) ] ] )
          ; VarDec
              [ ( Var "data"
                , TableCreate

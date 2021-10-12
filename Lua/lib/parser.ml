@@ -196,12 +196,11 @@ module PStatement = struct
       ( token "elseif" >> expr
       >>= fun cond ->
       token "then" >> sep_by stmt spaces
-      >>= fun elseif_body -> return (cond, Block elseif_body) )
+      >>= fun elseif_body -> return @@ Elif (cond, Block elseif_body) )
         input in
     let else_stmt result input =
       ( token "else" >> sep_by stmt spaces
-      >>= fun else_body ->
-      return (result @ [(Const (VBool true), Block else_body)]) )
+      >>= fun else_body -> return (result @ [Else (Block else_body)]) )
         input in
     ( token "if" >> expr
     >>= fun cond ->
@@ -209,10 +208,10 @@ module PStatement = struct
     >>= fun if_body ->
     many elseif_stmt
     >>= fun elseif_stmt_list ->
-    let result = (cond, Block if_body) :: elseif_stmt_list in
+    let result = If (cond, Block if_body) :: elseif_stmt_list in
     else_stmt result
-    >>= (fun r -> token "end" >> return (If r))
-    <|> (token "end" >> return (If result)) )
+    >>= (fun r -> token "end" >> return (IfElseBlock r))
+    <|> (token "end" >> return (IfElseBlock result)) )
       input
 
   and func_stmt input =

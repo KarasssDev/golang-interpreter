@@ -67,6 +67,13 @@
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq)))
 
+(executable
+ (name demoEmpty)
+ (modules demoEmpty)
+ (libraries Lua.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
 (cram
  (deps
   ./demoForNumerical.exe
@@ -77,4 +84,5 @@
   ./demoEratosthenes.exe
   ./demoFactorial.exe
   ./demoHighFunctions.exe
-  ./demoFail.exe))
+  ./demoFail.exe
+  ./demoEmpty.exe))

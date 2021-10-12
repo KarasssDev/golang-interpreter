@@ -97,9 +97,7 @@ module Eval (M : MONADERROR) = struct
     ; last_value: value
     ; is_func: bool
     ; is_loop: bool
-    ; jump_stmt: jump_statement
-    ; last_env: environment option }
-  (* last_env is needed in case we want to show variables scope after interpretation *)
+    ; jump_stmt: jump_statement }
   [@@deriving show {with_path= false}]
 
   type env_lst = environment list
@@ -252,9 +250,7 @@ module Eval (M : MONADERROR) = struct
 
   and eval_stmt env_lst = function
     | Expression e ->
-        eval_expr env_lst e
-        >>= fun v ->
-        set_hd_last_value v env_lst >>= fun env_lst -> return env_lst
+        eval_expr env_lst e >>= fun v -> set_hd_last_value v env_lst
     | VarDec el -> eval_vardec true env_lst el
     | Local (VarDec el) -> eval_vardec false env_lst el
     | FuncDec (n, args, b) ->
@@ -264,7 +260,7 @@ module Eval (M : MONADERROR) = struct
         assign n (VFunction (args, b)) false env_lst
         >>= fun _ -> set_hd_last_value VNull env_lst
     | Local _ -> error "Error: Invalid local statement"
-    | If if_lst -> eval_if env_lst if_lst
+    | IfElseBlock if_lst -> eval_if env_lst if_lst
     | ForNumerical (fvar, finit, body) ->
         set_hd_is_loop env_lst
         >>= fun env_lst -> eval_for fvar finit body env_lst
@@ -281,8 +277,7 @@ module Eval (M : MONADERROR) = struct
             ; last_value= VNull
             ; is_func= false
             ; is_loop= false
-            ; jump_stmt= Default
-            ; last_env= None } ]
+            ; jump_stmt= Default } ]
     | hd_env :: tl ->
         return @@ ({hd_env with vars= Hashtbl.create 16} :: hd_env :: tl)
 
@@ -322,10 +317,11 @@ module Eval (M : MONADERROR) = struct
     | [] -> return env_lst
     | hd :: tl -> (
       match hd with
-      | cond, st ->
+      | If (cond, st) | Elif (cond, st) ->
           eval_expr env_lst cond
           >>= fun cond ->
-          if is_true cond then eval_stmt env_lst st else eval_if env_lst tl )
+          if is_true cond then eval_stmt env_lst st else eval_if env_lst tl
+      | Else st -> eval_stmt env_lst st )
 
   and eval_block env_lst = function
     | [] -> return @@ get_prev_env env_lst
@@ -375,7 +371,13 @@ module Eval (M : MONADERROR) = struct
 
   and eval_break env_lst =
     let prev_env = get_prev_env env_lst in
-    set_hd_jump_stmt Break prev_env
+    set_hd_jump_stmt Break prev_env >>= fun env -> set_parents_is_loop env
+
+  and set_parents_is_loop env_lst =
+    let prev_env = get_prev_env env_lst in
+    let prev_is_loop =
+      match prev_env with [] -> false | _ -> (List.hd prev_env).is_loop in
+    set_hd_is_loop ~is_loop:prev_is_loop env_lst
 
   and eval_while cond body env_lst =
     eval_expr env_lst cond
@@ -389,7 +391,7 @@ module Eval (M : MONADERROR) = struct
       | Break -> set_hd_jump_stmt Default env_lst
       | Return -> set_hd_jump_stmt Return env_lst
       | _ -> eval_while cond body env_lst
-    else return env_lst
+    else set_parents_is_loop env_lst
 
   and eval_for fvar finit body env_lst =
     let check_expr_number env_lst num =
@@ -420,7 +422,9 @@ module Eval (M : MONADERROR) = struct
           @@ Block (create_local_vardec (Var fvar) (Const (VNumber start)) :: b)
       | _ -> error "Expected for body" in
     let rec helper start stop step body env_lst =
-      if start > stop then return env_lst
+      if start > stop then
+        set_hd_jump_stmt Default env_lst
+        >>= fun env_lst -> set_parents_is_loop env_lst
       else
         declare_init fvar start body
         >>= fun body_with_init ->
@@ -453,5 +457,8 @@ open Eval (Result)
 
 let eval parsed_prog =
   match eval_prog parsed_prog with
-  | Ok res -> print_endline @@ show_environment @@ List.hd res
+  | Ok res -> (
+    match res with
+    | hd :: _ -> print_endline @@ show_environment hd
+    | [] -> print_endline "[]" )
   | Error msg -> print_endline msg

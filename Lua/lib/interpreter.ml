@@ -87,10 +87,10 @@ module Eval (M : MONADERROR) = struct
   (* ==== Environment ==== *)
 
   type variables = (name, value) Hashtbl_p.t
-  [@@deriving show {with_path= false}]
+  [@@deriving show {with_path = false}]
 
   type jump_statement = Default | Return | Break
-  [@@deriving show {with_path= false}]
+  [@@deriving show {with_path = false}]
 
   type environment =
     { vars: variables
@@ -98,7 +98,7 @@ module Eval (M : MONADERROR) = struct
     ; is_func: bool
     ; is_loop: bool
     ; jump_stmt: jump_statement }
-  [@@deriving show {with_path= false}]
+  [@@deriving show {with_path = false}]
 
   type env_lst = environment list
 
@@ -273,13 +273,13 @@ module Eval (M : MONADERROR) = struct
   and create_next_env = function
     | [] ->
         return
-          [ { vars= Hashtbl.create 16
-            ; last_value= VNull
-            ; is_func= false
-            ; is_loop= false
-            ; jump_stmt= Default } ]
+          [ { vars = Hashtbl.create 16
+            ; last_value = VNull
+            ; is_func = false
+            ; is_loop = false
+            ; jump_stmt = Default } ]
     | hd_env :: tl ->
-        return @@ ({hd_env with vars= Hashtbl.create 16} :: hd_env :: tl)
+        return @@ ({hd_env with vars = Hashtbl.create 16} :: hd_env :: tl)
 
   and eval_vardec is_global env_lst = function
     | [] -> set_hd_last_value VNull env_lst >>= fun env_lst -> return env_lst

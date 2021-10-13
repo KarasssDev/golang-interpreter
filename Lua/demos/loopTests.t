@@ -11,20 +11,19 @@
     [["is_prime" ->
        (VFunction (["x"],
           (Block
-             [(IfElseBlock
-                 [(If ((RelOp (Eq, (Var "x"), (Const (VNumber 1.)))),
-                     (Block [(Return (Const (VBool false)))])))
-                   ]);
+             [(IfStatement (
+                 ((RelOp (Eq, (Var "x"), (Const (VNumber 1.)))),
+                  (Block [(Return (Const (VBool false)))])),
+                 [], None));
                (Local (VarDec [((Var "i"), (Const (VNumber 2.)))]));
                (While (
                   (RelOp (Leq, (ArOp (Mul, (Var "i"), (Var "i"))), (Var "x"))),
                   (Block
-                     [(IfElseBlock
-                         [(If (
-                             (RelOp (Eq, (ArOp (Mod, (Var "x"), (Var "i"))),
-                                (Const (VNumber 0.)))),
-                             (Block [(Return (Const (VBool false)))])))
-                           ]);
+                     [(IfStatement (
+                         ((RelOp (Eq, (ArOp (Mod, (Var "x"), (Var "i"))),
+                             (Const (VNumber 0.)))),
+                          (Block [(Return (Const (VBool false)))])),
+                         [], None));
                        (VarDec
                           [((Var "i"),
                             (ArOp (Sum, (Var "i"), (Const (VNumber 1.)))))])

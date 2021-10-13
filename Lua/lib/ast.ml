@@ -43,9 +43,10 @@ and expr =
 [@@deriving show {with_path = false}]
 
 and statement =
-  (* if expr1 then stmt1 elseif expr2 then stmt2 else stmt3 end*)
-  (* [If(expr1, stmt1); Elif(expr2, stmt2); Else(stmt3)]*)
-  | IfElseBlock of if_stmt list
+  (* https://www.lua.org/pil/4.3.1.html *)
+  (* if * elseif list * [else]  *)
+  | IfStatement of
+      (expr * statement) * (expr * statement) list * statement option
   (* while expr do statement end *)
   | While of expr * statement
   (* for i = 1, 5, 2 do ... end *)

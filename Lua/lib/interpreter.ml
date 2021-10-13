@@ -260,7 +260,8 @@ module Eval (M : MONADERROR) = struct
         assign n (VFunction (args, b)) false env_lst
         >>= fun _ -> set_hd_last_value VNull env_lst
     | Local _ -> error "Error: Invalid local statement"
-    | IfElseBlock if_lst -> eval_if env_lst if_lst
+    | IfStatement (if_block, elseif_list, else_block) ->
+        eval_if env_lst if_block elseif_list else_block
     | ForNumerical (fvar, finit, body) ->
         set_hd_is_loop env_lst
         >>= fun env_lst -> eval_for fvar finit body env_lst
@@ -313,15 +314,23 @@ module Eval (M : MONADERROR) = struct
     if is_global then (set_global n v env_lst; return env_lst)
     else modify_hd_vars (n, v) env_lst >>= fun _ -> return env_lst
 
-  and eval_if env_lst = function
-    | [] -> return env_lst
-    | hd :: tl -> (
-      match hd with
-      | If (cond, st) | Elif (cond, st) ->
+  and eval_if env_lst if_block elif_list else_block =
+    let eval_else env_lst = function
+      | None -> return env_lst
+      | Some body -> eval_stmt env_lst body in
+    let rec eval_elseif env_lst = function
+      | [] -> eval_else env_lst else_block
+      | (cond, body) :: tl ->
           eval_expr env_lst cond
-          >>= fun cond ->
-          if is_true cond then eval_stmt env_lst st else eval_if env_lst tl
-      | Else st -> eval_stmt env_lst st )
+          >>= fun elifpredicate ->
+          if is_true elifpredicate then eval_stmt env_lst body
+          else eval_elseif env_lst tl in
+    match if_block with
+    | ifpredicate, ifbody ->
+        eval_expr env_lst ifpredicate
+        >>= fun ifpredicate ->
+        if is_true ifpredicate then eval_stmt env_lst ifbody
+        else eval_elseif env_lst elif_list
 
   and eval_block env_lst = function
     | [] -> return @@ get_prev_env env_lst

@@ -88,24 +88,23 @@ let%test _ = apply for_num_stmt "for i = 1 do 1 end" = None
 let%test _ =
   apply if_stmt "if true then false elseif false then true false else false end"
   = Some
-      (IfElseBlock
-         [ If (Const (VBool true), Block [Expression (Const (VBool false))])
-         ; Elif
-             ( Const (VBool false)
+      (IfStatement
+         ( (Const (VBool true), Block [Expression (Const (VBool false))])
+         , [ ( Const (VBool false)
              , Block
                  [ Expression (Const (VBool true))
-                 ; Expression (Const (VBool false)) ] )
-         ; Else (Block [Expression (Const (VBool false))]) ] )
+                 ; Expression (Const (VBool false)) ] ) ]
+         , Some (Block [Expression (Const (VBool false))]) ) )
 
 let%test _ = apply if_stmt "if true then false" = None
 
 let%test _ =
   apply if_stmt "if true then false elseif false then false end"
   = Some
-      (IfElseBlock
-         [ If (Const (VBool true), Block [Expression (Const (VBool false))])
-         ; Elif (Const (VBool false), Block [Expression (Const (VBool false))])
-         ] )
+      (IfStatement
+         ( (Const (VBool true), Block [Expression (Const (VBool false))])
+         , [(Const (VBool false), Block [Expression (Const (VBool false))])]
+         , None ) )
 
 let%test _ =
   apply if_stmt "if true then false else false elseif true then false end"
@@ -140,11 +139,11 @@ let%test _ =
              ( "fact"
              , ["n"]
              , Block
-                 [ IfElseBlock
-                     [ If
-                         ( RelOp (Eq, Var "n", Const (VNumber 0.))
-                         , Block [Return (Const (VNumber 1.))] )
-                     ; Else
+                 [ IfStatement
+                     ( ( RelOp (Eq, Var "n", Const (VNumber 0.))
+                       , Block [Return (Const (VNumber 1.))] )
+                     , []
+                     , Some
                          (Block
                             [ Return
                                 (ArOp
@@ -154,7 +153,7 @@ let%test _ =
                                        ( "fact"
                                        , [ ArOp
                                              (Sub, Var "n", Const (VNumber 1.))
-                                         ] ) ) ) ] ) ] ] )
+                                         ] ) ) ) ] ) ) ] )
          ; VarDec
              [ ( Var "data"
                , TableCreate

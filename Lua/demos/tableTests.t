@@ -4,6 +4,39 @@ Lua tables tests
   { vars =
     [["foo" -> (VFunction ([], (Block [(Return (Const (VString "FOO")))])))
     
+  "table_primitive" -> (VTable [[(VNumber 2.) -> (VNumber 2.)
+                          
+  (VNumber 5.) -> (VNumber 5.)
+  
+  (VNumber 3.) -> (VNumber 3.)
+  
+  (VNumber 1.) -> (VNumber 1.)
+  
+  (VNumber 4.) -> (VNumber 4.)
+  
+  ]]
+  )
+  
+  "table_different_values" -> (VTable [[(VNumber 2.) -> (VString "FOO")
+                                 
+  (VNumber 5.) -> VNull
+  
+  (VNumber 3.) -> (VFunction ([], (Block [(Return (Const (VString "FOO")))])))
+  
+  (VNumber 6.) -> (VTable [[(VNumber 2.) -> (VNumber 4.)
+                     
+  (VNumber 1.) -> (VNumber 3.)
+  
+  ]]
+  )
+  
+  (VNumber 1.) -> (VNumber 1.)
+  
+  (VNumber 4.) -> (VNumber 7.)
+  
+  ]]
+  )
+  
   "table_with_expr_key" -> (VTable [[(VNumber 10.) -> (VNumber 5.)
                               
   (VNumber 1.) -> (VNumber 5.)

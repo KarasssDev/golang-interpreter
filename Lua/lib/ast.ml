@@ -33,8 +33,8 @@ and expr =
   | LogOp of logop * expr * expr
   | UnOp of unop * expr
   | RelOp of relop * expr * expr
-  (* name[expr], where 'name' is name of the table *)
-  | TableAccess of name * expr
+  (* name[expr1][expr2]...[], where 'name' is name of the table *)
+  | TableAccess of name * expr list
   (* https://www.lua.org/pil/3.6.html *)
   | TableCreate of expr list
   (* name([expr list]), where 'name' is name of the function and 'expr list' is passed arguments*)

@@ -102,6 +102,9 @@ module Eval (M : MONADERROR) = struct
 
   type env_lst = environment list
 
+  type table_sift_info =
+    {tsi_value: value; tsi_last_table: value; tsi_last_table_key: value}
+
   let rec find_var varname = function
     | [] -> return VNull
     | hd_env :: tl -> (
@@ -142,7 +145,8 @@ module Eval (M : MONADERROR) = struct
         eval_expr env_lst x >>= fun e_x -> return @@ VBool (not (is_true e_x))
     | Var v -> find_var v env_lst
     | TableCreate el -> table_create env_lst el
-    | TableAccess (tname, texpr) -> table_find env_lst tname texpr
+    | TableAccess (tname, texpr) ->
+        table_sift env_lst tname texpr >>= fun tsi -> return tsi.tsi_value
     | CallFunc (n, el) -> (
         func_call env_lst n el
         >>= fun e ->
@@ -178,16 +182,33 @@ module Eval (M : MONADERROR) = struct
     let ht = Hashtbl.create 256 in
     table_append ht env 1. elist
 
-  and table_find env tname texpr =
+  and table_sift env tname multikey =
     let find_opt ht key =
-      match Hashtbl.find_opt ht key with
-      | Some v -> return v
-      | None -> return VNull in
+      match Hashtbl.find_opt ht key with Some v -> v | None -> VNull in
+    let rec helper_multikey table_sift_info = function
+      | [] -> return table_sift_info
+      | hd_key :: tl_keys -> (
+        match table_sift_info.tsi_value with
+        | VTable ht ->
+            eval_expr env hd_key
+            >>= fun key ->
+            table_check_key key
+            >>
+            let next_value = find_opt ht key in
+            helper_multikey
+              { tsi_value = next_value
+              ; tsi_last_table = table_sift_info.tsi_value
+              ; tsi_last_table_key = key }
+              tl_keys
+        | _ -> error "Error: Attempt to index non-table value" ) in
     find_var tname env
     >>= function
     | VTable ht ->
-        eval_expr env texpr
-        >>= fun key -> table_check_key key >> find_opt ht key
+        helper_multikey
+          { tsi_value = VTable ht
+          ; tsi_last_table = VNull
+          ; tsi_last_table_key = VNull }
+          multikey
     | _ -> error "Error: Attempt to index non-table value"
 
   and func_call env_lst fname fargs =
@@ -291,17 +312,16 @@ module Eval (M : MONADERROR) = struct
           eval_expr env_lst e
           >>= fun v ->
           assign x v is_global env_lst >>= fun en -> eval_vardec is_global en tl
-      | TableAccess (tname, index), e -> (
+      | TableAccess (tname, multikey), e -> (
           eval_expr env_lst e
           >>= fun val_to_assign ->
-          eval_expr env_lst index
-          >>= fun key ->
-          find_var tname env_lst
-          >>= function
-          | VTable t ->
-              Hashtbl.replace t key val_to_assign;
+          table_sift env_lst tname multikey
+          >>= fun tsi ->
+          match tsi.tsi_last_table with
+          | VTable ht ->
+              Hashtbl.replace ht tsi.tsi_last_table_key val_to_assign;
               eval_vardec is_global env_lst tl
-          | _ -> error "Attempt to index non-table value" )
+          | _ -> error "Error: Attempt to index non-table value" )
       | _ -> error "Wrong type to assign to" )
 
   and assign n v is_global env_lst =

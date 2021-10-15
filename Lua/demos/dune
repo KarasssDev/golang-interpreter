@@ -82,6 +82,13 @@
   (pps ppx_deriving.show ppx_deriving.eq)))
 
 (executable
+ (name demoMultiDim)
+ (modules demoMultiDim)
+ (libraries Lua.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(executable
  (name demoNullKeyTable)
  (modules demoNullKeyTable)
  (libraries Lua.Lib)
@@ -101,4 +108,5 @@
   ./demoFail.exe
   ./demoEmpty.exe
   ./demoTable.exe
-  ./demoNullKeyTable.exe))
+  ./demoNullKeyTable.exe
+  ./demoMultiDim.exe))

@@ -73,3 +73,40 @@ Lua tables tests
   }
   $ ./demoNullKeyTable.exe
   Error: Table index can't be nil
+  $ ./demoMultiDim.exe 
+  { vars =
+    [["a" -> (VTable [[(VNumber 2.) -> (VTable [[(VNumber 2.) -> (VNumber 20.)
+                                          
+  (VNumber 3.) -> (VNumber 6.)
+  
+  (VNumber 1.) -> (VNumber 4.)
+  
+  ]]
+  )
+  
+  (VNumber 1.) -> (VTable [[(VNumber 2.) -> (VNumber 2.)
+                     
+  (VNumber 3.) -> (VNumber 3.)
+  
+  (VNumber 1.) -> (VNumber 1.)
+  
+  ]]
+  )
+  
+  ]]
+  )
+  
+  "b" -> (VNumber 2.)
+  
+  "c" -> (VTable [[(VNumber 2.) -> (VNumber 20.)
+            
+  (VNumber 3.) -> (VNumber 6.)
+  
+  (VNumber 1.) -> (VNumber 4.)
+  
+  ]]
+  )
+  
+  ]]
+  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default
+  }

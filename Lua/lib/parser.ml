@@ -116,10 +116,12 @@ module PExpression = struct
       input
 
   and table_access input =
+    let key_in_brackets =
+      token "[" >> expr >>= fun key -> token "]" >> return key in
     ( ident
     >>= fun table_name ->
-    token "[" >> expr
-    >>= fun pos -> token "]" >> return (TableAccess (table_name, pos)) )
+    many1 key_in_brackets
+    >>= fun multikey -> return (TableAccess (table_name, multikey)) )
       input
 
   and call_func input =

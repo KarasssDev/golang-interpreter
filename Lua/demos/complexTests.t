@@ -29,27 +29,27 @@ Complex tests of lua interpreter available features
                (ForNumerical ("i", [(Const (VNumber 0.)); (Var "upper_bound")],
                   (Block
                      [(VarDec
-                         [((TableAccess ("sieve", (Var "i"))),
+                         [((TableAccess ("sieve", [(Var "i")])),
                            (Const (VBool true)))])
                        ])
                   ));
                (VarDec
-                  [((TableAccess ("sieve", (Const (VNumber 0.)))),
+                  [((TableAccess ("sieve", [(Const (VNumber 0.))])),
                     (Const (VBool false)));
-                    ((TableAccess ("sieve", (Const (VNumber 1.)))),
+                    ((TableAccess ("sieve", [(Const (VNumber 1.))])),
                      (Const (VBool false)))
                     ]);
                (ForNumerical ("i", [(Const (VNumber 0.)); (Var "upper_bound")],
                   (Block
                      [(IfStatement (
-                         ((TableAccess ("sieve", (Var "i"))),
+                         ((TableAccess ("sieve", [(Var "i")])),
                           (Block
                              [(ForNumerical ("j",
                                  [(ArOp (Mul, (Var "i"), (Var "i")));
                                    (Var "upper_bound"); (Var "i")],
                                  (Block
                                     [(VarDec
-                                        [((TableAccess ("sieve", (Var "j"))),
+                                        [((TableAccess ("sieve", [(Var "j")])),
                                           (Const (VBool false)))])
                                       ])
                                  ))

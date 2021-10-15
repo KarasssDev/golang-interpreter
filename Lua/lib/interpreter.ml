@@ -153,26 +153,30 @@ module Eval (M : MONADERROR) = struct
         | _ -> return VNull )
     | _ -> error "Error: Unexpected expression"
 
-  and table_append ht env key = function
+  and table_check_key = function
+    | VNull -> error "Error: Table index can't be nil"
+    | _ -> return 0
+
+  and table_append (ht : (value, value) Hashtbl.t) env key = function
     | [] -> return @@ VTable ht
     | hd :: tl -> (
       match hd with
       | Assign (x, y) ->
           eval_expr env x
-          >>= fun lhs ->
-          eval_expr env y
-          >>= fun rhs ->
-          Hashtbl.replace ht (string_of_value lhs) rhs;
+          >>= fun table_key ->
+          table_check_key table_key >> eval_expr env y
+          >>= fun table_value ->
+          Hashtbl.replace ht table_key table_value;
           table_append ht env key tl
       | _ ->
           eval_expr env hd
-          >>= fun v ->
-          Hashtbl.replace ht (string_of_int key) v;
-          table_append ht env (key + 1) tl )
+          >>= fun table_value ->
+          Hashtbl.replace ht (VNumber key) table_value;
+          table_append ht env (key +. 1.) tl )
 
   and table_create env elist =
     let ht = Hashtbl.create 256 in
-    table_append ht env 1 elist
+    table_append ht env 1. elist
 
   and table_find env tname texpr =
     let find_opt ht key =
@@ -181,12 +185,9 @@ module Eval (M : MONADERROR) = struct
       | None -> return VNull in
     find_var tname env
     >>= function
-    | VTable ht -> (
+    | VTable ht ->
         eval_expr env texpr
-        >>= function
-        | VNumber key -> find_opt ht (string_of_float key)
-        | VString key -> find_opt ht key
-        | _ -> error "Error: Invalid key value" )
+        >>= fun key -> table_check_key key >> find_opt ht key
     | _ -> error "Error: Attempt to index non-table value"
 
   and func_call env_lst fname fargs =
@@ -298,7 +299,7 @@ module Eval (M : MONADERROR) = struct
           find_var tname env_lst
           >>= function
           | VTable t ->
-              Hashtbl.replace t (string_of_value key) val_to_assign;
+              Hashtbl.replace t key val_to_assign;
               eval_vardec is_global env_lst tl
           | _ -> error "Attempt to index non-table value" )
       | _ -> error "Wrong type to assign to" )

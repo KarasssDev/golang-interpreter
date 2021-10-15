@@ -100,8 +100,18 @@ module PExpression = struct
     const_var <|> const_number <|> const_string <|> const_bool <|> const_null
 
   and create_table input =
+    let key_expr =
+      token "[" >> expr
+      >>= fun key ->
+      token "]" >> token "=" >> expr
+      >>= fun value -> return @@ Assign (key, value) in
+    let key_name =
+      ident
+      >>= fun key ->
+      token "=" >> expr
+      >>= fun value -> return @@ Assign (Const (VString key), value) in
     ( token "{"
-    >> sep_by expr (token ",")
+    >> sep_by (key_expr <|> key_name <|> expr) (token ",")
     >>= fun table_elems -> token "}" >> return (TableCreate table_elems) )
       input
 

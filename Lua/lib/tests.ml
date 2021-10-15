@@ -21,7 +21,7 @@ let%test _ = apply const_string "\"\"" = Some (Const (VString ""))
 
 let%test _ =
   apply create_table "{a = 5}"
-  = Some (TableCreate [Assign (Var "a", Const (VNumber 5.))])
+  = Some (TableCreate [Assign (Const (VString "a"), Const (VNumber 5.))])
 
 let%test _ =
   apply table_access "data[3]" = Some (TableAccess ("data", Const (VNumber 3.)))
@@ -33,7 +33,10 @@ let%test _ = apply expr "a = 5" = Some (Assign (Var "a", Const (VNumber 5.)))
 
 let%test _ =
   apply expr "a = {b = 5}"
-  = Some (Assign (Var "a", TableCreate [Assign (Var "b", Const (VNumber 5.))]))
+  = Some
+      (Assign
+         ( Var "a"
+         , TableCreate [Assign (Const (VString "b"), Const (VNumber 5.))] ) )
 
 let%test _ =
   apply call_func "foo   (a=3, 5)"

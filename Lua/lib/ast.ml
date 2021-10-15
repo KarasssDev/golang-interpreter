@@ -15,7 +15,7 @@ type value =
   | VBool of bool
   | VNumber of float
   | VString of string
-  | VTable of (name, value) Hashtbl_p.t
+  | VTable of (value, value) Hashtbl_p.t
   (* name list -- function arguments, statement -- function body*)
   | VFunction of name list * statement
   | VNull

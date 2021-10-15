@@ -127,7 +127,8 @@ jobs:
           enable_jekyll: false
           keep_files: true
           destination_dir: docs/${{ env.LANG_NAME }}
-          commit_message: Deploying documentation for ${{ env.LANG_NAME }}
+          commit_message: >
+            Deploying documentation for ${{ env.LANG_NAME }}: https://kakadu.github.io/fp2021/docs/${{ env.LANG_NAME }}
           user_name: 'fp2021[bot]'
           user_email: 'fp2021[bot]@users.noreply.github.com'
 

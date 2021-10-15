@@ -100,16 +100,28 @@ module PExpression = struct
     const_var <|> const_number <|> const_string <|> const_bool <|> const_null
 
   and create_table input =
+    let key_expr =
+      token "[" >> expr
+      >>= fun key ->
+      token "]" >> token "=" >> expr
+      >>= fun value -> return @@ Assign (key, value) in
+    let key_name =
+      ident
+      >>= fun key ->
+      token "=" >> expr
+      >>= fun value -> return @@ Assign (Const (VString key), value) in
     ( token "{"
-    >> sep_by expr (token ",")
+    >> sep_by (key_expr <|> key_name <|> expr) (token ",")
     >>= fun table_elems -> token "}" >> return (TableCreate table_elems) )
       input
 
   and table_access input =
+    let key_in_brackets =
+      token "[" >> expr >>= fun key -> token "]" >> return key in
     ( ident
     >>= fun table_name ->
-    token "[" >> expr
-    >>= fun pos -> token "]" >> return (TableAccess (table_name, pos)) )
+    many1 key_in_brackets
+    >>= fun multikey -> return (TableAccess (table_name, multikey)) )
       input
 
   and call_func input =
@@ -196,23 +208,27 @@ module PStatement = struct
       ( token "elseif" >> expr
       >>= fun cond ->
       token "then" >> sep_by stmt spaces
-      >>= fun elseif_body -> return (cond, Block elseif_body) )
+      >>= fun body -> return (cond, Block body) )
         input in
-    let else_stmt result input =
-      ( token "else" >> sep_by stmt spaces
-      >>= fun else_body ->
-      return (result @ [(Const (VBool true), Block else_body)]) )
+    let else_stmt input =
+      (token "else" >> sep_by stmt spaces >>= fun body -> return @@ Block body)
         input in
     ( token "if" >> expr
     >>= fun cond ->
     token "then" >> sep_by stmt spaces
-    >>= fun if_body ->
+    >>= fun body ->
     many elseif_stmt
     >>= fun elseif_stmt_list ->
-    let result = (cond, Block if_body) :: elseif_stmt_list in
-    else_stmt result
-    >>= (fun r -> token "end" >> return (If r))
-    <|> (token "end" >> return (If result)) )
+    else_stmt
+    >>= (fun else_stmt_body ->
+          token "end"
+          >> return
+               (IfStatement
+                  ((cond, Block body), elseif_stmt_list, Some else_stmt_body) )
+          )
+    <|> ( token "end"
+        >> return (IfStatement ((cond, Block body), elseif_stmt_list, None)) )
+    )
       input
 
   and func_stmt input =

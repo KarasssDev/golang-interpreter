@@ -17,8 +17,7 @@ Complex tests of lua interpreter available features
       (Block [(Return (ArOp (Sub, (Var "x"), (Var "y"))))])))
   
   ]]
-  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default;
-  last_env = None
+  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default
   }
 
   $ ./demoEratosthenes.exe
@@ -30,32 +29,32 @@ Complex tests of lua interpreter available features
                (ForNumerical ("i", [(Const (VNumber 0.)); (Var "upper_bound")],
                   (Block
                      [(VarDec
-                         [((TableAccess ("sieve", (Var "i"))),
+                         [((TableAccess ("sieve", [(Var "i")])),
                            (Const (VBool true)))])
                        ])
                   ));
                (VarDec
-                  [((TableAccess ("sieve", (Const (VNumber 0.)))),
+                  [((TableAccess ("sieve", [(Const (VNumber 0.))])),
                     (Const (VBool false)));
-                    ((TableAccess ("sieve", (Const (VNumber 1.)))),
+                    ((TableAccess ("sieve", [(Const (VNumber 1.))])),
                      (Const (VBool false)))
                     ]);
                (ForNumerical ("i", [(Const (VNumber 0.)); (Var "upper_bound")],
                   (Block
-                     [(If
-                         [((TableAccess ("sieve", (Var "i"))),
-                           (Block
-                              [(ForNumerical ("j",
-                                  [(ArOp (Mul, (Var "i"), (Var "i")));
-                                    (Var "upper_bound"); (Var "i")],
-                                  (Block
-                                     [(VarDec
-                                         [((TableAccess ("sieve", (Var "j"))),
-                                           (Const (VBool false)))])
-                                       ])
-                                  ))
-                                ]))
-                           ])
+                     [(IfStatement (
+                         ((TableAccess ("sieve", [(Var "i")])),
+                          (Block
+                             [(ForNumerical ("j",
+                                 [(ArOp (Mul, (Var "i"), (Var "i")));
+                                   (Var "upper_bound"); (Var "i")],
+                                 (Block
+                                    [(VarDec
+                                        [((TableAccess ("sieve", [(Var "j")])),
+                                          (Const (VBool false)))])
+                                      ])
+                                 ))
+                               ])),
+                         [], None))
                        ])
                   ));
                (Return (Var "sieve"))])
@@ -63,214 +62,213 @@ Complex tests of lua interpreter available features
     
   "prime_count" -> (VNumber 25.)
   
-  "sieve" -> (VTable [["1." -> (VBool false)
+  "sieve" -> (VTable [[(VNumber 34.) -> (VBool false)
                 
-  "80." -> (VBool false)
+  (VNumber 15.) -> (VBool false)
   
-  "44." -> (VBool false)
+  (VNumber 68.) -> (VBool false)
   
-  "60." -> (VBool false)
+  (VNumber 64.) -> (VBool false)
   
-  "23." -> (VBool true)
+  (VNumber 99.) -> (VBool false)
   
-  "34." -> (VBool false)
+  (VNumber 35.) -> (VBool false)
   
-  "57." -> (VBool false)
+  (VNumber 74.) -> (VBool false)
   
-  "45." -> (VBool false)
+  (VNumber 70.) -> (VBool false)
   
-  "96." -> (VBool false)
+  (VNumber 66.) -> (VBool false)
   
-  "49." -> (VBool false)
+  (VNumber 20.) -> (VBool false)
   
-  "79." -> (VBool true)
+  (VNumber 16.) -> (VBool false)
   
-  "41." -> (VBool true)
+  (VNumber 46.) -> (VBool false)
   
-  "51." -> (VBool false)
+  (VNumber 2.) -> (VBool true)
   
-  "50." -> (VBool false)
+  (VNumber 100.) -> (VBool false)
   
-  "47." -> (VBool true)
+  (VNumber 71.) -> (VBool true)
   
-  "72." -> (VBool false)
+  (VNumber 85.) -> (VBool false)
   
-  "33." -> (VBool false)
+  (VNumber 81.) -> (VBool false)
   
-  "18." -> (VBool false)
+  (VNumber 29.) -> (VBool true)
   
-  "95." -> (VBool false)
+  (VNumber 97.) -> (VBool true)
   
-  "62." -> (VBool false)
+  (VNumber 91.) -> (VBool false)
   
-  "84." -> (VBool false)
+  (VNumber 76.) -> (VBool false)
   
-  "43." -> (VBool true)
+  (VNumber 13.) -> (VBool true)
   
-  "26." -> (VBool false)
+  (VNumber 41.) -> (VBool true)
   
-  "25." -> (VBool false)
+  (VNumber 89.) -> (VBool true)
   
-  "74." -> (VBool false)
+  (VNumber 96.) -> (VBool false)
   
-  "81." -> (VBool false)
+  (VNumber 58.) -> (VBool false)
   
-  "59." -> (VBool true)
+  (VNumber 37.) -> (VBool true)
   
-  "73." -> (VBool true)
+  (VNumber 47.) -> (VBool true)
   
-  "94." -> (VBool false)
+  (VNumber 98.) -> (VBool false)
   
-  "29." -> (VBool true)
+  (VNumber 51.) -> (VBool false)
   
-  "92." -> (VBool false)
+  (VNumber 56.) -> (VBool false)
   
-  "75." -> (VBool false)
+  (VNumber 5.) -> (VBool true)
   
-  "69." -> (VBool false)
+  (VNumber 32.) -> (VBool false)
   
-  "20." -> (VBool false)
+  (VNumber 7.) -> (VBool true)
   
-  "48." -> (VBool false)
+  (VNumber 43.) -> (VBool true)
   
-  "61." -> (VBool true)
+  (VNumber 57.) -> (VBool false)
   
-  "86." -> (VBool false)
+  (VNumber 21.) -> (VBool false)
   
-  "30." -> (VBool false)
+  (VNumber 95.) -> (VBool false)
   
-  "100." -> (VBool false)
+  (VNumber 83.) -> (VBool true)
   
-  "39." -> (VBool false)
+  (VNumber 63.) -> (VBool false)
   
-  "97." -> (VBool true)
+  (VNumber 65.) -> (VBool false)
   
-  "89." -> (VBool true)
+  (VNumber 44.) -> (VBool false)
   
-  "21." -> (VBool false)
+  (VNumber 93.) -> (VBool false)
   
-  "65." -> (VBool false)
+  (VNumber 87.) -> (VBool false)
   
-  "66." -> (VBool false)
+  (VNumber 55.) -> (VBool false)
   
-  "38." -> (VBool false)
+  (VNumber 19.) -> (VBool true)
   
-  "16." -> (VBool false)
+  (VNumber 52.) -> (VBool false)
   
-  "82." -> (VBool false)
+  (VNumber 60.) -> (VBool false)
   
-  "68." -> (VBool false)
+  (VNumber 27.) -> (VBool false)
   
-  "37." -> (VBool true)
+  (VNumber 9.) -> (VBool false)
   
-  "17." -> (VBool true)
+  (VNumber 28.) -> (VBool false)
   
-  "10." -> (VBool false)
+  (VNumber 12.) -> (VBool false)
   
-  "7." -> (VBool true)
+  (VNumber 42.) -> (VBool false)
   
-  "85." -> (VBool false)
+  (VNumber 31.) -> (VBool true)
   
-  "87." -> (VBool false)
+  (VNumber 3.) -> (VBool true)
   
-  "88." -> (VBool false)
+  (VNumber 61.) -> (VBool true)
   
-  "19." -> (VBool true)
+  (VNumber 84.) -> (VBool false)
   
-  "53." -> (VBool true)
+  (VNumber 48.) -> (VBool false)
   
-  "98." -> (VBool false)
+  (VNumber 49.) -> (VBool false)
   
-  "67." -> (VBool true)
+  (VNumber 72.) -> (VBool false)
   
-  "27." -> (VBool false)
+  (VNumber 36.) -> (VBool false)
   
-  "8." -> (VBool false)
+  (VNumber 10.) -> (VBool false)
   
-  "93." -> (VBool false)
+  (VNumber 79.) -> (VBool true)
   
-  "12." -> (VBool false)
+  (VNumber 8.) -> (VBool false)
   
-  "46." -> (VBool false)
+  (VNumber 78.) -> (VBool false)
   
-  "28." -> (VBool false)
+  (VNumber 25.) -> (VBool false)
   
-  "63." -> (VBool false)
+  (VNumber 82.) -> (VBool false)
   
-  "40." -> (VBool false)
+  (VNumber 33.) -> (VBool false)
   
-  "77." -> (VBool false)
+  (VNumber 73.) -> (VBool true)
   
-  "78." -> (VBool false)
+  (VNumber 23.) -> (VBool true)
   
-  "99." -> (VBool false)
+  (VNumber 59.) -> (VBool true)
   
-  "3." -> (VBool true)
+  (VNumber 86.) -> (VBool false)
   
-  "13." -> (VBool true)
+  (VNumber 53.) -> (VBool true)
   
-  "42." -> (VBool false)
+  (VNumber 80.) -> (VBool false)
   
-  "6." -> (VBool false)
+  (VNumber 6.) -> (VBool false)
   
-  "22." -> (VBool false)
+  (VNumber 69.) -> (VBool false)
   
-  "35." -> (VBool false)
+  (VNumber 92.) -> (VBool false)
   
-  "2." -> (VBool true)
+  (VNumber 14.) -> (VBool false)
   
-  "54." -> (VBool false)
+  (VNumber 38.) -> (VBool false)
   
-  "52." -> (VBool false)
+  (VNumber 1.) -> (VBool false)
   
-  "14." -> (VBool false)
+  (VNumber 77.) -> (VBool false)
   
-  "76." -> (VBool false)
+  (VNumber 90.) -> (VBool false)
   
-  "91." -> (VBool false)
+  (VNumber 17.) -> (VBool true)
   
-  "58." -> (VBool false)
+  (VNumber 67.) -> (VBool true)
   
-  "36." -> (VBool false)
+  (VNumber 50.) -> (VBool false)
   
-  "9." -> (VBool false)
+  (VNumber 62.) -> (VBool false)
   
-  "4." -> (VBool false)
+  (VNumber 39.) -> (VBool false)
   
-  "83." -> (VBool true)
+  (VNumber 24.) -> (VBool false)
   
-  "70." -> (VBool false)
+  (VNumber 88.) -> (VBool false)
   
-  "32." -> (VBool false)
+  (VNumber 54.) -> (VBool false)
   
-  "0." -> (VBool false)
+  (VNumber 94.) -> (VBool false)
   
-  "5." -> (VBool true)
+  (VNumber 18.) -> (VBool false)
   
-  "90." -> (VBool false)
+  (VNumber 30.) -> (VBool false)
   
-  "55." -> (VBool false)
+  (VNumber 0.) -> (VBool false)
   
-  "64." -> (VBool false)
+  (VNumber 45.) -> (VBool false)
   
-  "71." -> (VBool true)
+  (VNumber 26.) -> (VBool false)
   
-  "31." -> (VBool true)
+  (VNumber 11.) -> (VBool true)
   
-  "11." -> (VBool true)
+  (VNumber 22.) -> (VBool false)
   
-  "24." -> (VBool false)
+  (VNumber 75.) -> (VBool false)
   
-  "15." -> (VBool false)
+  (VNumber 4.) -> (VBool false)
   
-  "56." -> (VBool false)
+  (VNumber 40.) -> (VBool false)
   
   ]]
   )
   
   ]]
-  ; last_value = VNull; is_func = false; is_loop = true; jump_stmt = Default;
-  last_env = None
+  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default
   }
 
   $ ./demoFactorial.exe
@@ -278,9 +276,10 @@ Complex tests of lua interpreter available features
     [["fac" ->
        (VFunction (["n"],
           (Block
-             [(If
-                 [((RelOp (Leq, (Var "n"), (Const (VNumber 1.)))),
-                   (Block [(Return (Const (VNumber 1.)))]))]);
+             [(IfStatement (
+                 ((RelOp (Leq, (Var "n"), (Const (VNumber 1.)))),
+                  (Block [(Return (Const (VNumber 1.)))])),
+                 [], None));
                (Return
                   (ArOp (Mul,
                      (CallFunc ("fac",
@@ -292,6 +291,5 @@ Complex tests of lua interpreter available features
   "c" -> (VNumber 120.)
   
   ]]
-  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default;
-  last_env = None
+  ; last_value = VNull; is_func = false; is_loop = false; jump_stmt = Default
   }

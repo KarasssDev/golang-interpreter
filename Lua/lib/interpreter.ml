@@ -87,22 +87,23 @@ module Eval (M : MONADERROR) = struct
   (* ==== Environment ==== *)
 
   type variables = (name, value) Hashtbl_p.t
-  [@@deriving show {with_path= false}]
+  [@@deriving show {with_path = false}]
 
   type jump_statement = Default | Return | Break
-  [@@deriving show {with_path= false}]
+  [@@deriving show {with_path = false}]
 
   type environment =
     { vars: variables
     ; last_value: value
     ; is_func: bool
     ; is_loop: bool
-    ; jump_stmt: jump_statement
-    ; last_env: environment option }
-  (* last_env is needed in case we want to show variables scope after interpretation *)
-  [@@deriving show {with_path= false}]
+    ; jump_stmt: jump_statement }
+  [@@deriving show {with_path = false}]
 
   type env_lst = environment list
+
+  type table_sift_info =
+    {tsi_value: value; tsi_last_table: value; tsi_last_table_key: value}
 
   let rec find_var varname = function
     | [] -> return VNull
@@ -144,7 +145,8 @@ module Eval (M : MONADERROR) = struct
         eval_expr env_lst x >>= fun e_x -> return @@ VBool (not (is_true e_x))
     | Var v -> find_var v env_lst
     | TableCreate el -> table_create env_lst el
-    | TableAccess (tname, texpr) -> table_find env_lst tname texpr
+    | TableAccess (tname, texpr) ->
+        table_sift env_lst tname texpr >>= fun tsi -> return tsi.tsi_value
     | CallFunc (n, el) -> (
         func_call env_lst n el
         >>= fun e ->
@@ -155,40 +157,58 @@ module Eval (M : MONADERROR) = struct
         | _ -> return VNull )
     | _ -> error "Error: Unexpected expression"
 
-  and table_append ht env key = function
+  and table_check_key = function
+    | VNull -> error "Error: Table index can't be nil"
+    | _ -> return 0
+
+  and table_append (ht : (value, value) Hashtbl.t) env key = function
     | [] -> return @@ VTable ht
     | hd :: tl -> (
       match hd with
       | Assign (x, y) ->
           eval_expr env x
-          >>= fun lhs ->
-          eval_expr env y
-          >>= fun rhs ->
-          Hashtbl.replace ht (string_of_value lhs) rhs;
+          >>= fun table_key ->
+          table_check_key table_key >> eval_expr env y
+          >>= fun table_value ->
+          Hashtbl.replace ht table_key table_value;
           table_append ht env key tl
       | _ ->
           eval_expr env hd
-          >>= fun v ->
-          Hashtbl.replace ht (string_of_int key) v;
-          table_append ht env (key + 1) tl )
+          >>= fun table_value ->
+          Hashtbl.replace ht (VNumber key) table_value;
+          table_append ht env (key +. 1.) tl )
 
   and table_create env elist =
     let ht = Hashtbl.create 256 in
-    table_append ht env 1 elist
+    table_append ht env 1. elist
 
-  and table_find env tname texpr =
+  and table_sift env tname multikey =
     let find_opt ht key =
-      match Hashtbl.find_opt ht key with
-      | Some v -> return v
-      | None -> return VNull in
+      match Hashtbl.find_opt ht key with Some v -> v | None -> VNull in
+    let rec helper_multikey table_sift_info = function
+      | [] -> return table_sift_info
+      | hd_key :: tl_keys -> (
+        match table_sift_info.tsi_value with
+        | VTable ht ->
+            eval_expr env hd_key
+            >>= fun key ->
+            table_check_key key
+            >>
+            let next_value = find_opt ht key in
+            helper_multikey
+              { tsi_value = next_value
+              ; tsi_last_table = table_sift_info.tsi_value
+              ; tsi_last_table_key = key }
+              tl_keys
+        | _ -> error "Error: Attempt to index non-table value" ) in
     find_var tname env
     >>= function
-    | VTable ht -> (
-        eval_expr env texpr
-        >>= function
-        | VNumber key -> find_opt ht (string_of_float key)
-        | VString key -> find_opt ht key
-        | _ -> error "Error: Invalid key value" )
+    | VTable ht ->
+        helper_multikey
+          { tsi_value = VTable ht
+          ; tsi_last_table = VNull
+          ; tsi_last_table_key = VNull }
+          multikey
     | _ -> error "Error: Attempt to index non-table value"
 
   and func_call env_lst fname fargs =
@@ -252,9 +272,7 @@ module Eval (M : MONADERROR) = struct
 
   and eval_stmt env_lst = function
     | Expression e ->
-        eval_expr env_lst e
-        >>= fun v ->
-        set_hd_last_value v env_lst >>= fun env_lst -> return env_lst
+        eval_expr env_lst e >>= fun v -> set_hd_last_value v env_lst
     | VarDec el -> eval_vardec true env_lst el
     | Local (VarDec el) -> eval_vardec false env_lst el
     | FuncDec (n, args, b) ->
@@ -264,7 +282,8 @@ module Eval (M : MONADERROR) = struct
         assign n (VFunction (args, b)) false env_lst
         >>= fun _ -> set_hd_last_value VNull env_lst
     | Local _ -> error "Error: Invalid local statement"
-    | If if_lst -> eval_if env_lst if_lst
+    | IfStatement (if_block, elseif_list, else_block) ->
+        eval_if env_lst if_block elseif_list else_block
     | ForNumerical (fvar, finit, body) ->
         set_hd_is_loop env_lst
         >>= fun env_lst -> eval_for fvar finit body env_lst
@@ -277,14 +296,13 @@ module Eval (M : MONADERROR) = struct
   and create_next_env = function
     | [] ->
         return
-          [ { vars= Hashtbl.create 16
-            ; last_value= VNull
-            ; is_func= false
-            ; is_loop= false
-            ; jump_stmt= Default
-            ; last_env= None } ]
+          [ { vars = Hashtbl.create 16
+            ; last_value = VNull
+            ; is_func = false
+            ; is_loop = false
+            ; jump_stmt = Default } ]
     | hd_env :: tl ->
-        return @@ ({hd_env with vars= Hashtbl.create 16} :: hd_env :: tl)
+        return @@ ({hd_env with vars = Hashtbl.create 16} :: hd_env :: tl)
 
   and eval_vardec is_global env_lst = function
     | [] -> set_hd_last_value VNull env_lst >>= fun env_lst -> return env_lst
@@ -294,17 +312,16 @@ module Eval (M : MONADERROR) = struct
           eval_expr env_lst e
           >>= fun v ->
           assign x v is_global env_lst >>= fun en -> eval_vardec is_global en tl
-      | TableAccess (tname, index), e -> (
+      | TableAccess (tname, multikey), e -> (
           eval_expr env_lst e
           >>= fun val_to_assign ->
-          eval_expr env_lst index
-          >>= fun key ->
-          find_var tname env_lst
-          >>= function
-          | VTable t ->
-              Hashtbl.replace t (string_of_value key) val_to_assign;
+          table_sift env_lst tname multikey
+          >>= fun tsi ->
+          match tsi.tsi_last_table with
+          | VTable ht ->
+              Hashtbl.replace ht tsi.tsi_last_table_key val_to_assign;
               eval_vardec is_global env_lst tl
-          | _ -> error "Attempt to index non-table value" )
+          | _ -> error "Error: Attempt to index non-table value" )
       | _ -> error "Wrong type to assign to" )
 
   and assign n v is_global env_lst =
@@ -318,14 +335,23 @@ module Eval (M : MONADERROR) = struct
     if is_global then (set_global n v env_lst; return env_lst)
     else modify_hd_vars (n, v) env_lst >>= fun _ -> return env_lst
 
-  and eval_if env_lst = function
-    | [] -> return env_lst
-    | hd :: tl -> (
-      match hd with
-      | cond, st ->
+  and eval_if env_lst if_block elif_list else_block =
+    let eval_else env_lst = function
+      | None -> return env_lst
+      | Some body -> eval_stmt env_lst body in
+    let rec eval_elseif env_lst = function
+      | [] -> eval_else env_lst else_block
+      | (cond, body) :: tl ->
           eval_expr env_lst cond
-          >>= fun cond ->
-          if is_true cond then eval_stmt env_lst st else eval_if env_lst tl )
+          >>= fun elifpredicate ->
+          if is_true elifpredicate then eval_stmt env_lst body
+          else eval_elseif env_lst tl in
+    match if_block with
+    | ifpredicate, ifbody ->
+        eval_expr env_lst ifpredicate
+        >>= fun ifpredicate ->
+        if is_true ifpredicate then eval_stmt env_lst ifbody
+        else eval_elseif env_lst elif_list
 
   and eval_block env_lst = function
     | [] -> return @@ get_prev_env env_lst
@@ -375,7 +401,13 @@ module Eval (M : MONADERROR) = struct
 
   and eval_break env_lst =
     let prev_env = get_prev_env env_lst in
-    set_hd_jump_stmt Break prev_env
+    set_hd_jump_stmt Break prev_env >>= fun env -> set_parents_is_loop env
+
+  and set_parents_is_loop env_lst =
+    let prev_env = get_prev_env env_lst in
+    let prev_is_loop =
+      match prev_env with [] -> false | _ -> (List.hd prev_env).is_loop in
+    set_hd_is_loop ~is_loop:prev_is_loop env_lst
 
   and eval_while cond body env_lst =
     eval_expr env_lst cond
@@ -389,7 +421,7 @@ module Eval (M : MONADERROR) = struct
       | Break -> set_hd_jump_stmt Default env_lst
       | Return -> set_hd_jump_stmt Return env_lst
       | _ -> eval_while cond body env_lst
-    else return env_lst
+    else set_parents_is_loop env_lst
 
   and eval_for fvar finit body env_lst =
     let check_expr_number env_lst num =
@@ -420,7 +452,9 @@ module Eval (M : MONADERROR) = struct
           @@ Block (create_local_vardec (Var fvar) (Const (VNumber start)) :: b)
       | _ -> error "Expected for body" in
     let rec helper start stop step body env_lst =
-      if start > stop then return env_lst
+      if start > stop then
+        set_hd_jump_stmt Default env_lst
+        >>= fun env_lst -> set_parents_is_loop env_lst
       else
         declare_init fvar start body
         >>= fun body_with_init ->
@@ -453,5 +487,8 @@ open Eval (Result)
 
 let eval parsed_prog =
   match eval_prog parsed_prog with
-  | Ok res -> print_endline @@ show_environment @@ List.hd res
+  | Ok res -> (
+    match res with
+    | hd :: _ -> print_endline @@ show_environment hd
+    | [] -> print_endline "[]" )
   | Error msg -> print_endline msg

@@ -67,6 +67,34 @@
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq)))
 
+(executable
+ (name demoEmpty)
+ (modules demoEmpty)
+ (libraries Lua.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(executable
+ (name demoTable)
+ (modules demoTable)
+ (libraries Lua.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(executable
+ (name demoMultiDim)
+ (modules demoMultiDim)
+ (libraries Lua.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(executable
+ (name demoNullKeyTable)
+ (modules demoNullKeyTable)
+ (libraries Lua.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
 (cram
  (deps
   ./demoForNumerical.exe
@@ -77,4 +105,8 @@
   ./demoEratosthenes.exe
   ./demoFactorial.exe
   ./demoHighFunctions.exe
-  ./demoFail.exe))
+  ./demoFail.exe
+  ./demoEmpty.exe
+  ./demoTable.exe
+  ./demoNullKeyTable.exe
+  ./demoMultiDim.exe))

@@ -1,25 +1,30 @@
 open Hashtbl_p
 
 type arop = Sum | Sub | Mul | Div | FDiv | Mod
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]
 
-type logop = And | Or [@@deriving show {with_path= false}]
-type unop = Not [@@deriving show {with_path= false}]
+type logop = And | Or [@@deriving show {with_path = false}]
+type unop = Not [@@deriving show {with_path = false}]
 
 type relop = Eq | Neq | Le | Leq | Ge | Geq
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]
 
-type name = string [@@deriving show {with_path= false}]
+type name = string [@@deriving show {with_path = false}]
 
 type value =
   | VBool of bool
   | VNumber of float
   | VString of string
-  | VTable of (name, value) Hashtbl_p.t
+  | VTable of (value, value) Hashtbl_p.t
   (* name list -- function arguments, statement -- function body*)
   | VFunction of name list * statement
   | VNull
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]
+
+and if_stmt =
+  | If of expr * statement
+  | Elif of expr * statement
+  | Else of statement
 
 and expr =
   | Const of value
@@ -28,19 +33,20 @@ and expr =
   | LogOp of logop * expr * expr
   | UnOp of unop * expr
   | RelOp of relop * expr * expr
-  (* name[expr], where 'name' is name of the table *)
-  | TableAccess of name * expr
+  (* name[expr1][expr2]...[], where 'name' is name of the table *)
+  | TableAccess of name * expr list
   (* https://www.lua.org/pil/3.6.html *)
   | TableCreate of expr list
   (* name([expr list]), where 'name' is name of the function and 'expr list' is passed arguments*)
   | CallFunc of name * expr list
   | Assign of expr * expr
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]
 
 and statement =
-  (* if expr1 then stmt1 elseif expr2 then stmt2 end*)
-  (* [(expr1, stmt1); (expr2, stmt2); ...]*)
-  | If of (expr * statement) list
+  (* https://www.lua.org/pil/4.3.1.html *)
+  (* if * elseif list * [else]  *)
+  | IfStatement of
+      (expr * statement) * (expr * statement) list * statement option
   (* while expr do statement end *)
   | While of expr * statement
   (* for i = 1, 5, 2 do ... end *)
@@ -56,4 +62,4 @@ and statement =
   | Block of statement list
   (* name -- name of function, name list -- function arguments, statement -- function body*)
   | FuncDec of name * name list * statement
-[@@deriving show {with_path= false}]
+[@@deriving show {with_path = false}]

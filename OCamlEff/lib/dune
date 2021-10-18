@@ -1,8 +1,8 @@
 (library
- (name lambda_lib)
- (public_name Lambda.Lib)
- (modules Ast Lambda Interpret Parser Printast Pprintast utils Tests)
- (modules_without_implementation ast)
+ (name ocamlEff_lib)
+ (public_name OCamlEff.Lib)
+ (modules)
+ (modules_without_implementation)
  (libraries base angstrom ppx_show.runtime)
  (preprocess
   (pps ppx_expect ppx_show))

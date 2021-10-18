@@ -6,17 +6,17 @@
 
 (license LGPL-3.0-only)
 
-(authors "Alexander Fedkin & Sergey Loktev")
+(authors "FIXME Vasya Pupkin")
 
-(maintainers "Alexander Fedkin & Sergey Loktev")
+(maintainers "FIXME Vasya Pupkin")
 
-(bug_reports "loktevsergay.2003@gmail.com")
+(bug_reports "FIXME where to put bug reports about the code")
 
-(homepage "https://github.com/zishkaz/fp2021")
+(homepage "FIXME Homepage")
 
 (package
  (name Lambda) ; FIXME and regenerate .opam file using 'dune build @install'
- (synopsis "OCaml + effects")
+ (synopsis "FIXME An interpreter for language")
  (description
   "FIXME. A longer description, for example, which are the most interesing features being supported, etc.")
  (version 0.1)

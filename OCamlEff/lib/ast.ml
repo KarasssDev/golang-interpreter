@@ -1,17 +1,21 @@
-type name = string
+type identifier = string
 
-type value = 
-  | ValInt of int
-  | ValChar of char
-  | ValString of string
-  | ValBool of bool
-  | ValUnit of unit
-  | ValList of value list
-  (* | ValFunc of name list * statement *)
+type arithop = Add | Sub | Mul | Div 
 
-and expr = 
-  | Const of value
-  | Var of name
+type boolop = And | Or
 
-and statement = 
-  | LetBinding of expr * expr
+type boolexpr = 
+  | True 
+  | False 
+  | BoolOp of boolop * boolexpr * boolexpr
+  
+type arithexpr = 
+  | Int of int
+  | ArithOp of arithop * arithexpr * arithexpr
+
+type expr = 
+  | Var of identifier
+  | Bool of boolexpr
+  | Number of arithexpr
+  | LetBind of identifier * expr
+  | LetBindIn of identifier * expr * expr

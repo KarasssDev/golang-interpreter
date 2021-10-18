@@ -1,9 +1,8 @@
 (library
  (name ocamlEff_lib)
  (public_name OCamlEff.Lib)
- (modules)
- (modules_without_implementation)
+ (modules Ast)
  (libraries base angstrom ppx_show.runtime)
+ (inline_tests)
  (preprocess
-  (pps ppx_expect ppx_show))
- (inline_tests))
+  (pps ppx_expect ppx_show)))

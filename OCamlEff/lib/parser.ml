@@ -21,6 +21,8 @@ let is_keyword = function
 
 let ws = take_while is_ws
 
+let eol = take_while is_eol
+
 let token s = ws *> string s
 
 let rp = token ")"
@@ -37,7 +39,6 @@ module Ctors = struct
   let arithop op e1 e2 = ArithOp (op, e1, e2)
   let boolop op e1 e2 = BoolOp (op, e1, e2)
   let letbind id e = LetBind (id, e)
-  let letbindin id e1 e2 = LetBindIn (id, e1, e2)
   let var id = Var (id)
 end
 
@@ -83,11 +84,19 @@ let number =
   let termop = ws *> _add <|> _sub <?> "'+' or '-' expected" <* ws
 ;;
 
-let expr = 
-  fix (fun expr ->
-    let factor = number <|> parens expr in 
-    let term = chainl1 factor factop in 
-    chainl1 term termop
-  )
+
+let prog = 
+  fix (fun prog ->
+    let expr = 
+      fix (fun expr ->
+        let factor = number <|> parens expr in 
+        let term = chainl1 factor factop in 
+        chainl1 term termop) in 
+    let stmt = 
+      fix (fun stmt ->
+        let ltbnd = _let *> id 
+        >>= fun id -> token "=" *> expr
+        >>= fun e -> return (Ctors.letbind id e)
+      in ltbnd)
+  in eol *> sep_by eol stmt <* eol) 
 ;;
- 

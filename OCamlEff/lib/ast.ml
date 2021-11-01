@@ -17,8 +17,12 @@ type expr =
   | True 
   | False 
   | Var of identifier
-  | LetBind of identifier * expr
-  | LetBindIn of identifier * expr * expr
 [@@deriving show {with_path= false}]
+
+type stmt = 
+  | LetBind of identifier * expr 
+[@@deriving show {with_path= false}]
+  
+
 
   

@@ -1,0 +1,8 @@
+(executable
+ (name parseDemo)
+ (modules parseDemo)
+ (libraries OCamlEff.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+ 

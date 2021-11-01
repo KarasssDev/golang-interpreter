@@ -1,21 +1,24 @@
 type identifier = string
+[@@deriving show {with_path= false}]
 
 type arithop = Add | Sub | Mul | Div 
+[@@deriving show {with_path= false}]
 
 type boolop = And | Or
-
-type boolexpr = 
-  | True 
-  | False 
-  | BoolOp of boolop * boolexpr * boolexpr
+[@@deriving show {with_path= false}]
   
-type arithexpr = 
-  | Int of int
-  | ArithOp of arithop * arithexpr * arithexpr
+type number = Int of int
+[@@deriving show {with_path= false}]
 
 type expr = 
+  | ArithOp of arithop * expr * expr
+  | Number of number
+  | BoolOp of boolop * expr * expr
+  | True 
+  | False 
   | Var of identifier
-  | Bool of boolexpr
-  | Number of arithexpr
   | LetBind of identifier * expr
   | LetBindIn of identifier * expr * expr
+[@@deriving show {with_path= false}]
+
+  

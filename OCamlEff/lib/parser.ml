@@ -81,3 +81,13 @@ let number =
 
   let factop = _mul <|> _div <?> "'*' or '/' or '%' expected" <* ws
   let termop = ws *> _add <|> _sub <?> "'+' or '-' expected" <* ws
+;;
+
+let expr = 
+  fix (fun expr ->
+    let factor = number <|> parens expr in 
+    let term = chainl1 factor factop in 
+    chainl1 term termop
+  )
+;;
+ 

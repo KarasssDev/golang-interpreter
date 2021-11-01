@@ -2,7 +2,7 @@
  (name ocamlEff_lib)
  (public_name OCamlEff.Lib)
  (modules Ast Parser)
- (libraries base angstrom ppx_show.runtime)
+ (libraries base angstrom ppx_show.runtime str)
  (inline_tests)
  (preprocess
-  (pps ppx_expect ppx_show)))
+  (pps ppx_expect ppx_show ppx_deriving.eq)))

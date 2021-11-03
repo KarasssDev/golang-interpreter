@@ -36,9 +36,12 @@ let _let = token "let"
 let _eol = token "\n"
 
 module Ctors = struct 
+  let expr e = Expr e
   let arithop op e1 e2 = ArithOp (op, e1, e2)
   let boolop op e1 e2 = BoolOp (op, e1, e2)
   let letbind id e = LetBind (id, e)
+
+  let letbindin id s e = LetBindIn (id, s, e)
   let var id = Var (id)
 end
 
@@ -94,9 +97,13 @@ let prog =
         chainl1 term termop) in 
     let stmt = 
       fix (fun stmt ->
-        let ltbnd = _let *> id 
-        >>= fun id -> token "=" *> expr
-        >>= fun e -> return (Ctors.letbind id e)
-      in ltbnd)
+        let exprstmt = expr >>= fun e -> return (Ctors.expr e) in
+
+        let letbnd = _let *> id 
+        >>= fun id -> token "=" *> exprstmt
+        >>= fun s -> return (Ctors.letbind id s)
+
+
+        in letbnd <|> exprstmt)
   in eol *> sep_by eol stmt <* eol) 
 ;;

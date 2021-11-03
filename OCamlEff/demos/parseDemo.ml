@@ -4,10 +4,8 @@ open Format
 
 let test = parse prog {|
 
-let bebra = 22 + 3
-
-let nasvay = 228 + 1337
-let kek = 0
+let bebra = 6 in
+  let kek = 4
 
 
 |}

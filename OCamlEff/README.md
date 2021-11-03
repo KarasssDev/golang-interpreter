@@ -6,6 +6,10 @@ License: LGPL for implementation code + WTFPL for test examles in miniLanguage
 
 Author: Vasy Pupkin, vasya@pupkin.com
 
+What is not necessary:
+
+- Instructions separated by semicolon
+
 Features done (append only):
 
 - Parser  (for example)

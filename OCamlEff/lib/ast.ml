@@ -20,7 +20,9 @@ type expr =
 [@@deriving show {with_path= false}]
 
 type stmt = 
-  | LetBind of identifier * expr 
+  | Expr of expr
+  | LetBind of identifier * stmt
+  | LetBindIn of identifier * stmt * expr
 [@@deriving show {with_path= false}]
   
 

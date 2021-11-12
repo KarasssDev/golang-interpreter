@@ -114,18 +114,23 @@ let ptr value =
   space *> many (token "*") >>= fun num_ptrs ->
   return (build_ptr (List.length num_ptrs) value)
 
+let get_number = function
+  | CINT v -> return v
+  | _ -> fail "expected int"
+
 let token_datatypes =
   pos >>= fun col ->
+ 
+
   token "int" *> ptr CT_INT
   <|> token "char" *> ptr CT_CHAR
   <|> token "void" *> ptr CT_VOID
   <|> (token "struct" *> identifier >>= fun idd -> ptr (CT_STRUCT idd))
   <|> fail @@ "Unrecognized data type at col " ^ Int.to_string col
 
-let rec_expr =
+let expr =
   fix (fun expr ->
       let indexer_exp = identifier >>= fun idd -> indexer idd expr in
-      (* let indxr_vname = identifier >>= fun id -> indexer id expr in *)
       let var_name = identifier >>= fun id -> return @@ VAR_NAME id in
       let access l r = ACCESOR (l, r) in
       let arrow_cast l r = ACCESOR (DEREFERENCE l, r) in
@@ -140,9 +145,12 @@ let rec_expr =
         many @@ (token "->" *> (indexer_exp <|> parens var_name <|> var_name))
         >>= fun a -> return @@ List.fold_left arrow_cast h a
       in
+
       let arg_sizeof = token_datatypes >>= fun t -> return @@ TYPE t in
       let func_call =
-        accesor <|> arrow <|> indexer_exp <|> var_name >>= fun idd ->
+        (* accesor <|> arrow <|> indexer_exp <|> var_name  *)
+        identifier
+        >>= fun idd ->
         token "(" *> sep_by (token ",") (arg_sizeof <|> expr) <* token ")"
         >>= fun arg_list -> return @@ FUNC_CALL (idd, arg_list)
       in
@@ -204,8 +212,22 @@ let rec_expr =
             choice [ nnot; compare ])
       in
       let bterm = chainl1 bfactor (_and <* space) in
-      chainl1 bterm (_or <* space))
-
+      
+      let oldexpr = chainl1 bterm (_or <* space) in
+      
+      let inc =
+        accesor <|> arrow <|> indexer_exp <|> var_name <* string "++" >>= fun v ->
+        return @@ ADD (v, LITERAL (CINT 1))
+      in
+      let dec =
+        accesor <|> arrow <|> indexer_exp <|> var_name <* string "--" >>= fun v ->
+        return @@ SUB (v, LITERAL (CINT 1))
+      in
+      
+      let newexpr = fix (fun newexpr -> inc <|> dec <|> oldexpr <|> parens newexpr) in
+      newexpr
+      )
+(* 
 let indexer_exp = identifier >>= fun idd -> indexer idd rec_expr
 
 let var_name = identifier >>= fun id -> return @@ VAR_NAME id
@@ -239,14 +261,22 @@ let dec =
   accesor <|> arrow <|> indexer_exp <|> var_name <* string "--" >>= fun v ->
   return @@ SUB (v, LITERAL (CINT 1))
 
-let expr = fix (fun expr -> inc <|> dec <|> rec_expr <|> parens expr)
+let expr = fix (fun expr -> inc <|> dec <|> rec_expr <|> parens expr) *)
 
 (** STATEMENTS PARSING FUNCTIONS *)
 
 let struct_decl =
-  let tkd =
-    token_datatypes >>= fun tdd ->
-    identifier >>= fun idd -> return @@ CARGS (tdd, idd)
+  let tkd = 
+    (token "int" *> identifier 
+    >>= fun idd ->
+    between (token "[") (token "]") number
+    >>= fun v -> get_number v 
+    >>= fun n ->
+    return @@ CARGS (CT_ARRAY (n, CT_INT), idd))
+    <|>
+    (token_datatypes >>= fun tdd ->
+    identifier >>= fun idd -> return @@ CARGS (tdd, idd))
+
   in
   let content =
     token "{"
@@ -262,9 +292,10 @@ let struct_decl =
   skip_while (fun c -> is_whitespace c || is_end_of_line c) *> content
   >>= fun cont -> token ";" *> (return @@ TOP_STRUCT_DECL (idd, cont))
 
-let struct_initialize =
-  token "{" *> space *> sep_by1 (token "," *> space) expr >>= fun ls_init ->
+let struct_initialize = fix (fun struct_initialize ->
+  token "{" *> space *> sep_by1 (token "," *> space) (expr <|> struct_initialize) >>= fun ls_init ->
   token "}" *> (return @@ INITIALIZER ls_init)
+)
 
 let var_decl =
   let p_array =
@@ -274,7 +305,7 @@ let var_decl =
   let transformate ls =
     let size = List.length ls in
     let rec helper acc i =
-      if i < size then helper (acc @ [ (i, List.nth ls i) ]) (i + 1) else acc
+      if i < size then helper (acc @ [ ((*i,*) List.nth ls i) ]) (i + 1) else acc
     in
     helper [] 0
   in
@@ -303,7 +334,7 @@ let var_decl =
     | CT_STRUCT name -> (
         struct_initialize <|> expr >>= fun init_ls ->
         match init_ls with
-        | INITIALIZER _ | FUNC_CALL _ | DEREFERENCE _ | LITERAL CNULL ->
+        | INITIALIZER _ | FUNC_CALL _ | DEREFERENCE _ | LITERAL CNULL | VAR_NAME _ | INDEXER _ -> (*VARNAAAAME *)
             return @@ VAR_DECL (idd, CT_STRUCT name, Some init_ls)
         | _ -> fail "Struct can't be an expression")
     | CT_VOID -> fail "VOID cannot be a type for variable declaration"
@@ -317,7 +348,10 @@ let var_decl =
         advance 1
         *>
         match t with
-        | CT_ARRAY _ -> return (VAR_DECL (idd, t, Some (LITERAL (CARRAY []))))
+        | CT_ARRAY _ -> return (VAR_DECL (idd, t, 
+        None
+        (* Some (LITERAL (CARRAY [])) *)
+        ))
         | _ -> return (VAR_DECL (idd, t, None)))
     | None | _ -> fail "ERROR"
   in

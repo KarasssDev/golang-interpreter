@@ -12,7 +12,7 @@ type args = CARGS of types * string [@@deriving show { with_path = false }]
 type values =
   | CINT of int
   | CCHAR of char
-  | CARRAY of (int * expr) list  (**array of indexed values in array*)
+  | CARRAY of expr list  (**array of indexed values in array*)
   | CNULL
   | CVOID
 [@@deriving show { with_path = false }]
@@ -33,7 +33,8 @@ and expr =
   | LTE of expr * expr
   | LT of expr * expr
   | LITERAL of values
-  | FUNC_CALL of expr * expr list
+  | FUNC_CALL of string * expr list
+  (* | FUNC_CALL of expr * expr list *)
   | VAR_NAME of string
   | INDEXER of string * expr  (** ~ name\[expr\] *)
   | ACCESOR of expr * expr  (** ~ expr.expr *)
@@ -46,7 +47,7 @@ and expr =
 
 type statements =
   | VAR_DECL of string * types * expr option
-  | STRUCT_DECL of string * args list
+  (* | STRUCT_DECL of string * args list *)
   | EXPRESSION of expr
   | RETURN of expr
   | T_BLOCK of statements list
@@ -72,3 +73,12 @@ and prog =
   | TOP_FUNC_DECL of types * string * args list * statements
   | TOP_VAR_DECL of string * types * expr option
 [@@deriving show { with_path = false }]
+
+module Hashtbl = struct
+  include Hashtbl
+  
+  let pp pp_key pp_value ppf  values =
+    Hashtbl.iter (fun key data ->
+      Format.fprintf ppf "@[<1>%a: %a@]@." pp_key key pp_value data)
+        values
+end 

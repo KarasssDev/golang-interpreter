@@ -111,5 +111,3 @@ let pat =
       let ptuple = token "(" *> sep_by1 (token ",") pat <* token ")" >>| _ptuple in
       ws *> choice [ plist; ptuple; pconst; pwild; pvar ] <* ws)
 ;;
-
-many1

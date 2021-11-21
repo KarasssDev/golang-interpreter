@@ -7,6 +7,7 @@ let test = parse pat "[_; 2; [[_]; (1, 2, (3, 4))]] "
 let () =
   match test with
   | Ok pat ->
-    pp_print_list pp_pat std_formatter [pat];
+    pp_print_list pp_pat std_formatter [ pat ];
     print_newline ()
-  | Error _ -> printf "syntax error\n";;
+  | Error _ -> printf "syntax error\n"
+;;

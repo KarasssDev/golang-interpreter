@@ -46,3 +46,5 @@ and decl =
   | DLetRec of pat * exp
   | DEffect of id * type_exp
 [@@deriving show { with_path = false }]
+
+and prog = decl list [@@deriving show { with_path = false }]

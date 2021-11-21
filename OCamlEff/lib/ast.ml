@@ -26,6 +26,7 @@ and exp =
   | EOp of infix_op * exp * exp
   | EVar of id
   | EList of exp list
+  | ETutple of exp list
   | EIf of exp * exp * exp
   | ELet of (pat * exp) list * exp
   | ELetRec of (pat * exp) list * exp
@@ -39,6 +40,7 @@ and pat =
   | PVar of id
   | PConst of const
   | PList of pat list
+  | PTuple of pat list
 [@@deriving show { with_path = false }]
 
 and decl =

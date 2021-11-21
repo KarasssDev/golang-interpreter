@@ -32,7 +32,7 @@ let is_keyword = function
 
 let ws = take_while is_ws
 let eol = take_while is_eol
-let token s = ws *> string s
+let token s = ws *> string s <* ws
 let rp = token ")"
 let lp = token "("
 let parens p = lp *> p <* rp
@@ -47,7 +47,7 @@ module Ctors = struct
   let var id = EVar id
 end
 
-let _add = many1 (token "+") *> return (Ctors.op Add)
+let _add = token "+" *> return (Ctors.op Add)
 let _sub = token "-" *> return (Ctors.op Sub)
 let _mul = token "*" *> return (Ctors.op Mul)
 let _div = token "/" *> return (Ctors.op Div)
@@ -90,5 +90,26 @@ let number =
   take_while1 is_digit >>= fun uns -> return (Int (int_of_string (sign ^ uns)))
 ;;
 
-let factop = _mul <|> _div <?> "'*' or '/' or '%' expected" <* ws
-let termop = ws *> _add <|> _sub <?> "'+' or '-' expected" <* ws
+(*************** Pattern parsing ******************)
+
+let _pwild _ = PWild
+let _pvar var = PVar var
+let _pconst c = PConst c
+let _plist l = PList l
+let _ptuple t = PTuple t
+
+let pat =
+  fix (fun pat ->
+      let pwild = token "_" >>| _pwild in
+      let pvar = id >>| _pvar in
+      let pconst = number >>| _pconst in
+      let plist =
+        token "[]" *> return []
+        <|> (token "[" *> sep_by1 (token ";") pat <* token "]")
+        >>| _plist
+      in
+      let ptuple = token "(" *> sep_by1 (token ",") pat <* token ")" >>| _ptuple in
+      ws *> choice [ plist; ptuple; pconst; pwild; pvar ] <* ws)
+;;
+
+many1

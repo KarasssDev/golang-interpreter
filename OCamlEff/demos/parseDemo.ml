@@ -4,17 +4,14 @@ open Format
 
 let test = parse prog {|
 
-let bebra = 6 in
-  let kek = 4
+-(5 + 3)
 
 
 |}
 
-
 let () =
   match test with
-  | Ok prog -> (
+  | Ok prog ->
     pp_print_list pp_stmt std_formatter prog;
-    print_newline()
-  )
-  | Error _ -> printf "syntax error"
+    print_newline ()
+  | Error _ -> printf "syntax error";;

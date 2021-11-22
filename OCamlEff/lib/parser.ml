@@ -212,7 +212,16 @@ let pat =
           | _ -> lhs @ [ rhs ])
         >>| plist
       in
-      ws *> choice [ _plistcons; _plistbr; _pprimitive ] <* ws)
+      let _ptuplenobr =
+        fix (fun _ptuplenobr ->
+            let tuplemember =
+              choice [ lp *> pat <* rp; _plistcons; _plistbr; _pprimitive ]
+            in
+            many1 (tuplemember <* comma <* ws)
+            >>= fun lhs -> tuplemember >>= fun rhs -> return (lhs @ [ rhs ]) >>| ptuple)
+      in
+      ws *> choice [ _ptuplenobr; lp *> pat <* rp; _plistcons; _plistbr; _pprimitive ]
+      <* ws)
 ;;
 
 let test_pat_suc = parse_test_suc pp_pat pat
@@ -230,3 +239,19 @@ let%test _ =
 ;;
 
 let%test _ = test_pat_suc "true :: _" (PList [ PConst (CBool true); PWild ])
+let%test _ = test_pat_suc "_, a" (PTuple [ PWild; PVar "a" ])
+let%test _ = test_pat_suc "(a), (b)" (PTuple [ PVar "a"; PVar "b" ])
+let%test _ = test_pat_suc "(((a), (b)))" (PTuple [ PVar "a"; PVar "b" ])
+let%test _ = test_pat_suc "((((a))))" (PVar "a")
+
+let%test _ =
+  test_pat_suc
+    "a, (b, c, (d, e)), (((f)))"
+    (PTuple
+       [ PVar "a"
+       ; PTuple [ PVar "b"; PVar "c"; PTuple [ PVar "d"; PVar "e" ] ]
+       ; PVar "f"
+       ])
+;;
+
+(****************** Expr parsing ******************)

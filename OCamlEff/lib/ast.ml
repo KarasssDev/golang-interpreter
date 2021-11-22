@@ -15,10 +15,9 @@ type infix_op =
 [@@deriving show { with_path = false }]
 
 type const =
-  | Int of int
-  | Char of char
-  | String of string
-  | Bool of bool
+  | CInt of int
+  | CString of string
+  | CBool of bool
 [@@deriving show { with_path = false }]
 
 and exp =

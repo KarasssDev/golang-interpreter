@@ -15,6 +15,7 @@ type binder_set = VarSet.t [@@deriving show { with_path = false }]
 type type_exp =
   | TPrim of string
   | TVar of binder
+  | TTuple of type_exp list
   | TList of type_exp
   | TArrow of type_exp * type_exp
 [@@deriving show { with_path = false }]
@@ -25,5 +26,4 @@ let arrow l r = TArrow (l, r)
 let int_type = TPrim "int"
 let bool_type = TPrim "bool"
 let unit_type = TPrim "unit"
-let char_type = TPrim "char"
 let string_type = TPrim "string"

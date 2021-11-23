@@ -36,7 +36,7 @@ let chainl1 e op =
 ;;
 
 let rec chainr1 e op = e >>= fun a -> op >>= (fun f -> chainr1 e op >>| f a) <|> return a
-let ( >=> ) p1 p2 = many1 p1 >>= fun lhs -> p2 >>= fun rhs -> return (lhs @ rhs)
+let ( >=> ) p1 p2 = many1 p1 >>= fun lhs -> p2 >>= fun rhs -> return @@ lhs @ rhs
 let mklist a = [ a ]
 
 let is_ws = function
@@ -70,6 +70,7 @@ let is_keyword = function
 
 let take_all = take_while (fun _ -> true)
 let ws = take_while is_ws
+let ws1 = take_while1 is_ws
 let eol = take_while is_eol
 let token s = ws *> string s
 let rp = token ")"
@@ -79,6 +80,7 @@ let lsb = token "["
 let comma = token ","
 let semicol = token ";"
 let between l r p = l *> p <* r
+let parens = between lp rp
 
 (****************** Tokens ******************)
 
@@ -100,13 +102,12 @@ let cstring s = CString s
 
 let econst c = EConst c
 let eop o e1 e2 = EOp (o, e1, e2)
-let unop o e = EUnOp (o, e)
+let eunop o e = EUnOp (o, e)
 let evar id = EVar id
 let elist l = EList l
 let etuple l = ETuple l
 let eif e1 e2 e3 = EIf (e1, e2, e3)
-let elet pat inn out = ELet (pat, inn, out)
-let eletrec pat inn out = ELetRec (pat, inn, out)
+let elet ~isrec binds e = ELet (isrec, binds, e)
 let efun p e = EFun (p, e)
 let eapp e1 e2 = EApp (e1, e2)
 let ematch e cases = EMatch (e, cases)
@@ -127,12 +128,19 @@ let deff p te = DEffect (p, te)
 
 (****************** Plain parsers ******************)
 
-let _add = token "+" *> return (eop Add)
-let _sub = token "-" *> return (eop Sub)
-let _mul = token "*" *> return (eop Mul)
-let _div = token "/" *> return (eop Div)
+let choice_op ops =
+  let trans (tok, f) = token tok *> ws *> return f in
+  choice @@ List.map trans ops
+;;
 
-let _id =
+let factop = choice_op [ "*", eop Mul; "/", eop Div ]
+let unop = choice_op [ "-", eunop Minus; "!", eunop Not ]
+let termop = choice_op [ "+", eop Add; "-", eop Sub ]
+let cmpop = choice_op [ ">=", eop Geq; ">", eop Gre; "<=", eop Leq; "<", eop Less ]
+let eqneqop = choice_op [ "=", eop Eq; "<>", eop Neq ]
+let andor = choice_op [ "&&", eop And; "||", eop Or ]
+
+let id =
   let check_fst = function
     | 'a' .. 'z' | '_' -> true
     | _ -> false
@@ -153,7 +161,7 @@ let _id =
 
 (****************** Const parsing ******************)
 
-let _cint =
+let cint =
   let sign =
     peek_char
     >>= function
@@ -165,16 +173,16 @@ let _cint =
   ws *> sign
   <* ws
   >>= fun sign ->
-  take_while1 is_digit <* ws >>= fun uns -> return (int_of_string (sign ^ uns)) >>| cint
+  take_while1 is_digit <* ws >>= fun uns -> return @@ int_of_string (sign ^ uns) >>| cint
 ;;
 
-let _cbool =
+let cbool =
   let _true = ttrue *> return (cbool true) in
   let _false = tfalse *> return (cbool false) in
   _true <|> _false
 ;;
 
-let _cstring =
+let cstring =
   char '"'
   *> take_while (function
          | '"' -> false
@@ -183,24 +191,24 @@ let _cstring =
   >>| cstring
 ;;
 
-let const = ws *> choice [ _cint; _cbool; _cstring ] <* ws
+let const = ws *> choice [ cint; cbool; cstring ] <* ws
 let test_const_suc = parse_test_suc pp_const const
 let test_const_fail = parse_test_fail pp_const const
 
-let%test _ = test_const_suc {| "he1+l__lo"  |} (CString "he1+l__lo")
-let%test _ = test_const_suc "- 123  " (CInt (-123))
-let%test _ = test_const_suc " true " (CBool true)
-let%test _ = test_const_suc "false " (CBool false)
+let%test _ = test_const_suc {| "he1+l__lo"  |} @@ CString "he1+l__lo"
+let%test _ = test_const_suc "- 123  " @@ CInt (-123)
+let%test _ = test_const_suc " true " @@ CBool true
+let%test _ = test_const_suc "false " @@ CBool false
 let%test _ = test_const_fail "falsee "
 let%test _ = test_const_fail "-4 2 "
 let%test _ = test_const_fail " \"some"
 
 (****************** Pattern parsing ******************)
 
-let _pvar = _id >>| pvar
-let _pwild = twild >>| pwild
-let _pconst = const >>| pconst
-let _pprimitive = choice [ _pconst; _pvar; _pwild ]
+let pvar = id >>| pvar
+let pwild = twild >>| pwild
+let pconst = const >>| pconst
+let pprimitive = choice [ pconst; pvar; pwild ]
 
 type pat_dispatch =
   { _plistcons : pat_dispatch -> pat t
@@ -210,34 +218,34 @@ type pat_dispatch =
 let pat =
   fix
   @@ fun pat ->
-  let _plist =
-    let _plistbr = between lsb rsb (sep_by1 semicol pat <|> return []) >>| plist in
-    let _plistcons =
-      choice [ between lp rp pat; _plistbr; _pprimitive ]
+  let plist =
+    let plistbr = between lsb rsb (sep_by1 semicol pat <|> return []) >>| plist in
+    let plistcons =
+      choice [ between lp rp pat; plistbr; pprimitive ]
       <* tlistcons
-      >=> (_plistbr
-          <|> _pwild
+      >=> (plistbr
+          <|> pwild
           >>| function
           | PList l -> l
           | _ as rhs -> [ rhs ])
       >>| plist
     in
-    _plistcons <|> _plistbr
+    plistcons <|> plistbr
   in
-  let _ptuple =
-    let tuplemember = choice [ between lp rp pat; _plist; _pprimitive ] in
+  let ptuple =
+    let tuplemember = choice [ between lp rp pat; plist; pprimitive ] in
     tuplemember <* comma <* ws >=> (tuplemember >>| mklist) >>| ptuple
   in
-  ws *> choice [ _ptuple; _plist; _pprimitive; between lp rp pat ] <* ws
+  ws *> choice [ ptuple; plist; pprimitive; between lp rp pat ] <* ws
 ;;
 
 let test_pat_suc = parse_test_suc pp_pat pat
 let test_pat_fail = parse_test_fail pp_pat pat
 
-let%test _ = test_pat_suc "[a; f]" (PList [ PVar "a"; PVar "f" ])
-let%test _ = test_pat_suc {|"some_string"|} (PConst (CString "some_string"))
-let%test _ = test_pat_suc "_ :: []" (PList [ PWild ])
-let%test _ = test_pat_suc "[[[1]]]" (PList [ PList [ PList [ PConst (CInt 1) ] ] ])
+let%test _ = test_pat_suc "[a; f]" @@ PList [ PVar "a"; PVar "f" ]
+let%test _ = test_pat_suc {|"some_string"|} @@ PConst (CString "some_string")
+let%test _ = test_pat_suc "_ :: []" @@ PList [ PWild ]
+let%test _ = test_pat_suc "[[[1]]]" @@ PList [ PList [ PList [ PConst (CInt 1) ] ] ]
 
 let%test _ =
   test_pat_suc
@@ -245,33 +253,77 @@ let%test _ =
     (PList [ PList [ PConst (CInt 1) ]; PList [ PConst (CInt 2) ] ])
 ;;
 
-let%test _ = test_pat_suc "true :: _" (PList [ PConst (CBool true); PWild ])
-let%test _ = test_pat_suc "_, a" (PTuple [ PWild; PVar "a" ])
-let%test _ = test_pat_suc "(a), (b)" (PTuple [ PVar "a"; PVar "b" ])
-let%test _ = test_pat_suc "(((a), (b)))" (PTuple [ PVar "a"; PVar "b" ])
-let%test _ = test_pat_suc "((((a))))" (PVar "a")
+let%test _ = test_pat_suc "true :: _" @@ PList [ PConst (CBool true); PWild ]
+let%test _ = test_pat_suc "_, a" @@ PTuple [ PWild; PVar "a" ]
+let%test _ = test_pat_suc "(a), (b)" @@ PTuple [ PVar "a"; PVar "b" ]
+let%test _ = test_pat_suc "(((a), (b)))" @@ PTuple [ PVar "a"; PVar "b" ]
+let%test _ = test_pat_suc "((((a))))" @@ PVar "a"
 
 let%test _ =
-  test_pat_suc "(1, 2) :: []" (PList [ PTuple [ PConst (CInt 1); PConst (CInt 2) ] ])
+  test_pat_suc "(1, 2) :: []" @@ PList [ PTuple [ PConst (CInt 1); PConst (CInt 2) ] ]
 ;;
 
 let%test _ =
-  test_pat_suc
-    "a, (b, c, (d, e)), (((f)))"
-    (PTuple
+  test_pat_suc "a, (b, c, (d, e)), (((f)))"
+  @@ PTuple
        [ PVar "a"
        ; PTuple [ PVar "b"; PVar "c"; PTuple [ PVar "d"; PVar "e" ] ]
        ; PVar "f"
-       ])
+       ]
 ;;
 
 let%test _ =
-  test_pat_suc
-    "((1), (((2)))) :: [(3, 4)]"
-    (PList
+  test_pat_suc "((1), (((2)))) :: [(3, 4)]"
+  @@ PList
        [ PTuple [ PConst (CInt 1); PConst (CInt 2) ]
        ; PTuple [ PConst (CInt 3); PConst (CInt 4) ]
-       ])
+       ]
 ;;
 
 (****************** Expr parsing ******************)
+
+let exp =
+  fix
+  @@ fun exp ->
+  let econst = const >>| econst in
+  let evar = id >>| evar in
+  let op =
+    fix
+    @@ fun op ->
+    let factor =
+      let facmember = [ parens exp; econst; evar ] in
+      let unopmember = List.map (fun p -> unop <*> p) facmember in
+      choice facmember <|> choice unopmember
+    in
+    let term = chainl1 factor factop in
+    let expr = chainl1 term termop in
+    let comp = chainl1 expr cmpop in
+    let equneq = chainl1 comp eqneqop in
+    chainl1 equneq andor
+  in
+  ws *> choice [ parens exp; op; evar; econst ]
+;;
+
+let test_exp_suc = parse_test_suc pp_exp exp
+let test_exp_fail = parse_test_fail pp_exp exp
+
+let%test _ =
+  test_exp_suc "true = false || 1=1"
+  @@ EOp
+       ( Or
+       , EOp (Eq, EConst (CBool true), EConst (CBool false))
+       , EOp (Eq, EConst (CInt 1), EConst (CInt 1)) )
+;;
+
+let%test _ =
+  test_exp_suc "|(((-(-(-(+1))))))|"
+  @@ EUnOp (Minus, EUnOp (Minus, EUnOp (Minus, EConst (CInt 1))))
+;;
+
+let%test _ =
+  test_exp_suc "| - sk+ 8*f- (- 9 )|"
+  @@ EOp
+       ( Sub
+       , EOp (Add, EUnOp (Minus, EVar "sk"), EOp (Mul, EConst (CInt 8), EVar "f"))
+       , EConst (CInt (-9)) )
+;;

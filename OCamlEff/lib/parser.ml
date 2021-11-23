@@ -94,6 +94,10 @@ let tfalse = token "false"
 let tlet = token "let"
 let teol = token "\n"
 let twild = token "_"
+let tmatch = token "match"
+let tbar = token "|"
+let twith = token "with"
+let tarrow = token "->"
 
 (****************** Const ctors ******************)
 
@@ -114,6 +118,9 @@ let elet ~isrec binds e = ELet (isrec, binds, e)
 let efun p e = EFun (p, e)
 let eapp e1 e2 = EApp (e1, e2)
 let ematch e cases = EMatch (e, cases)
+
+(****************** Case ctors ******************)
+let ccase p e = p, e
 
 (****************** Pat ctors ******************)
 
@@ -303,11 +310,29 @@ let exp =
     chainl1 equneq andor
   in
   let eif = lift3 eif (tif *> exp) (tthen *> exp) (telse *> exp) in
-  ws *> choice [ eif; parens exp; eop; evar; econst ]
+  let ematch =
+    lift2
+      ematch
+      (tmatch *> exp)
+      (twith *> many1 (lift2 ccase (tbar *> pat) (tarrow *> exp)))
+  in
+  ws *> choice [ ematch; eif; parens exp; eop; evar; econst ]
 ;;
 
 let test_exp_suc = parse_test_suc pp_exp exp
 let test_exp_fail = parse_test_fail pp_exp exp
+
+let%test _ =
+  test_exp_suc "match x + 1 > y / 2 with | true -> x + 1 | false -> x - 2"
+  @@ EMatch
+       ( EOp
+           ( Gre
+           , EOp (Add, EVar "x", EConst (CInt 1))
+           , EOp (Div, EVar "y", EConst (CInt 2)) )
+       , [ PConst (CBool true), EOp (Add, EVar "x", EConst (CInt 1))
+         ; PConst (CBool false), EOp (Sub, EVar "x", EConst (CInt 2))
+         ] )
+;;
 
 let%test _ =
   test_exp_suc "if x + 20 <= 30 then true else false"

@@ -9,7 +9,7 @@ type infix_op =
   | Div
   | Less
   | Leq
-  | Gre 
+  | Gre
   | Geq
   | Eq
   | Neq
@@ -17,7 +17,10 @@ type infix_op =
   | Or
 [@@deriving show { with_path = false }]
 
-and unary_op = Minus | Not [@@deriving show { with_path = false }]
+and unary_op =
+  | Minus
+  | Not
+[@@deriving show { with_path = false }]
 
 and const =
   | CInt of int
@@ -26,6 +29,8 @@ and const =
 [@@deriving show { with_path = false }]
 
 and binding = pat * exp [@@deriving show { with_path = false }]
+
+and case = pat * exp
 
 and exp =
   | EConst of const
@@ -38,7 +43,7 @@ and exp =
   | ELet of bool * binding list * exp
   | EFun of pat * exp
   | EApp of exp * exp
-  | EMatch of exp * (pat * exp) list
+  | EMatch of exp * case list
 [@@deriving show { with_path = false }]
 
 and pat =

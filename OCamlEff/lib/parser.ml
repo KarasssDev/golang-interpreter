@@ -291,12 +291,10 @@ let exp =
   let econst = const >>| econst in
   let evar = id >>| evar in
   let eop =
-    fix
-    @@ fun op ->
     let factor =
       let facmember = [ parens exp; econst; evar ] in
       let unopmember = List.map (fun p -> unop <*> p) facmember in
-      choice facmember <|> choice unopmember
+      choice unopmember <|> choice facmember
     in
     let term = chainl1 factor factop in
     let expr = chainl1 term termop in
@@ -304,11 +302,7 @@ let exp =
     let equneq = chainl1 comp eqneqop in
     chainl1 equneq andor
   in
-  let eif =
-    tif *> exp
-    >>= fun cond ->
-    tthen *> exp >>= fun th -> telse *> exp >>= fun els -> return @@ eif cond th els
-  in
+  let eif = lift3 eif (tif *> exp) (tthen *> exp) (telse *> exp) in
   ws *> choice [ eif; parens exp; eop; evar; econst ]
 ;;
 
@@ -332,14 +326,14 @@ let%test _ =
 ;;
 
 let%test _ =
-  test_exp_suc "|(((-(-(-(+1))))))|"
+  test_exp_suc "(((-(-(-(+1))))))"
   @@ EUnOp (Minus, EUnOp (Minus, EUnOp (Minus, EConst (CInt 1))))
 ;;
 
 let%test _ =
-  test_exp_suc "| - sk+ 8*f- (- 9 )|"
+  test_exp_suc " - sk+ 8*f- (- 9 )"
   @@ EOp
        ( Sub
        , EOp (Add, EUnOp (Minus, EVar "sk"), EOp (Mul, EConst (CInt 8), EVar "f"))
-       , EConst (CInt (-9)) )
+       , EUnOp (Minus, EConst (CInt 9)) )
 ;;

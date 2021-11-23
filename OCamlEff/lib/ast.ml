@@ -14,7 +14,11 @@ type infix_op =
   | Con
 [@@deriving show { with_path = false }]
 
-type const =
+and unary_op = 
+  | Plus 
+  | Minus
+
+and const =
   | CInt of int
   | CString of string
   | CBool of bool
@@ -23,12 +27,13 @@ type const =
 and exp =
   | EConst of const
   | EOp of infix_op * exp * exp
+  | EUnOp of unary_op * exp
   | EVar of id
   | EList of exp list
-  | ETutple of exp list
+  | ETuple of exp list
   | EIf of exp * exp * exp
-  | ELet of (pat * exp) list * exp
-  | ELetRec of (pat * exp) list * exp
+  | ELet of pat * (pat * exp) list * exp
+  | ELetRec of pat * (pat * exp) list * exp
   | EFun of pat * exp
   | EApp of exp * exp
   | EMatch of exp * (pat * exp) list

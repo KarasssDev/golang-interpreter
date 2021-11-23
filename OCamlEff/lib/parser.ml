@@ -36,6 +36,8 @@ let chainl1 e op =
 ;;
 
 let rec chainr1 e op = e >>= fun a -> op >>= (fun f -> chainr1 e op >>| f a) <|> return a
+let ( >=> ) p1 p2 = many1 p1 >>= fun lhs -> p2 >>= fun rhs -> return (lhs @ rhs)
+let mklist a = [ a ]
 
 let is_ws = function
   | ' ' | '\t' -> true
@@ -79,6 +81,8 @@ let semicol = token ";"
 let between l r p = l *> p <* r
 
 (****************** Tokens ******************)
+
+let tlistcons = token "::"
 let tin = token "in"
 let ttrue = token "true"
 let tfalse = token "false"
@@ -96,12 +100,13 @@ let cstring s = CString s
 
 let econst c = EConst c
 let eop o e1 e2 = EOp (o, e1, e2)
+let unop o e = EUnOp (o, e)
 let evar id = EVar id
 let elist l = EList l
-let etuple l = ETutple l
+let etuple l = ETuple l
 let eif e1 e2 e3 = EIf (e1, e2, e3)
-let elet inn out = ELet (inn, out)
-let eletrec inn out = ELetRec (inn, out)
+let elet pat inn out = ELet (pat, inn, out)
+let eletrec pat inn out = ELetRec (pat, inn, out)
 let efun p e = EFun (p, e)
 let eapp e1 e2 = EApp (e1, e2)
 let ematch e cases = EMatch (e, cases)
@@ -201,26 +206,20 @@ let pat =
   fix (fun pat ->
       let _plistbr = lsb *> (sep_by1 semicol pat <|> return []) <* rsb >>| plist in
       let _plistcons =
-        many1 (choice [ lp *> pat <* rp; _plistbr; _pprimitive ] <* token "::")
-        >>= fun lhs ->
-        _plistbr
-        <|> _pwild
-        >>= fun rhs ->
-        return
-          (match rhs with
-          | PList l -> lhs @ l
-          | _ -> lhs @ [ rhs ])
+        choice [ between lp rp pat; _plistbr; _pprimitive ]
+        <* tlistcons
+        >=> (_plistbr
+            <|> _pwild
+            >>| function
+            | PList l -> l
+            | _ as rhs -> [ rhs ])
         >>| plist
       in
       let _ptuplenobr =
-        fix (fun _ptuplenobr ->
-            let tuplemember =
-              choice [ lp *> pat <* rp; _plistcons; _plistbr; _pprimitive ]
-            in
-            many1 (tuplemember <* comma <* ws)
-            >>= fun lhs -> tuplemember >>= fun rhs -> return (lhs @ [ rhs ]) >>| ptuple)
+        let tuplemember = choice [ between lp rp pat; _plistcons; _plistbr; _pprimitive ] in
+        tuplemember <* comma <* ws >=> (tuplemember >>| mklist) >>| ptuple
       in
-      ws *> choice [ _ptuplenobr; lp *> pat <* rp; _plistcons; _plistbr; _pprimitive ]
+      ws *> choice [ _ptuplenobr; between lp rp pat; _plistcons; _plistbr; _pprimitive ]
       <* ws)
 ;;
 

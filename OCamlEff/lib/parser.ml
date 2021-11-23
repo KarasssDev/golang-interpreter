@@ -202,25 +202,33 @@ let _pwild = twild >>| pwild
 let _pconst = const >>| pconst
 let _pprimitive = choice [ _pconst; _pvar; _pwild ]
 
+type pat_dispatch =
+  { _plistcons : pat_dispatch -> pat t
+  ; _ptuplenobr : pat_dispatch -> pat t
+  }
+
 let pat =
-  fix (fun pat ->
-      let _plistbr = lsb *> (sep_by1 semicol pat <|> return []) <* rsb >>| plist in
-      let _plistcons =
-        choice [ between lp rp pat; _plistbr; _pprimitive ]
-        <* tlistcons
-        >=> (_plistbr
-            <|> _pwild
-            >>| function
-            | PList l -> l
-            | _ as rhs -> [ rhs ])
-        >>| plist
-      in
-      let _ptuplenobr =
-        let tuplemember = choice [ between lp rp pat; _plistcons; _plistbr; _pprimitive ] in
-        tuplemember <* comma <* ws >=> (tuplemember >>| mklist) >>| ptuple
-      in
-      ws *> choice [ _ptuplenobr; between lp rp pat; _plistcons; _plistbr; _pprimitive ]
-      <* ws)
+  fix
+  @@ fun pat ->
+  let _plist =
+    let _plistbr = between lsb rsb (sep_by1 semicol pat <|> return []) >>| plist in
+    let _plistcons =
+      choice [ between lp rp pat; _plistbr; _pprimitive ]
+      <* tlistcons
+      >=> (_plistbr
+          <|> _pwild
+          >>| function
+          | PList l -> l
+          | _ as rhs -> [ rhs ])
+      >>| plist
+    in
+    _plistcons <|> _plistbr
+  in
+  let _ptuple =
+    let tuplemember = choice [ between lp rp pat; _plist; _pprimitive ] in
+    tuplemember <* comma <* ws >=> (tuplemember >>| mklist) >>| ptuple
+  in
+  ws *> choice [ _ptuple; _plist; _pprimitive; between lp rp pat ] <* ws
 ;;
 
 let test_pat_suc = parse_test_suc pp_pat pat
@@ -244,12 +252,25 @@ let%test _ = test_pat_suc "(((a), (b)))" (PTuple [ PVar "a"; PVar "b" ])
 let%test _ = test_pat_suc "((((a))))" (PVar "a")
 
 let%test _ =
+  test_pat_suc "(1, 2) :: []" (PList [ PTuple [ PConst (CInt 1); PConst (CInt 2) ] ])
+;;
+
+let%test _ =
   test_pat_suc
     "a, (b, c, (d, e)), (((f)))"
     (PTuple
        [ PVar "a"
        ; PTuple [ PVar "b"; PVar "c"; PTuple [ PVar "d"; PVar "e" ] ]
        ; PVar "f"
+       ])
+;;
+
+let%test _ =
+  test_pat_suc
+    "((1), (((2)))) :: [(3, 4)]"
+    (PList
+       [ PTuple [ PConst (CInt 1); PConst (CInt 2) ]
+       ; PTuple [ PConst (CInt 3); PConst (CInt 4) ]
        ])
 ;;
 

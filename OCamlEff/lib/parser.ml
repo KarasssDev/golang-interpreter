@@ -85,6 +85,9 @@ let parens = between lp rp
 (****************** Tokens ******************)
 
 let tlistcons = token "::"
+let tthen = token "then"
+let telse = token "else"
+let tif = token "if"
 let tin = token "in"
 let ttrue = token "true"
 let tfalse = token "false"
@@ -287,7 +290,7 @@ let exp =
   @@ fun exp ->
   let econst = const >>| econst in
   let evar = id >>| evar in
-  let op =
+  let eop =
     fix
     @@ fun op ->
     let factor =
@@ -301,11 +304,24 @@ let exp =
     let equneq = chainl1 comp eqneqop in
     chainl1 equneq andor
   in
-  ws *> choice [ parens exp; op; evar; econst ]
+  let eif =
+    tif *> exp
+    >>= fun cond ->
+    tthen *> exp >>= fun th -> telse *> exp >>= fun els -> return @@ eif cond th els
+  in
+  ws *> choice [ eif; parens exp; eop; evar; econst ]
 ;;
 
 let test_exp_suc = parse_test_suc pp_exp exp
 let test_exp_fail = parse_test_fail pp_exp exp
+
+let%test _ =
+  test_exp_suc "if x + 20 <= 30 then true else false"
+  @@ EIf
+       ( EOp (Leq, EOp (Add, EVar "x", EConst (CInt 20)), EConst (CInt 30))
+       , EConst (CBool true)
+       , EConst (CBool false) )
+;;
 
 let%test _ =
   test_exp_suc "true = false || 1=1"

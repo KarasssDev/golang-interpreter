@@ -80,7 +80,7 @@ let lsb = token "["
 let comma = token ","
 let semicol = token ";"
 let between l r p = l *> p <* r
-let parens = between lp rp
+let parens p = between lp rp p
 
 (****************** Tokens ******************)
 
@@ -88,6 +88,7 @@ let tlistcons = token "::"
 let tthen = token "then"
 let telse = token "else"
 let tif = token "if"
+let tfun = token "fun"
 let tin = token "in"
 let ttrue = token "true"
 let tfalse = token "false"
@@ -224,20 +225,18 @@ let pwild = twild >>| pwild
 let pconst = const >>| pconst
 let pprimitive = choice [ pconst; pvar; pwild ]
 
-type pat_dispatch =
-  { _plistcons : pat_dispatch -> pat t
-  ; _ptuplenobr : pat_dispatch -> pat t
-  }
-
 let pat =
   fix
   @@ fun pat ->
   let plist =
     let plistbr = between lsb rsb (sep_by1 semicol pat <|> return []) >>| plist in
     let plistcons =
+      fix
+      @@ fun plistcons ->
       choice [ between lp rp pat; plistbr; pprimitive ]
       <* tlistcons
       >=> (plistbr
+          <|> parens plistcons
           <|> pwild
           >>| function
           | PList l -> l
@@ -260,19 +259,17 @@ let%test _ = test_pat_suc "[a; f]" @@ PList [ PVar "a"; PVar "f" ]
 let%test _ = test_pat_suc {|"some_string"|} @@ PConst (CString "some_string")
 let%test _ = test_pat_suc "_ :: []" @@ PList [ PWild ]
 let%test _ = test_pat_suc "[[[1]]]" @@ PList [ PList [ PList [ PConst (CInt 1) ] ] ]
-
-let%test _ =
-  test_pat_suc
-    "[[1]; 2 :: []]"
-    (PList [ PList [ PConst (CInt 1) ]; PList [ PConst (CInt 2) ] ])
-;;
-
 let%test _ = test_pat_suc "true :: _" @@ PList [ PConst (CBool true); PWild ]
 let%test _ = test_pat_suc "_, a" @@ PTuple [ PWild; PVar "a" ]
 let%test _ = test_pat_suc "(a), (b)" @@ PTuple [ PVar "a"; PVar "b" ]
 let%test _ = test_pat_suc "(((a), (b)))" @@ PTuple [ PVar "a"; PVar "b" ]
 let%test _ = test_pat_suc "((((a))))" @@ PVar "a"
 
+let%test _ =
+  test_pat_suc
+    "[[1]; 2 :: []]"
+    (PList [ PList [ PConst (CInt 1) ]; PList [ PConst (CInt 2) ] ])
+;;
 let%test _ =
   test_pat_suc "(1, 2) :: []" @@ PList [ PTuple [ PConst (CInt 1); PConst (CInt 2) ] ]
 ;;
@@ -330,11 +327,21 @@ let exp =
     in
     lift2 elet (many1 binding) exp
   in
-  ws *> choice [ elet; ematch; eif; parens exp; eop; evar; econst ]
+  let efun = lift2 efun (tfun *> pat) (tarrow *> exp) in
+  ws *> choice [ efun; elet; ematch; eif; parens exp; eop; evar; econst ]
 ;;
 
 let test_exp_suc = parse_test_suc pp_exp exp
 let test_exp_fail = parse_test_fail pp_exp exp
+
+let%test _ =
+  test_exp_suc "let pl = 1 in fun x,y -> x - pl + y"
+  @@ ELet
+       ( [ false, PVar "pl", EConst (CInt 1) ]
+       , EFun
+           ( PTuple [ PVar "x"; PVar "y" ]
+           , EOp (Add, EOp (Sub, EVar "x", EVar "pl"), EVar "y") ) )
+;;
 
 let%test _ =
   test_exp_suc "let x = 1 in let y = 2 in 1 + 2"

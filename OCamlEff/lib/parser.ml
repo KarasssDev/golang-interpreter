@@ -88,6 +88,7 @@ let tlistcons = token "::"
 let tthen = token "then"
 let telse = token "else"
 let tif = token "if"
+let tfun = token "fun"
 let tin = token "in"
 let ttrue = token "true"
 let tfalse = token "false"
@@ -224,11 +225,6 @@ let pwild = twild >>| pwild
 let pconst = const >>| pconst
 let pprimitive = choice [ pconst; pvar; pwild ]
 
-type pat_dispatch =
-  { _plistcons : pat_dispatch -> pat t
-  ; _ptuplenobr : pat_dispatch -> pat t
-  }
-
 let pat =
   fix
   @@ fun pat ->
@@ -330,11 +326,21 @@ let exp =
     in
     lift2 elet (many1 binding) exp
   in
-  ws *> choice [ elet; ematch; eif; parens exp; eop; evar; econst ]
+  let efun = lift2 efun (tfun *> pat) (tarrow *> exp) in
+  ws *> choice [ efun; elet; ematch; eif; parens exp; eop; evar; econst ]
 ;;
 
 let test_exp_suc = parse_test_suc pp_exp exp
 let test_exp_fail = parse_test_fail pp_exp exp
+
+let%test _ =
+  test_exp_suc "let pl = 1 in fun x,y -> x - pl + y"
+  @@ ELet
+       ( [ false, PVar "pl", EConst (CInt 1) ]
+       , EFun
+           ( PTuple [ PVar "x"; PVar "y" ]
+           , EOp (Add, EOp (Sub, EVar "x", EVar "pl"), EVar "y") ) )
+;;
 
 let%test _ =
   test_exp_suc "let x = 1 in let y = 2 in 1 + 2"

@@ -28,7 +28,7 @@ and const =
   | CBool of bool
 [@@deriving show { with_path = false }]
 
-and binding = pat * exp [@@deriving show { with_path = false }]
+and binding = bool * pat * exp [@@deriving show { with_path = false }]
 
 and case = pat * exp
 
@@ -40,7 +40,7 @@ and exp =
   | EList of exp list
   | ETuple of exp list
   | EIf of exp * exp * exp
-  | ELet of bool * binding list * exp
+  | ELet of binding list * exp
   | EFun of pat * exp
   | EApp of exp * exp
   | EMatch of exp * case list
@@ -55,8 +55,7 @@ and pat =
 [@@deriving show { with_path = false }]
 
 and decl =
-  | DLet of pat * exp
-  | DLetRec of pat * exp
+  | DLet of binding
   | DEffect of id * type_exp
 [@@deriving show { with_path = false }]
 

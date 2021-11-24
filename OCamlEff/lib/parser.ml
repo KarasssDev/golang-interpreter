@@ -93,6 +93,7 @@ let ttrue = token "true"
 let tfalse = token "false"
 let tlet = token "let"
 let teol = token "\n"
+let trec = token "rec"
 let twild = token "_"
 let tmatch = token "match"
 let tbar = token "|"
@@ -114,13 +115,17 @@ let evar id = EVar id
 let elist l = EList l
 let etuple l = ETuple l
 let eif e1 e2 e3 = EIf (e1, e2, e3)
-let elet ~isrec binds e = ELet (isrec, binds, e)
+let elet binds e = ELet (binds, e)
 let efun p e = EFun (p, e)
 let eapp e1 e2 = EApp (e1, e2)
 let ematch e cases = EMatch (e, cases)
 
 (****************** Case ctors ******************)
 let ccase p e = p, e
+
+(****************** Binding ctors ******************)
+
+let bbind isrec p e = isrec, p, e
 
 (****************** Pat ctors ******************)
 
@@ -132,8 +137,7 @@ let ptuple pl = PTuple pl
 
 (****************** Decl ctors ******************)
 
-let dlet p e = DLet (p, e)
-let dletrec p e = DLetRec (p, e)
+let dlet isrec p e = DLet (isrec, p, e)
 let deff p te = DEffect (p, te)
 
 (****************** Plain parsers ******************)
@@ -316,11 +320,33 @@ let exp =
       (tmatch *> exp)
       (twith *> many1 (lift2 ccase (tbar *> pat) (tarrow *> exp)))
   in
-  ws *> choice [ ematch; eif; parens exp; eop; evar; econst ]
+  let elet =
+    let binding =
+      lift3
+        bbind
+        (tlet *> option false (trec >>| fun _ -> true))
+        (pat <* token "=")
+        (exp <* tin)
+    in
+    lift2 elet (many1 binding) exp
+  in
+  ws *> choice [ elet; ematch; eif; parens exp; eop; evar; econst ]
 ;;
 
 let test_exp_suc = parse_test_suc pp_exp exp
 let test_exp_fail = parse_test_fail pp_exp exp
+
+let%test _ =
+  test_exp_suc "let x = 1 in let y = 2 in 1 + 2"
+  @@ ELet
+       ( [ false, PVar "x", EConst (CInt 1); false, PVar "y", EConst (CInt 2) ]
+       , EOp (Add, EConst (CInt 1), EConst (CInt 2)) )
+;;
+
+let%test _ =
+  test_exp_suc "match x with | a :: [] -> a | _ -> 0"
+  @@ EMatch (EVar "x", [ PList [ PVar "a" ], EVar "a"; PWild, EConst (CInt 0) ])
+;;
 
 let%test _ =
   test_exp_suc "match x + 1 > y / 2 with | true -> x + 1 | false -> x - 2"

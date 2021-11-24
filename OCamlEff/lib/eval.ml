@@ -13,9 +13,10 @@ let rec match_pat pat var =
   match pat, var with
   | PWild, _ -> []
   | PVar name, v -> [ name, v ]
-  | (PConst _ | PList _ | PTuple _), _ -> []
+  | _ -> failwith "unimpl"
 ;;
 
+(*Add other ops later*)
 let apply_op op x y =
   match op, x, y with
   | Add, IntV x, IntV y -> IntV (x + y)
@@ -25,7 +26,6 @@ let apply_op op x y =
   | _ -> failwith "unimpl"
 ;;
 
-(*Add other ops later*)
 let rec eval_exp env = function
   | EConst x ->
     (match x with

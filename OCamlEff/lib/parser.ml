@@ -270,6 +270,7 @@ let%test _ =
     "[[1]; 2 :: []]"
     (PList [ PList [ PConst (CInt 1) ]; PList [ PConst (CInt 2) ] ])
 ;;
+
 let%test _ =
   test_pat_suc "(1, 2) :: []" @@ PList [ PTuple [ PConst (CInt 1); PConst (CInt 2) ] ]
 ;;
@@ -328,11 +329,42 @@ let exp =
     lift2 elet (many1 binding) exp
   in
   let efun = lift2 efun (tfun *> pat) (tarrow *> exp) in
-  ws *> choice [ efun; elet; ematch; eif; parens exp; eop; evar; econst ]
+  let eprimitive = choice [ efun; ematch; eif; eop; evar; econst ] in
+  let elist =
+    let elistbr = between lsb rsb (sep_by1 semicol exp <|> return []) >>| elist in
+    let elistcons =
+      fix
+      @@ fun elistcons ->
+      choice [ between lp rp exp; elistbr; eprimitive ]
+      <* tlistcons
+      >=> (elistbr
+          <|> parens elistcons
+          >>| function
+          | EList l -> l
+          | _ as rhs -> [ rhs ])
+      >>| elist
+    in
+    elistcons <|> elistbr
+  in
+  let etuple =
+    let tuplemember = choice [ between lp rp exp; elist; eprimitive ] in
+    tuplemember <* comma <* ws >=> (tuplemember >>| mklist) >>| etuple
+  in
+  ws *> choice [ etuple; elist; efun; elet; ematch; eif; parens exp; eop; evar; econst ]
+  <* ws
 ;;
 
 let test_exp_suc = parse_test_suc pp_exp exp
 let test_exp_fail = parse_test_fail pp_exp exp
+
+let%test _ =
+  test_exp_suc "(fun x, (y, z) -> x + y / z) :: []"
+  @@ EList
+       [ EFun
+           ( PTuple [ PVar "x"; PTuple [ PVar "y"; PVar "z" ] ]
+           , EOp (Add, EVar "x", EOp (Div, EVar "y", EVar "z")) )
+       ]
+;;
 
 let%test _ =
   test_exp_suc "let pl = 1 in fun x,y -> x - pl + y"

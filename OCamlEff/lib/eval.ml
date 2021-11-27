@@ -51,7 +51,7 @@ let apply_infix_op op x y =
   | Neq, BoolV x, BoolV y -> BoolV (x != y)
   | Neq, TupleV x, TupleV y -> BoolV (x != y)
   | And, BoolV x, BoolV y -> BoolV (x && y)
-  | Or, BoolV x, BoolV y -> BoolV (x && y)
+  | Or, BoolV x, BoolV y -> BoolV (x || y)
   | _, TupleV x, TupleV y when List.length x != List.length y -> raise Tuple_compare
   | _ -> failwith "Wrong infix operation."
 ;;

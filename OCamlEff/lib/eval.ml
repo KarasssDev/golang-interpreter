@@ -1,4 +1,4 @@
-(* open Ast
+open Ast
 open Env
 
 type exval =
@@ -247,4 +247,4 @@ let%test _ =
              ]
            , EVar "y" ) ))
     "8"
-;; *)
+;;

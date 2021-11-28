@@ -58,7 +58,7 @@ and pat =
 
 and decl =
   | DLet of binding
-  | DEffect of id * type_exp
+  | DEffect of id * tyexp
 [@@deriving show { with_path = false }]
 
 and prog = decl list [@@deriving show { with_path = false }]

@@ -1,5 +1,6 @@
 open Angstrom
 open Ast
+open Typing
 open Format
 
 (****************** Main parser ******************)
@@ -52,6 +53,8 @@ let is_digit = function
   | '0' .. '9' -> true
   | _ -> false
 ;;
+
+let skip = take_while (fun c -> is_ws c || is_eol c)
 
 let is_keyword = function
   | "let"
@@ -164,11 +167,7 @@ let cmp e1 e2 =
   choice cmps
 ;;
 
-let id =
-  let check_fst = function
-    | 'a' .. 'z' | '_' -> true
-    | _ -> false
-  in
+let id_ check_fst =
   let check_inner c = check_fst c || is_digit c in
   satisfy check_fst
   >>= fun fst ->
@@ -181,6 +180,13 @@ let id =
     if is_keyword @@ Char.escaped fst ^ inner
     then fail "Keyword is reserved"
     else return @@ Char.escaped fst ^ inner
+;;
+
+let id =
+  id_
+  @@ function
+  | 'a' .. 'z' | '_' -> true
+  | _ -> false
 ;;
 
 (****************** Const parsing ******************)
@@ -382,12 +388,42 @@ let pprog (l : decl list) : prog = l
 
 (****************** Prog parsing ******************)
 
-let prog = many1 (option "" (token ";;") *> decl) >>| pprog
+let prog = many1 (skip *> decl <* option "" (token ";;") <* skip) >>| pprog
 
 (****************** Tests ******************)
 let test_exp_suc = parse_test_suc pp_exp exp
 let test_pat_suc = parse_test_suc pp_pat pat
 let test_prog_suc = parse_test_suc pp_prog prog
+
+let%test _ =
+  test_prog_suc
+    {|
+let fold init f lst = match lst with | [] -> acc | hd :: tl -> fold (f init hd) f tl
+|}
+  @@ [ DLet
+         ( false
+         , PVar "fold"
+         , EFun
+             ( PVar "init"
+             , EFun
+                 ( PVar "f"
+                 , EFun
+                     ( PVar "lst"
+                     , EMatch
+                         ( EVar "lst"
+                         , [ PList [], EVar "acc"
+                           ; ( PCons (PVar "hd", PVar "tl")
+                             , EApp
+                                 ( EApp
+                                     ( EApp
+                                         ( EVar "fold"
+                                         , EApp (EApp (EVar "f", EVar "init"), EVar "hd")
+                                         )
+                                     , EVar "f" )
+                                 , EVar "tl" ) )
+                           ] ) ) ) ) )
+     ]
+;;
 
 let%test _ =
   test_prog_suc "let map f l = match l with | [] -> [] | hd :: tl -> f hd :: map f tl"

@@ -295,7 +295,12 @@ let pack =
       let case = lift2 ccase (tbar *> pat <* tarrow) (d.exp d) in
       lift2 ematch (tmatch *> d.exp d <* twith) (many1 case)
     in
-    ws *> choice [ elet; eif; efun; ematch ] <* ws
+    peek_char_fail
+    >>= function
+    | 'l' -> elet
+    | 'i' -> eif
+    | 'f' -> efun
+    | _ -> ematch
   in
   let tuple d =
     ws
@@ -512,5 +517,44 @@ let%test _ =
                          ) )
                    ] )
              ] )
+     ]
+;;
+
+let%test _ =
+  test_prog_suc
+    "let fib n = let rec helper fst snd n = match n with | 0 -> fst | 1 -> snd | _ -> \
+     helper snd (fst + snd) (n + -1) in helper 0 1 n "
+  @@ [ DLet
+         ( false
+         , PVar "fib"
+         , EFun
+             ( PVar "n"
+             , ELet
+                 ( [ ( true
+                     , PVar "helper"
+                     , EFun
+                         ( PVar "fst"
+                         , EFun
+                             ( PVar "snd"
+                             , EFun
+                                 ( PVar "n"
+                                 , EMatch
+                                     ( EVar "n"
+                                     , [ PConst (CInt 0), EVar "fst"
+                                       ; PConst (CInt 1), EVar "snd"
+                                       ; ( PWild
+                                         , EApp
+                                             ( EApp
+                                                 ( EApp (EVar "helper", EVar "snd")
+                                                 , EOp (Add, EVar "fst", EVar "snd") )
+                                             , EOp
+                                                 ( Add
+                                                 , EVar "n"
+                                                 , EUnOp (Minus, EConst (CInt 1)) ) ) )
+                                       ] ) ) ) ) )
+                   ]
+                 , EApp
+                     ( EApp (EApp (EVar "helper", EConst (CInt 0)), EConst (CInt 1))
+                     , EVar "n" ) ) ) )
      ]
 ;;

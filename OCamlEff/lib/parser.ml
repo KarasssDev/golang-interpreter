@@ -318,7 +318,7 @@ let pack =
     let mul =
       ws
       *> choice
-           [ lift2 (eop Mul) (app <* token "*") (chainl1 (app <|> d.key d) mul); app ]
+           [ lift2 (eop Mul) (app <* token "*") (chainr1 (app <|> d.key d) mul); app ]
       <* ws
     in
     let add =
@@ -335,7 +335,7 @@ let pack =
            [ lift2
                (eop Add)
                (infop mul <* token "+")
-               (chainl1 (infop mul <|> infop @@ d.key d) add)
+               (chainr1 (infop mul <|> infop @@ d.key d) add)
            ; infop mul
            ]
       <* ws
@@ -343,13 +343,13 @@ let pack =
     let cons =
       ws
       *> choice
-           [ lift2 econs (add <* token "::") (chainl1 (add <|> d.key d) eopcons); add ]
+           [ lift2 econs (add <* token "::") (chainr1 (add <|> d.key d) eopcons); add ]
       <* ws
     in
     let cmp =
       ws
       *> choice
-           [ lift2 (eop Less) (cons <* token "<") (chainl1 (cons <|> d.key d) less)
+           [ lift2 (eop Less) (cons <* token "<") (chainr1 (cons <|> d.key d) less)
            ; cons
            ]
       <* ws
@@ -357,12 +357,12 @@ let pack =
     let and_ =
       ws
       *> choice
-           [ lift2 (eop And) (cmp <* token "&&") (chainl1 (cmp <|> d.key d) _and); cmp ]
+           [ lift2 (eop And) (cmp <* token "&&") (chainr1 (cmp <|> d.key d) _and); cmp ]
       <* ws
     in
     ws
     *> choice
-         [ lift2 (eop Or) (cmp <* token "||") (chainl1 (and_ <|> d.key d) _or); and_ ]
+         [ lift2 (eop Or) (cmp <* token "||") (chainr1 (and_ <|> d.key d) _or); and_ ]
     <* ws
   in
   { key; tuple; exp; op }
@@ -426,6 +426,57 @@ let fold init f lst = match lst with | [] -> acc | hd :: tl -> fold (f init hd) 
 ;;
 
 let%test _ =
+  test_prog_suc
+    {|
+let rec fact n = match n with | 0 -> 1 | _ -> n * fact (n + -1)
+|}
+    [ DLet
+        ( true
+        , PVar "fact"
+        , EFun
+            ( PVar "n"
+            , EMatch
+                ( EVar "n"
+                , [ PConst (CInt 0), EConst (CInt 1)
+                  ; ( PWild
+                    , EOp
+                        ( Mul
+                        , EVar "n"
+                        , EApp
+                            ( EVar "fact"
+                            , EOp (Add, EVar "n", EUnOp (Minus, EConst (CInt 1))) ) ) )
+                  ] ) ) )
+    ]
+;;
+
+let%test _ =
+  test_prog_suc
+    {|
+let a, b, (c, (d, e)) = 1, 2, (3, (4, 5));; let f _ = a + b + c + d + e;;
+|}
+    [ DLet
+        ( false
+        , PTuple
+            [ PVar "a"; PVar "b"; PTuple [ PVar "c"; PTuple [ PVar "d"; PVar "e" ] ] ]
+        , ETuple
+            [ EConst (CInt 1)
+            ; EConst (CInt 2)
+            ; ETuple [ EConst (CInt 3); ETuple [ EConst (CInt 4); EConst (CInt 5) ] ]
+            ] )
+    ; DLet
+        ( false
+        , PVar "f"
+        , EFun
+            ( PWild
+            , EOp
+                ( Add
+                , EVar "a"
+                , EOp (Add, EVar "b", EOp (Add, EVar "c", EOp (Add, EVar "d", EVar "e")))
+                ) ) )
+    ]
+;;
+
+let%test _ =
   test_prog_suc "let map f l = match l with | [] -> [] | hd :: tl -> f hd :: map f tl"
   @@ [ DLet
          ( false
@@ -442,5 +493,24 @@ let%test _ =
                              ( EApp (EVar "f", EVar "hd")
                              , EApp (EApp (EVar "map", EVar "f"), EVar "tl") ) )
                        ] ) ) ) )
+     ]
+;;
+
+let%test _ =
+  test_prog_suc "let x, y = 1 :: [2; 3], match z with | _ -> 4 :: 5 :: 6 :: rest;;"
+  @@ [ DLet
+         ( false
+         , PTuple [ PVar "x"; PVar "y" ]
+         , ETuple
+             [ ECons (EConst (CInt 1), EList [ EConst (CInt 2); EConst (CInt 3) ])
+             ; EMatch
+                 ( EVar "z"
+                 , [ ( PWild
+                     , ECons
+                         ( EConst (CInt 4)
+                         , ECons (EConst (CInt 5), ECons (EConst (CInt 6), EVar "rest"))
+                         ) )
+                   ] )
+             ] )
      ]
 ;;

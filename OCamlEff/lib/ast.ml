@@ -51,7 +51,7 @@ and pat =
   | PWild
   | PVar of id
   | PConst of const
-  | Pcons of pat * pat
+  | PCons of pat * pat
   | PList of pat list
   | PTuple of pat list
 [@@deriving show { with_path = false }]

@@ -36,7 +36,6 @@ let chainl1 e op =
 ;;
 
 let rec chainr1 e op = e >>= fun a -> op >>= (fun f -> chainr1 e op >>| f a) <|> return a
-let ( >=> ) p1 p2 = many1 p1 >>= fun lhs -> p2 >>= fun rhs -> return @@ lhs @ rhs
 let mklist a = [ a ]
 
 let is_ws = function
@@ -120,7 +119,7 @@ let div = token "/" *> return (eop Div)
 let mul = token "*" *> return (eop Mul)
 let less = token "<" *> return (eop Less)
 let _and = token "&&" *> return (eop And)
-let cons = token "::" *> return (fun e1 e2 -> ECons (e1, e2))
+let eopcons = token "::" *> return (fun e1 e2 -> ECons (e1, e2))
 let _or = token "||" *> return (eop Or)
 let eunop o e = EUnOp (o, e)
 let evar id = EVar id
@@ -147,6 +146,7 @@ let pvar id = PVar id
 let pconst c = PConst c
 let plist pl = PList pl
 let ptuple pl = PTuple pl
+let popcons = token "::" *> return (fun p1 p2 -> PCons (p1, p2))
 
 (****************** Decl ctors ******************)
 
@@ -178,9 +178,9 @@ let id =
     check_inner
   >>= function
   | _ as inner ->
-    if is_keyword (Char.escaped fst ^ inner)
+    if is_keyword @@ Char.escaped fst ^ inner
     then fail "Keyword is reserved"
-    else return (Char.escaped fst ^ inner)
+    else return @@ Char.escaped fst ^ inner
 ;;
 
 (****************** Const parsing ******************)
@@ -216,42 +216,43 @@ let uns_const = ws *> choice [ cunsint; cbool; cstring ] <* ws
 let pvar = id >>| pvar
 let pwild = twild >>| pwild
 let pconst = const >>| pconst
-let pprimitive = choice [ pconst; pvar; pwild ]
 
-let pat =
-  fix
-  @@ fun pat ->
-  let plist =
-    let plistbr = between lsb rsb (sep_by semicol pat) >>| plist in
-    let plistcons =
-      fix
-      @@ fun plistcons ->
-      choice [ between lp rp pat; plistbr; pprimitive ]
-      <* tlistcons
-      >=> (plistbr
-          <|> parens plistcons
-          <|> pwild
-          >>| function
-          | PList l -> l
-          | _ as rhs -> [ rhs ])
-      >>| plist
-    in
-    plistcons <|> plistbr
+type pdispatch =
+  { tuple : pdispatch -> pat t
+  ; cons : pdispatch -> pat t
+  ; pat : pdispatch -> pat t
+  }
+
+let pcons = return @@ fun p1 p2 -> PCons (p1, p2)
+
+let pack =
+  let pat d = fix @@ fun _self -> ws *> (d.tuple d <|> d.cons d) <* ws in
+  let tuple d =
+    fix
+    @@ fun _self ->
+    ws *> lift2 (fun hd tl -> hd :: tl) (d.cons d) (many1 (comma *> d.cons d))
+    >>| ptuple
+    <* ws
   in
-  let ptuple =
-    let tuplemember = choice [ between lp rp pat; plist; pprimitive ] in
-    tuplemember <* comma <* ws >=> (tuplemember >>| mklist) >>| ptuple
+  let cons d =
+    fix
+    @@ fun _self ->
+    let plist = ws *> (between lsb rsb @@ sep_by semicol @@ d.pat d >>| plist) <* ws in
+    let prim = ws *> choice [ pconst; pvar; pwild; plist; parens @@ d.pat d ] <* ws in
+    ws *> chainr1 prim popcons <* ws
   in
-  ws *> choice [ ptuple; plist; pprimitive; between lp rp pat ] <* ws
+  { tuple; cons; pat }
 ;;
+
+let pat = pack.pat pack
 
 (****************** Expr parsing ******************)
 
-type dispatch =
-  { key : dispatch -> exp t
-  ; tuple : dispatch -> exp t
-  ; exp : dispatch -> exp t
-  ; op : dispatch -> exp t
+type edispatch =
+  { key : edispatch -> exp t
+  ; tuple : edispatch -> exp t
+  ; exp : edispatch -> exp t
+  ; op : edispatch -> exp t
   }
 
 let efun args rhs = List.fold_right efun args rhs
@@ -307,32 +308,36 @@ let pack =
       ws *> choice [ lst >>| elist; uns_const >>| econst; id >>| evar; parens @@ d.exp d ]
       <* ws
     in
-    let app = chainr1 prim eapp in
+    let app = chainl1 prim eapp in
     let mul =
       ws
       *> choice
            [ lift2 (eop Mul) (app <* token "*") (chainl1 (app <|> d.key d) mul); app ]
       <* ws
     in
-    let infop =
-      choice
-        [ token "-" *> mul >>| eunop Minus
-        ; token "+" *> mul
-        ; token "!" *> mul >>| eunop Not
-        ; mul
-        ]
-    in
     let add =
+      let infop p =
+        choice
+          [ token "-" *> p >>| eunop Minus
+          ; token "!" *> p >>| eunop Not
+          ; token "+" *> p
+          ; p
+          ]
+      in
       ws
       *> choice
-           [ lift2 (eop Add) (infop <* token "+") (chainl1 (infop <|> d.key d) add)
-           ; infop
+           [ lift2
+               (eop Add)
+               (infop mul <* token "+")
+               (chainl1 (infop mul <|> infop @@ d.key d) add)
+           ; infop mul
            ]
       <* ws
     in
     let cons =
       ws
-      *> choice [ lift2 econs (add <* token "::") (chainl1 (add <|> d.key d) cons); add ]
+      *> choice
+           [ lift2 econs (add <* token "::") (chainl1 (add <|> d.key d) eopcons); add ]
       <* ws
     in
     let cmp =
@@ -358,56 +363,48 @@ let pack =
 ;;
 
 let exp = pack.exp pack
-let test_exp_suc = parse_test_suc pp_exp exp
 
-let%test _ =
-  test_exp_suc "8 :: x :: (match x with | _ -> 0) :: []"
-  @@ EVar ""
+(****************** Decl parsing ******************)
 
-let%test _ =
-  test_exp_suc "let f x y = fun g z -> match d, x, (g z) with | _ -> true in false"
-  @@ ELet
-       ( [ ( false
-           , PVar "f"
-           , EFun
-               ( PVar "x"
-               , EFun
-                   ( PVar "y"
-                   , EFun
-                       ( PVar "g"
-                       , EFun
-                           ( PVar "z"
-                           , EMatch
-                               ( ETuple [ EVar "d"; EVar "x"; EApp (EVar "g", EVar "z") ]
-                               , [ PWild, EConst (CBool true) ] ) ) ) ) ) )
-         ]
-       , EConst (CBool false) )
+let decl =
+  ws
+  *> lift3
+       dlet
+       (tlet *> option false (trec >>| fun _ -> true))
+       pat
+       (lift2 efun (ws *> many pat <* token "=") exp)
+  <* ws
 ;;
 
-(* let%test _ =
-  test_exp_suc
-    "let rec map f l = match l with | [] -> [] | hd :: [tl] -> (f hd) :: (map f tl) in 1"
-  @@ ELet
-       ( [ ( true
-           , PVar "map"
-           , EFun
-               ( PVar "f"
-               , EFun
-                   ( PVar "l"
-                   , EMatch
-                       ( EVar "l"
-                       , [ PList [], EList []
-                         ; ( PList [ PVar "hd"; PVar "tl" ]
-                           , ECons
-                               ( EApp (EVar "f", EVar "hd")
-                               , EApp (EVar "map", EApp (EVar "f", EVar "tl")) ) )
-                         ] ) ) ) )
-         ]
-       , EConst (CInt 1) )
-;; *)
+(****************** Decl parsing ******************)
 
-let x =
-  match 10 with
-  | 5 -> 1
-  | _ -> 3
+let pprog (l : decl list) : prog = l
+
+(****************** Prog parsing ******************)
+
+let prog = many1 (option "" (token ";;") *> decl) >>| pprog
+
+(****************** Tests ******************)
+let test_exp_suc = parse_test_suc pp_exp exp
+let test_pat_suc = parse_test_suc pp_pat pat
+let test_prog_suc = parse_test_suc pp_prog prog
+
+let%test _ =
+  test_prog_suc "let map f l = match l with | [] -> [] | hd :: tl -> f hd :: map f tl"
+  @@ [ DLet
+         ( false
+         , PVar "map"
+         , EFun
+             ( PVar "f"
+             , EFun
+                 ( PVar "l"
+                 , EMatch
+                     ( EVar "l"
+                     , [ PList [], EList []
+                       ; ( PCons (PVar "hd", PVar "tl")
+                         , ECons
+                             ( EApp (EVar "f", EVar "hd")
+                             , EApp (EApp (EVar "map", EVar "f"), EVar "tl") ) )
+                       ] ) ) ) )
+     ]
 ;;

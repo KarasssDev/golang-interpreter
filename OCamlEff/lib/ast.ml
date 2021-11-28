@@ -39,6 +39,7 @@ and exp =
   | EVar of id
   | EList of exp list
   | ETuple of exp list
+  | ECons of exp * exp
   | EIf of exp * exp * exp
   | ELet of binding list * exp
   | EFun of pat * exp
@@ -50,6 +51,7 @@ and pat =
   | PWild
   | PVar of id
   | PConst of const
+  | Pcons of pat * pat
   | PList of pat list
   | PTuple of pat list
 [@@deriving show { with_path = false }]

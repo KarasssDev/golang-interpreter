@@ -118,7 +118,7 @@ let eval_test ast num =
   true
 ;;
 
-(* Eval test 1 *)
+(* Eval test 1
 let%test _ = eval_test (DLet (false, PVar "x", EConst (CInt 1))) "1"
 
 (* Eval test 2 *)
@@ -150,4 +150,4 @@ let%test _ =
   | Tuple_compare ->
     Printf.printf "Cannot compare tuples of different size.";
     true
-;;
+;; *)

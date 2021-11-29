@@ -479,6 +479,87 @@ let a, b, (c, (d, e)) = 1, 2, (3, (4, 5));; let f _ = a + b + c + d + e;;
                 , EOp (Add, EVar "b", EOp (Add, EVar "c", EOp (Add, EVar "d", EVar "e")))
                 ) ) )
     ]
+<<<<<<< HEAD
+=======
+;;
+
+let%test _ =
+  test_prog_suc "let map f l = match l with | [] -> [] | hd :: tl -> f hd :: map f tl"
+  @@ [ DLet
+         ( false
+         , PVar "map"
+         , EFun
+             ( PVar "f"
+             , EFun
+                 ( PVar "l"
+                 , EMatch
+                     ( EVar "l"
+                     , [ PList [], EList []
+                       ; ( PCons (PVar "hd", PVar "tl")
+                         , ECons
+                             ( EApp (EVar "f", EVar "hd")
+                             , EApp (EApp (EVar "map", EVar "f"), EVar "tl") ) )
+                       ] ) ) ) )
+     ]
+;;
+
+let%test _ =
+  test_prog_suc "let x, y = 1 :: [2; 3], match z with | _ -> 4 :: 5 :: 6 :: rest;;"
+  @@ [ DLet
+         ( false
+         , PTuple [ PVar "x"; PVar "y" ]
+         , ETuple
+             [ ECons (EConst (CInt 1), EList [ EConst (CInt 2); EConst (CInt 3) ])
+             ; EMatch
+                 ( EVar "z"
+                 , [ ( PWild
+                     , ECons
+                         ( EConst (CInt 4)
+                         , ECons (EConst (CInt 5), ECons (EConst (CInt 6), EVar "rest"))
+                         ) )
+                   ] )
+             ] )
+     ]
+;;
+
+let%test _ =
+  test_prog_suc
+    "let fib n = let rec helper fst snd n = match n with | 0 -> fst | 1 -> snd | _ -> \
+     helper snd (fst + snd) (n + -1) in helper 0 1 n "
+  @@ [ DLet
+         ( false
+         , PVar "fib"
+         , EFun
+             ( PVar "n"
+             , ELet
+                 ( [ ( true
+                     , PVar "helper"
+                     , EFun
+                         ( PVar "fst"
+                         , EFun
+                             ( PVar "snd"
+                             , EFun
+                                 ( PVar "n"
+                                 , EMatch
+                                     ( EVar "n"
+                                     , [ PConst (CInt 0), EVar "fst"
+                                       ; PConst (CInt 1), EVar "snd"
+                                       ; ( PWild
+                                         , EApp
+                                             ( EApp
+                                                 ( EApp (EVar "helper", EVar "snd")
+                                                 , EOp (Add, EVar "fst", EVar "snd") )
+                                             , EOp
+                                                 ( Add
+                                                 , EVar "n"
+                                                 , EUnOp (Minus, EConst (CInt 1)) ) ) )
+                                       ] ) ) ) ) )
+                   ]
+                 , EApp
+                     ( EApp (EApp (EVar "helper", EConst (CInt 0)), EConst (CInt 1))
+                     , EVar "n" ) ) ) )
+     ]
+>>>>>>> 0a22cd7bdf521d5f53c9aec3fd87a11a6937e604
 ;;
 
 let%test _ =

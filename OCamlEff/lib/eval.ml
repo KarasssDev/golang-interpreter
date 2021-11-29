@@ -17,13 +17,12 @@ let rec match_pat pat var =
   match pat, var with
   | PWild, _ -> []
   | PVar name, v -> [ name, v ]
-  | PCons (pat1, pat2), ListV vars ->
+  (* | PCons (pat1, pat2), ListV vars ->
     (match vars with
-    | [ hd; tl ] -> match_pat pat1 hd @ match_pat pat2 tl
-    | _ -> failwith "Interpretation error: Wrong match.")
-  | PTuple pats, TupleV vars when List.length pats = List.length vars ->
-    List.fold_left2 (fun binds pat var -> binds @ match_pat pat var) [] pats vars
-  | PList pats, TupleV vars when List.length pats = List.length vars ->
+    | hd :: tl -> match_pat pat1 hd @ match_pat pat2 tl
+    | _ -> failwith "Interpretation error: Wrong match.") *)
+  | (PTuple pats, TupleV vars | PList pats, ListV vars)
+    when List.length pats = List.length vars ->
     List.fold_left2 (fun binds pat var -> binds @ match_pat pat var) [] pats vars
   | _ -> failwith "Interpretation error: Wrong match."
 ;;
@@ -162,8 +161,6 @@ let exval_to_str = function
     | PVar x -> x
     | _ -> "error")
 ;;
-
-type decls = decl list
 
 let eval_test decls expected =
   try

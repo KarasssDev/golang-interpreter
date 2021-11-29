@@ -562,3 +562,26 @@ let%test _ =
            , EConst (CBool true) )
        , EOp (Eq, EConst (CInt 1), EConst (CInt 0)) )
 ;;
+
+let%test _ =
+  test_prog_suc
+    "let rec all predicate list = match list with | [] -> true | hd :: tl -> if \
+     !predicate hd then false else all predicate tl"
+  @@ [ DLet
+         ( true
+         , PVar "all"
+         , EFun
+             ( PVar "predicate"
+             , EFun
+                 ( PVar "list"
+                 , EMatch
+                     ( EVar "list"
+                     , [ PList [], EConst (CBool true)
+                       ; ( PCons (PVar "hd", PVar "tl")
+                         , EIf
+                             ( EUnOp (Not, EApp (EVar "predicate", EVar "hd"))
+                             , EConst (CBool false)
+                             , EApp (EApp (EVar "all", EVar "predicate"), EVar "tl") ) )
+                       ] ) ) ) )
+     ]
+;;

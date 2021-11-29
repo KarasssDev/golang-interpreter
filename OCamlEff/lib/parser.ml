@@ -85,6 +85,7 @@ let is_keyword = function
   | "else"
   | "then"
   | "with"
+  | "effect"
   | "match" -> true
   | _ -> false
 ;;
@@ -183,7 +184,7 @@ let app_unop p =
 
 let id_ check_fst =
   let check_inner c = check_fst c || is_digit c in
-  satisfy check_fst
+  ws *> satisfy check_fst
   >>= fun fst ->
   (match fst with
   | '_' -> take_while1
@@ -337,23 +338,6 @@ let pack =
 
 let exp = pack.exp pack
 
-(****************** Decl parsing ******************)
-
-let decl =
-  ws
-  *> lift3
-       dlet
-       (tlet *> option false (trec >>| fun _ -> true))
-       pat
-       (lift2 efun (ws *> many pat <* token "=") exp)
-  <* ws
-;;
-
-(****************** Prog parsing ******************)
-
-let pprog (l : decl list) : prog = l
-let prog = many1 (skip *> decl <* option "" (token ";;") <* skip) >>| pprog
-
 (****************** Type parsing ******************)
 
 let tyexp =
@@ -389,6 +373,33 @@ let tyexp =
   in
   ws *> chainr1 tup (tarrow *> return (fun t1 t2 -> TArrow (t1, t2))) <* ws
 ;;
+
+(****************** Decl parsing ******************)
+
+let decl =
+  let dlet =
+    lift3
+      dlet
+      (tlet *> option false (trec >>| fun _ -> true))
+      pat
+      (lift2 efun (ws *> many pat <* token "=") exp)
+  in
+  let deff =
+    let id =
+      id_
+      @@ function
+      | 'a' .. 'z' | 'A' .. 'Z' -> true
+      | _ -> false
+    in
+    lift2 deff (token "effect" *> id <* token ":") tyexp
+  in
+  ws *> (deff <|> dlet) <* ws
+;;
+
+(****************** Prog parsing ******************)
+
+let pprog (l : decl list) : prog = l
+let prog = many1 (skip *> decl <* option "" (token ";;") <* skip) >>| pprog
 
 (****************** Tests ******************)
 let test_exp_suc = parse_test_suc pp_exp exp
@@ -624,4 +635,14 @@ let%test _ =
   @@ TArrow
        ( TTuple [ TWild; TInt ]
        , TArrow (TArrow (TList (TList TInt), TArrow (TBool, TString)), TList (TVar 1)) )
+;;
+
+let%test _ =
+  test_prog_suc "effect Choice : string -> int;; let f x y = f (x y)"
+  @@ [ DEffect ("Choice", TArrow (TString, TInt))
+     ; DLet
+         ( false
+         , PVar "f"
+         , EFun (PVar "x", EFun (PVar "y", EApp (EVar "f", EApp (EVar "x", EVar "y")))) )
+     ]
 ;;

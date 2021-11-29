@@ -41,7 +41,7 @@ and exp =
   | ETuple of exp list          (*    1, 2                    *)
   | ECons of exp * exp          (*    hd :: tl                *)
   | EIf of exp * exp * exp      (*    if true then 1 else 0   *)
-  | ELet of binding list * exp  (*    let x = 5 in            *)
+  | ELet of binding list * exp  (*    let x = 5 in 10         *)
   | EFun of pat * exp           (*    fun x -> x * 2          *)
   | EApp of exp * exp           (*    f x                     *)
   | EMatch of exp * case list   (*    match e with | _ -> 0   *)

@@ -31,13 +31,29 @@ let parse_test_fail pp p s =
 ;;
 
 (****************** Helpers ******************)
+
 let chainl1 e op =
   let rec go acc = lift2 (fun f x -> f acc x) op e >>= go <|> return acc in
   e >>= fun init -> go init
 ;;
 
 let rec chainr1 e op = e >>= fun a -> op >>= (fun f -> chainr1 e op >>| f a) <|> return a
-let mklist a = [ a ]
+
+(* chailr1 but parser of most right exp is [pr] *)
+let procr op pl pr =
+  let p =
+    fix @@ fun p -> pl >>= fun l -> op >>= (fun op -> p <|> pr >>| op l) <|> return l
+  in
+  p
+;;
+
+(* chaill1 but parser of most right exp is [pr] *)
+let procl op pl pr =
+  let rec go acc =
+    lift2 (fun f x -> f acc x) op (choice [ pl >>= go; pr ]) <|> return acc
+  in
+  pl >>= fun init -> go init
+;;
 
 let is_ws = function
   | ' ' | '\t' -> true
@@ -73,9 +89,7 @@ let is_keyword = function
   | _ -> false
 ;;
 
-let take_all = take_while (fun _ -> true)
 let ws = take_while is_ws
-let ws1 = take_while1 is_ws
 let eol = take_while is_eol
 let token s = ws *> string s
 let rp = token ")"
@@ -89,7 +103,6 @@ let parens p = between lp rp p
 
 (****************** Tokens ******************)
 
-let tlistcons = token "::"
 let tthen = token "then"
 let telse = token "else"
 let tif = token "if"
@@ -115,15 +128,6 @@ let cstring s = CString s
 (****************** Exp ctors ******************)
 
 let econst c = EConst c
-let eop o e1 e2 = EOp (o, e1, e2)
-let add = token "+" *> return (eop Add)
-let sub = token "-" *> return (eop Sub)
-let div = token "/" *> return (eop Div)
-let mul = token "*" *> return (eop Mul)
-let less = token "<" *> return (eop Less)
-let _and = token "&&" *> return (eop And)
-let eopcons = token "::" *> return (fun e1 e2 -> ECons (e1, e2))
-let _or = token "||" *> return (eop Or)
 let eunop o e = EUnOp (o, e)
 let evar id = EVar id
 let elist l = EList l
@@ -158,13 +162,23 @@ let deff p te = DEffect (p, te)
 
 (****************** Plain parsers ******************)
 
-let cmp e1 e2 =
-  let cmps =
-    List.map
-      (fun (sgn, op) -> lift2 op (e1 <* token sgn) e2)
-      [ "=", eop Eq; "<", eop Less; "<=", eop Leq; ">", eop Gre; ">=", eop Geq ]
-  in
-  choice cmps
+let eop o e1 e2 = EOp (o, e1, e2)
+let add_ = token "+" *> (return @@ eop Add)
+let sub_ = token "+" *> (return @@ eop Sub)
+let mul_ = token "*" *> (return @@ eop Mul)
+let div_ = token "/" *> (return @@ eop Div)
+let eq_ = token "=" *> (return @@ eop Eq)
+let less_ = token "<" *> (return @@ eop Less)
+let gre_ = token ">" *> (return @@ eop Gre)
+let leq_ = token "<=" *> (return @@ eop Leq)
+let geq_ = token ">=" *> (return @@ eop Geq)
+let and_ = token "&&" *> (return @@ eop And)
+let or_ = token "||" *> (return @@ eop Or)
+let cons_ = token "::" *> return econs
+
+let app_unop p =
+  choice
+    [ token "-" *> p >>| eunop Minus; token "!" *> p >>| eunop Not; token "+" *> p; p ]
 ;;
 
 let id_ check_fst =
@@ -295,19 +309,10 @@ let pack =
       let case = lift2 ccase (tbar *> pat <* tarrow) (d.exp d) in
       lift2 ematch (tmatch *> d.exp d <* twith) (many1 case)
     in
-    peek_char_fail
-    >>= function
-    | 'l' -> elet
-    | 'i' -> eif
-    | 'f' -> efun
-    | _ -> ematch
+    choice [ elet; eif; efun; ematch ]
   in
   let tuple d =
-    ws
-    *> lift2
-         (fun hd tl -> hd :: tl)
-         (ws *> d.op d <* comma)
-         (sep_by1 comma (d.op d <|> d.key d))
+    ws *> lift2 (fun x y -> x :: y) (d.op d <* comma) (sep_by1 comma (d.op d <|> d.key d))
     >>| etuple
     <* ws
   in
@@ -319,56 +324,14 @@ let pack =
       ws *> choice [ lst >>| elist; uns_const >>| econst; id >>| evar; parens @@ d.exp d ]
       <* ws
     in
-    let app = chainl1 prim eapp in
-    let mul =
-      ws
-      *> choice
-           [ lift2 (eop Mul) (app <* token "*") (chainr1 (app <|> d.key d) mul); app ]
-      <* ws
-    in
-    let add =
-      let infop p =
-        choice
-          [ token "-" *> p >>| eunop Minus
-          ; token "!" *> p >>| eunop Not
-          ; token "+" *> p
-          ; p
-          ]
-      in
-      ws
-      *> choice
-           [ lift2
-               (eop Add)
-               (infop mul <* token "+")
-               (chainr1 (infop mul <|> infop @@ d.key d) add)
-           ; infop mul
-           ]
-      <* ws
-    in
-    let cons =
-      ws
-      *> choice
-           [ lift2 econs (add <* token "::") (chainr1 (add <|> d.key d) eopcons); add ]
-      <* ws
-    in
-    let cmp =
-      ws
-      *> choice
-           [ lift2 (eop Less) (cons <* token "<") (chainr1 (cons <|> d.key d) less)
-           ; cons
-           ]
-      <* ws
-    in
-    let and_ =
-      ws
-      *> choice
-           [ lift2 (eop And) (cmp <* token "&&") (chainr1 (cmp <|> d.key d) _and); cmp ]
-      <* ws
-    in
-    ws
-    *> choice
-         [ lift2 (eop Or) (cmp <* token "||") (chainr1 (and_ <|> d.key d) _or); and_ ]
-    <* ws
+    let app = ws *> chainl1 prim eapp <* ws in
+    let mul = procl (mul_ <|> div_) app @@ d.key d in
+    let add = procl (add_ <|> sub_) (app_unop mul) (app_unop @@ d.key d) in
+    let cons = procr cons_ add @@ d.key d in
+    let cmp = procl (leq_ <|> less_ <|> geq_ <|> gre_) cons @@ d.key d in
+    let eq = procl eq_ cmp @@ d.key d in
+    let _and = procl and_ eq @@ d.key d in
+    procl or_ _and @@ d.key d
   in
   { key; tuple; exp; op }
 ;;
@@ -557,4 +520,45 @@ let%test _ =
                      ( EApp (EApp (EVar "helper", EConst (CInt 0)), EConst (CInt 1))
                      , EVar "n" ) ) ) )
      ]
+;;
+
+let%test _ =
+  test_prog_suc
+    "let reverse = let rec helper acc l = match l with | [] -> acc | hd :: tl -> helper \
+     tl (hd :: acc) in helper []"
+  @@ [ DLet
+         ( false
+         , PVar "reverse"
+         , ELet
+             ( [ ( true
+                 , PVar "helper"
+                 , EFun
+                     ( PVar "acc"
+                     , EFun
+                         ( PVar "l"
+                         , EMatch
+                             ( EVar "l"
+                             , [ PList [], EVar "acc"
+                               ; ( PCons (PVar "hd", PVar "tl")
+                                 , EApp
+                                     ( EApp (EVar "helper", EVar "tl")
+                                     , ECons (EVar "hd", EVar "acc") ) )
+                               ] ) ) ) )
+               ]
+             , EApp (EVar "helper", EList []) ) )
+     ]
+;;
+
+let%test _ =
+  test_exp_suc "1 + f x < (fun x -> g x y) = true || 1=0"
+  @@ EOp
+       ( Or
+       , EOp
+           ( Eq
+           , EOp
+               ( Less
+               , EOp (Add, EConst (CInt 1), EApp (EVar "f", EVar "x"))
+               , EFun (PVar "x", EApp (EApp (EVar "g", EVar "x"), EVar "y")) )
+           , EConst (CBool true) )
+       , EOp (Eq, EConst (CInt 1), EConst (CInt 0)) )
 ;;

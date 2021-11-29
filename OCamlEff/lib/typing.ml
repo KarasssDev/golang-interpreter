@@ -13,8 +13,9 @@ end
 type binder_set = VarSet.t [@@deriving show { with_path = false }]
 
 type tyexp =
+  | TWild
   | TInt
-  | TSring
+  | TString
   | TBool
   | TVar of binder
   | TTuple of tyexp list
@@ -23,4 +24,5 @@ type tyexp =
 [@@deriving show { with_path = false }]
 
 type scheme = S of binder_set * tyexp [@@deriving show { with_path = false }]
+
 

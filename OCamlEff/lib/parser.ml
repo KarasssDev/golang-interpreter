@@ -349,18 +349,52 @@ let decl =
   <* ws
 ;;
 
-(****************** Decl parsing ******************)
-
-let pprog (l : decl list) : prog = l
-
 (****************** Prog parsing ******************)
 
+let pprog (l : decl list) : prog = l
 let prog = many1 (skip *> decl <* option "" (token ";;") <* skip) >>| pprog
+
+(****************** Type parsing ******************)
+
+let tyexp =
+  fix
+  @@ fun tyexp ->
+  let prim =
+    ws
+    *> (twild *> return TWild
+       <|> token "int" *> return TInt
+       <|> token "string" *> return TString
+       <|> token "bool" *> return TBool
+       <|> (uns >>| fun bind -> TVar (int_of_string bind))
+       <|> parens tyexp)
+    <* ws
+  in
+  let list =
+    prim
+    >>= fun ty ->
+    many1 @@ (ws *> token "list")
+    >>= fun l ->
+    let rec wrap acc n =
+      match n with
+      | 0 -> acc
+      | _ -> wrap (TList acc) (n - 1)
+    in
+    return @@ wrap ty (List.length l)
+  in
+  let tup =
+    sep_by1 (token "*" *> ws) (list <|> prim)
+    >>| function
+    | [ a ] -> a
+    | tup -> TTuple tup
+  in
+  ws *> chainr1 tup (tarrow *> return (fun t1 t2 -> TArrow (t1, t2))) <* ws
+;;
 
 (****************** Tests ******************)
 let test_exp_suc = parse_test_suc pp_exp exp
 let test_pat_suc = parse_test_suc pp_pat pat
 let test_prog_suc = parse_test_suc pp_prog prog
+let test_tyexp_suc = parse_test_suc pp_tyexp tyexp
 
 let%test _ =
   test_prog_suc
@@ -585,4 +619,9 @@ let%test _ =
      ]
 ;;
 
-let%test _ = test_prog_suc "let hd, tl = match l with | hd :: tl -> hd, tl | _ -> 0, 0" @@ []
+let%test _ =
+  test_tyexp_suc "_ * int -> (int list list -> bool -> string) -> 1 list"
+  @@ TArrow
+       ( TTuple [ TWild; TInt ]
+       , TArrow (TArrow (TList (TList TInt), TArrow (TBool, TString)), TList (TVar 1)) )
+;;

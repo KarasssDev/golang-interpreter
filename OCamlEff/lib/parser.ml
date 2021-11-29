@@ -169,6 +169,7 @@ let sub_ = token "-" *> (return @@ eop Sub)
 let mul_ = token "*" *> (return @@ eop Mul)
 let div_ = token "/" *> (return @@ eop Div)
 let eq_ = token "=" *> (return @@ eop Eq)
+let neq_ = token "<>" *> (return @@ eop Eq)
 let less_ = token "<" *> (return @@ eop Less)
 let gre_ = token ">" *> (return @@ eop Gre)
 let leq_ = token "<=" *> (return @@ eop Leq)
@@ -179,7 +180,7 @@ let cons_ = token "::" *> return econs
 
 let app_unop p =
   choice
-    [ token "-" *> p >>| eunop Minus; token "!" *> p >>| eunop Not; token "+" *> p; p ]
+    [ token "-" *> p >>| eunop Minus; token "not" *> p >>| eunop Not; token "+" *> p; p ]
 ;;
 
 let id_ check_fst =
@@ -329,7 +330,7 @@ let pack =
     let add = procl (add_ <|> sub_) (app_unop mul) (app_unop @@ d.key d) in
     let cons = procr cons_ add @@ d.key d in
     let cmp = procl (leq_ <|> less_ <|> geq_ <|> gre_) cons @@ d.key d in
-    let eq = procl eq_ cmp @@ d.key d in
+    let eq = procl (eq_ <|> neq_) cmp @@ d.key d in
     let _and = procl and_ eq @@ d.key d in
     ws *> (procl or_ _and @@ d.key d) <* ws
   in
@@ -610,7 +611,7 @@ let%test _ =
 let%test _ =
   test_prog_suc
     "let rec all predicate list = match list with | [] -> true | hd :: tl -> if \
-     !predicate hd then false else all predicate tl"
+     not predicate hd then false else all predicate tl"
   @@ [ DLet
          ( true
          , PVar "all"

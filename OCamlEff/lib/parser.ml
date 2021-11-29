@@ -32,6 +32,11 @@ let parse_test_fail pp p s =
 
 (****************** Helpers ******************)
 
+let is_ws = function
+  | ' ' | '\t' -> true
+  | _ -> false
+;;
+
 let chainl1 e op =
   let rec go acc = lift2 (fun f x -> f acc x) op e >>= go <|> return acc in
   e >>= fun init -> go init
@@ -47,17 +52,12 @@ let procr op pl pr =
   p
 ;;
 
-(* chaill1 but parser of most right exp is [pr] *)
+(* chainl1 but parser of most right exp is [pr] *)
 let procl op pl pr =
   let rec go acc =
     lift2 (fun f x -> f acc x) op (choice [ pl >>= go; pr ]) <|> return acc
   in
   pl >>= fun init -> go init
-;;
-
-let is_ws = function
-  | ' ' | '\t' -> true
-  | _ -> false
 ;;
 
 let is_eol = function
@@ -164,7 +164,7 @@ let deff p te = DEffect (p, te)
 
 let eop o e1 e2 = EOp (o, e1, e2)
 let add_ = token "+" *> (return @@ eop Add)
-let sub_ = token "+" *> (return @@ eop Sub)
+let sub_ = token "-" *> (return @@ eop Sub)
 let mul_ = token "*" *> (return @@ eop Mul)
 let div_ = token "/" *> (return @@ eop Div)
 let eq_ = token "=" *> (return @@ eop Eq)
@@ -312,9 +312,8 @@ let pack =
     choice [ elet; eif; efun; ematch ]
   in
   let tuple d =
-    ws *> lift2 (fun x y -> x :: y) (d.op d <* comma) (sep_by1 comma (d.op d <|> d.key d))
+    lift2 ( @ ) (many1 (d.op d <* comma)) (d.op d <|> d.key d >>| fun rhs -> [ rhs ])
     >>| etuple
-    <* ws
   in
   let op d =
     fix
@@ -331,7 +330,7 @@ let pack =
     let cmp = procl (leq_ <|> less_ <|> geq_ <|> gre_) cons @@ d.key d in
     let eq = procl eq_ cmp @@ d.key d in
     let _and = procl and_ eq @@ d.key d in
-    procl or_ _and @@ d.key d
+    ws *> (procl or_ _and @@ d.key d) <* ws
   in
   { key; tuple; exp; op }
 ;;
@@ -585,3 +584,5 @@ let%test _ =
                        ] ) ) ) )
      ]
 ;;
+
+let%test _ = test_prog_suc "let hd, tl = match l with | hd :: tl -> hd, tl | _ -> 0, 0" @@ []

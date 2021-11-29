@@ -13,14 +13,14 @@ end
 type binder_set = VarSet.t [@@deriving show { with_path = false }]
 
 type tyexp =
-  | TWild
-  | TInt
-  | TString
-  | TBool
-  | TVar of binder
-  | TTuple of tyexp list
-  | TList of tyexp
-  | TArrow of tyexp * tyexp
+  | TWild                   (*  _                       *)
+  | TInt                    (*  int                     *)
+  | TString                 (*  string                  *)
+  | TBool                   (*  bool                    *)
+  | TVar of binder          (*  1 (polymorphic type)    *)
+  | TTuple of tyexp list    (*  int * string            *)
+  | TList of tyexp          (*  string list list        *)
+  | TArrow of tyexp * tyexp (*  int -> string           *)
 [@@deriving show { with_path = false }]
 
 type scheme = S of binder_set * tyexp [@@deriving show { with_path = false }]

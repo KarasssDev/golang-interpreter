@@ -12,19 +12,17 @@ type exval =
 type env = exval Env.t
 
 exception Tuple_compare
+exception Match_fail
 
 let rec match_pat pat var =
   match pat, var with
   | PWild, _ -> []
   | PVar name, v -> [ name, v ]
-  (* | PCons (pat1, pat2), ListV vars ->
-    (match vars with
-    | hd :: tl -> match_pat pat1 hd @ match_pat pat2 tl
-    | _ -> failwith "Interpretation error: Wrong match.") *)
+  | PCons (pat1, pat2), ListV (hd :: tl) -> match_pat pat1 hd @ match_pat pat2 (ListV tl)
   | (PTuple pats, TupleV vars | PList pats, ListV vars)
     when List.length pats = List.length vars ->
     List.fold_left2 (fun binds pat var -> binds @ match_pat pat var) [] pats vars
-  | _ -> failwith "Interpretation error: Wrong match."
+  | _ -> raise Match_fail
 ;;
 
 let apply_infix_op op x y =
@@ -85,7 +83,10 @@ let rec eval_exp env = function
     | CString x -> StringV x)
   | EVar x ->
     (try Env.lookup x env with
-    | Env.Not_bound -> assert false)
+    | Env.Not_bound ->
+      Printf.printf "Interpretation error: undef variable %s\n" x;
+      IdMap.iter (fun k _ -> Printf.printf "%s -> some_value\n" k) env;
+      failwith "")
   | EOp (op, x, y) ->
     let exp_x = eval_exp env x in
     let exp_y = eval_exp env y in
@@ -125,9 +126,22 @@ let rec eval_exp env = function
     (match eval_exp env exp1 with
     | FunV (pat, exp, fenv) ->
       let binds = match_pat pat (eval_exp env exp2) in
-      let env = List.fold_left (fun env (id, v) -> extend id v env) fenv binds in
-      eval_exp env exp
+      let new_env = List.fold_left (fun env (id, v) -> extend id v env) fenv binds in
+      eval_exp new_env exp
     | _ -> failwith "Interpretation error: wrong application")
+  | EMatch (exp, mathchings) ->
+    let evaled = eval_exp env exp in
+    let rec do_match = function
+      | [] -> failwith "Interpretation error: match fail"
+      | (pat, exp) :: tl ->
+        (try
+           let binds = match_pat pat evaled in
+           let env = List.fold_left (fun env (id, v) -> extend id v env) env binds in
+           eval_exp env exp
+         with
+        | Match_fail -> do_match tl)
+    in
+    do_match mathchings
   | _ -> failwith "Interpretation error: unimpl"
 ;;
 
@@ -165,14 +179,7 @@ let exval_to_str = function
 let eval_test decls expected =
   try
     let init_env = Env.empty in
-    let env =
-      List.fold_left
-        (fun env decl ->
-          let new_env = eval_dec env decl in
-          new_env)
-        init_env
-        decls
-    in
+    let env = List.fold_left (fun env decl -> eval_dec env decl) init_env decls in
     let res =
       IdMap.fold
         (fun k v ln ->
@@ -181,7 +188,11 @@ let eval_test decls expected =
         env
         ""
     in
-    if res = expected then true else false
+    if res = expected
+    then true
+    else (
+      Printf.printf "%s" res;
+      false)
   with
   | Tuple_compare ->
     if expected = "Interpretation error: Cannot compare tuples of different size."
@@ -359,4 +370,27 @@ let%test _ =
     ; DLet (false, PVar "lol", EApp (EVar "kek", EConst (CInt 2)))
     ]
     "f -> x kek -> y lol -> 3 "
+;;
+
+let%test _ =
+  eval_test
+    [ DLet
+        ( true
+        , PVar "fact"
+        , EFun
+            ( PVar "n"
+            , EMatch
+                ( EVar "n"
+                , [ PConst (CInt 0), EConst (CInt 1)
+                  ; ( PWild
+                    , EOp
+                        ( Mul
+                        , EVar "n"
+                        , EApp
+                            ( EVar "fact"
+                            , EOp (Add, EVar "n", EUnOp (Minus, EConst (CInt 1))) ) ) )
+                  ] ) ) )
+    ; DLet (false, PVar "x", EApp (EVar "fact", EConst (CInt 3)))
+    ]
+    "fact -> n x -> 6 "
 ;;

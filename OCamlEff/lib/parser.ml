@@ -610,8 +610,8 @@ let%test _ =
 
 let%test _ =
   test_prog_suc
-    "let rec all predicate list = match list with | [] -> true | hd :: tl -> if \
-     not predicate hd then false else all predicate tl"
+    "let rec all predicate list = match list with | [] -> true | hd :: tl -> if not \
+     predicate hd then false else all predicate tl"
   @@ [ DLet
          ( true
          , PVar "all"

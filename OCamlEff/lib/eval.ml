@@ -9,10 +9,38 @@ type exval =
   | ListV of exval list
   | FunV of pat * exp * exval Env.t
 
+let str_converter = function
+  | IntV x -> string_of_int x
+  | BoolV x -> string_of_bool x
+  | StringV x -> x
+  | _ -> failwith "Interpretation error: not basic type."
+;;
+
+let exval_to_str = function
+  | Some (IntV x) -> str_converter (IntV x)
+  | Some (BoolV x) -> str_converter (BoolV x)
+  | Some (StringV x) -> str_converter (StringV x)
+  | Some (TupleV x) -> String.concat " " (List.map str_converter x)
+  | Some (ListV x) -> String.concat " " (List.map str_converter x)
+  | Some (FunV (pat, _, _)) ->
+    (match pat with
+    | PVar x -> x
+    | _ -> "error")
+  | None -> "error"
+;;
+
 type env = exval Env.t
 
 exception Tuple_compare
 exception Match_fail
+
+let rec vars_pat = function
+  | PVar name -> [ name ]
+  | PCons (pat1, pat2) -> vars_pat pat1 @ vars_pat pat2
+  | PTuple pats | PList pats ->
+    List.fold_left (fun binds pat -> binds @ vars_pat pat) [] pats
+  | _ -> raise Match_fail
+;;
 
 let rec match_pat pat var =
   match pat, var with
@@ -22,6 +50,12 @@ let rec match_pat pat var =
   | (PTuple pats, TupleV vars | PList pats, ListV vars)
     when List.length pats = List.length vars ->
     List.fold_left2 (fun binds pat var -> binds @ match_pat pat var) [] pats vars
+  | PConst x, v ->
+    (match x, v with
+    | CInt a, IntV b when a = b -> []
+    | CString a, StringV b when a = b -> []
+    | CBool a, BoolV b when a = b -> []
+    | _ -> raise Match_fail)
   | _ -> raise Match_fail
 ;;
 
@@ -83,10 +117,7 @@ let rec eval_exp env = function
     | CString x -> StringV x)
   | EVar x ->
     (try Env.lookup x env with
-    | Env.Not_bound ->
-      Printf.printf "Interpretation error: undef variable %s\n" x;
-      IdMap.iter (fun k _ -> Printf.printf "%s -> some_value\n" k) env;
-      failwith "")
+    | Env.Not_bound -> failwith "Interpretation error: undef variable.")
   | EOp (op, x, y) ->
     let exp_x = eval_exp env x in
     let exp_y = eval_exp env y in
@@ -112,11 +143,17 @@ let rec eval_exp env = function
       List.fold_left
         (fun env binding ->
           match binding with
-          (* Think of let and let rec *)
-          | _, pat, exp ->
+          | false, pat, exp ->
             let evaled = eval_exp env exp in
             let binds = match_pat pat evaled in
-            List.fold_left (fun env (id, v) -> extend id v env) env binds)
+            List.fold_left (fun env (id, v) -> extend id v env) env binds
+          | true, pat, exp ->
+            let vars = vars_pat pat in
+            let env = List.fold_left (fun env id -> reserve id env) env vars in
+            let vb = eval_exp env exp in
+            let binds = match_pat pat vb in
+            List.iter (fun (id, v) -> emplace id v env) binds;
+            env)
         env
         bindings
     in
@@ -142,38 +179,24 @@ let rec eval_exp env = function
         | Match_fail -> do_match tl)
     in
     do_match mathchings
-  | _ -> failwith "Interpretation error: unimpl"
 ;;
 
 let eval_dec env = function
   | DLet bindings ->
     (match bindings with
-    (* Think of let and let rec *)
-    | _, pat, exp ->
+    | false, pat, exp ->
       let evaled = eval_exp env exp in
       let binds = match_pat pat evaled in
       let env = List.fold_left (fun env (id, v) -> extend id v env) env binds in
+      env
+    | true, pat, exp ->
+      let vars = vars_pat pat in
+      let env = List.fold_left (fun env id -> reserve id env) env vars in
+      let vb = eval_exp env exp in
+      let binds = match_pat pat vb in
+      List.iter (fun (id, v) -> emplace id v env) binds;
       env)
   | _ -> failwith "Interpretation error: unimpl"
-;;
-
-let str_converter = function
-  | IntV x -> string_of_int x
-  | BoolV x -> string_of_bool x
-  | StringV x -> x
-  | _ -> failwith "Interpretation error: not basic type."
-;;
-
-let exval_to_str = function
-  | IntV x -> str_converter (IntV x)
-  | BoolV x -> str_converter (BoolV x)
-  | StringV x -> str_converter (StringV x)
-  | TupleV x -> String.concat " " (List.map str_converter x)
-  | ListV x -> String.concat " " (List.map str_converter x)
-  | FunV (pat, _, _) ->
-    (match pat with
-    | PVar x -> x
-    | _ -> "error")
 ;;
 
 let eval_test decls expected =
@@ -358,9 +381,9 @@ let%test _ =
 (* Eval test 11 *)
 
 (* 
-let f x y = x + y
-let kek = f 1
-let lol = kek 2 
+  let f x y = x + y
+  let kek = f 1
+  let lol = kek 2 
 *)
 let%test _ =
   eval_test
@@ -372,6 +395,15 @@ let%test _ =
     "f -> x kek -> y lol -> 3 "
 ;;
 
+(* Eval test 12 *)
+
+(* 
+  let rec fact n =
+  match n with
+  | 0 -> 1
+  | _ -> n * fact (n + -1)
+  let x = fact 3
+*)
 let%test _ =
   eval_test
     [ DLet

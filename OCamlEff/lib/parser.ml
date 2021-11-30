@@ -32,6 +32,11 @@ let parse_test_fail pp p s =
 
 (****************** Helpers ******************)
 
+let is_ws = function
+  | ' ' | '\t' -> true
+  | _ -> false
+;;
+
 let chainl1 e op =
   let rec go acc = lift2 (fun f x -> f acc x) op e >>= go <|> return acc in
   e >>= fun init -> go init
@@ -47,17 +52,12 @@ let procr op pl pr =
   p
 ;;
 
-(* chaill1 but parser of most right exp is [pr] *)
+(* chainl1 but parser of most right exp is [pr] *)
 let procl op pl pr =
   let rec go acc =
     lift2 (fun f x -> f acc x) op (choice [ pl >>= go; pr ]) <|> return acc
   in
   pl >>= fun init -> go init
-;;
-
-let is_ws = function
-  | ' ' | '\t' -> true
-  | _ -> false
 ;;
 
 let is_eol = function
@@ -85,6 +85,7 @@ let is_keyword = function
   | "else"
   | "then"
   | "with"
+  | "effect"
   | "match" -> true
   | _ -> false
 ;;
@@ -164,10 +165,11 @@ let deff p te = DEffect (p, te)
 
 let eop o e1 e2 = EOp (o, e1, e2)
 let add_ = token "+" *> (return @@ eop Add)
-let sub_ = token "+" *> (return @@ eop Sub)
+let sub_ = token "-" *> (return @@ eop Sub)
 let mul_ = token "*" *> (return @@ eop Mul)
 let div_ = token "/" *> (return @@ eop Div)
 let eq_ = token "=" *> (return @@ eop Eq)
+let neq_ = token "<>" *> (return @@ eop Eq)
 let less_ = token "<" *> (return @@ eop Less)
 let gre_ = token ">" *> (return @@ eop Gre)
 let leq_ = token "<=" *> (return @@ eop Leq)
@@ -178,12 +180,12 @@ let cons_ = token "::" *> return econs
 
 let app_unop p =
   choice
-    [ token "-" *> p >>| eunop Minus; token "!" *> p >>| eunop Not; token "+" *> p; p ]
+    [ token "-" *> p >>| eunop Minus; token "not" *> p >>| eunop Not; token "+" *> p; p ]
 ;;
 
 let id_ check_fst =
   let check_inner c = check_fst c || is_digit c in
-  satisfy check_fst
+  ws *> satisfy check_fst
   >>= fun fst ->
   (match fst with
   | '_' -> take_while1
@@ -312,9 +314,8 @@ let pack =
     choice [ elet; eif; efun; ematch ]
   in
   let tuple d =
-    ws *> lift2 (fun x y -> x :: y) (d.op d <* comma) (sep_by1 comma (d.op d <|> d.key d))
+    lift2 ( @ ) (many1 (d.op d <* comma)) (d.op d <|> d.key d >>| fun rhs -> [ rhs ])
     >>| etuple
-    <* ws
   in
   let op d =
     fix
@@ -329,39 +330,83 @@ let pack =
     let add = procl (add_ <|> sub_) (app_unop mul) (app_unop @@ d.key d) in
     let cons = procr cons_ add @@ d.key d in
     let cmp = procl (leq_ <|> less_ <|> geq_ <|> gre_) cons @@ d.key d in
-    let eq = procl eq_ cmp @@ d.key d in
+    let eq = procl (eq_ <|> neq_) cmp @@ d.key d in
     let _and = procl and_ eq @@ d.key d in
-    procl or_ _and @@ d.key d
+    ws *> (procl or_ _and @@ d.key d) <* ws
   in
   { key; tuple; exp; op }
 ;;
 
 let exp = pack.exp pack
 
-(****************** Decl parsing ******************)
+(****************** Type parsing ******************)
 
-let decl =
-  ws
-  *> lift3
-       dlet
-       (tlet *> option false (trec >>| fun _ -> true))
-       pat
-       (lift2 efun (ws *> many pat <* token "=") exp)
-  <* ws
+let tyexp =
+  fix
+  @@ fun tyexp ->
+  let prim =
+    ws
+    *> (twild *> return TWild
+       <|> token "int" *> return TInt
+       <|> token "string" *> return TString
+       <|> token "bool" *> return TBool
+       <|> (uns >>| fun bind -> TVar (int_of_string bind))
+       <|> parens tyexp)
+    <* ws
+  in
+  let list =
+    prim
+    >>= fun ty ->
+    many1 @@ (ws *> token "list")
+    >>= fun l ->
+    let rec wrap acc n =
+      match n with
+      | 0 -> acc
+      | _ -> wrap (TList acc) (n - 1)
+    in
+    return @@ wrap ty (List.length l)
+  in
+  let tup =
+    sep_by1 (token "*" *> ws) (list <|> prim)
+    >>| function
+    | [ a ] -> a
+    | tup -> TTuple tup
+  in
+  ws *> chainr1 tup (tarrow *> return (fun t1 t2 -> TArrow (t1, t2))) <* ws
 ;;
 
 (****************** Decl parsing ******************)
 
-let pprog (l : decl list) : prog = l
+let decl =
+  let dlet =
+    lift3
+      dlet
+      (tlet *> option false (trec >>| fun _ -> true))
+      pat
+      (lift2 efun (ws *> many pat <* token "=") exp)
+  in
+  let deff =
+    let id =
+      id_
+      @@ function
+      | 'a' .. 'z' | 'A' .. 'Z' -> true
+      | _ -> false
+    in
+    lift2 deff (token "effect" *> id <* token ":") tyexp
+  in
+  ws *> (deff <|> dlet) <* ws
+;;
 
 (****************** Prog parsing ******************)
 
+let pprog (l : decl list) : prog = l
 let prog = many1 (skip *> decl <* option "" (token ";;") <* skip) >>| pprog
 
 (****************** Tests ******************)
 let test_exp_suc = parse_test_suc pp_exp exp
 let test_pat_suc = parse_test_suc pp_pat pat
 let test_prog_suc = parse_test_suc pp_prog prog
+let test_tyexp_suc = parse_test_suc pp_tyexp tyexp
 
 let%test _ =
   test_prog_suc
@@ -566,7 +611,7 @@ let%test _ =
 let%test _ =
   test_prog_suc
     "let rec all predicate list = match list with | [] -> true | hd :: tl -> if \
-     !predicate hd then false else all predicate tl"
+     not predicate hd then false else all predicate tl"
   @@ [ DLet
          ( true
          , PVar "all"
@@ -583,5 +628,22 @@ let%test _ =
                              , EConst (CBool false)
                              , EApp (EApp (EVar "all", EVar "predicate"), EVar "tl") ) )
                        ] ) ) ) )
+     ]
+;;
+
+let%test _ =
+  test_tyexp_suc "_ * int -> (int list list -> bool -> string) -> 1 list"
+  @@ TArrow
+       ( TTuple [ TWild; TInt ]
+       , TArrow (TArrow (TList (TList TInt), TArrow (TBool, TString)), TList (TVar 1)) )
+;;
+
+let%test _ =
+  test_prog_suc "effect Choice : string -> int;; let f x y = f (x y)"
+  @@ [ DEffect ("Choice", TArrow (TString, TInt))
+     ; DLet
+         ( false
+         , PVar "f"
+         , EFun (PVar "x", EFun (PVar "y", EApp (EVar "f", EApp (EVar "x", EVar "y")))) )
      ]
 ;;

@@ -223,6 +223,12 @@ let eval_test decls expected =
     else false
 ;;
 
+let test code expected =
+  match Parser.parse Parser.prog code with
+  | Result.Ok prog -> eval_test prog expected
+  | _ -> failwith "Parse error"
+;;
+
 (* Eval test 1 *)
 
 (* 
@@ -425,4 +431,10 @@ let%test _ =
     ; DLet (false, PVar "x", EApp (EVar "fact", EConst (CInt 3)))
     ]
     "fact -> n x -> 6 "
+;;
+
+let%test _ =
+  test
+    "let third lst = match lst with | fst :: snd :: third :: _ -> third | _ -> 0;; let t = third [1; 2; 3];;"
+    ""
 ;;

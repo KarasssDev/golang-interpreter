@@ -647,3 +647,41 @@ let%test _ =
          , EFun (PVar "x", EFun (PVar "y", EApp (EVar "f", EApp (EVar "x", EVar "y")))) )
      ]
 ;;
+
+
+let%test _ =
+  test_prog_suc
+    "let rec sort lst = let sorted = match lst with | hd1 :: hd2 :: tl -> if hd1 > hd2 \
+     then  hd2 :: sort (hd1 :: tl)  else hd1 :: sort (hd2 :: tl) | tl -> tl in if lst = \
+     sorted then lst else sort sorted;; let l = [];; let sorted = sort l;;"
+    [ DLet
+        ( true
+        , PVar "sort"
+        , EFun
+            ( PVar "lst"
+            , ELet
+                ( [ ( false
+                    , PVar "sorted"
+                    , EMatch
+                        ( EVar "lst"
+                        , [ ( PCons (PVar "hd1", PCons (PVar "hd2", PVar "tl"))
+                            , EIf
+                                ( EOp (Gre, EVar "hd1", EVar "hd2")
+                                , ECons
+                                    ( EVar "hd2"
+                                    , EApp (EVar "sort", ECons (EVar "hd1", EVar "tl")) )
+                                , ECons
+                                    ( EVar "hd1"
+                                    , EApp (EVar "sort", ECons (EVar "hd2", EVar "tl")) )
+                                ) )
+                          ; PVar "tl", EVar "tl"
+                          ] ) )
+                  ]
+                , EIf
+                    ( EOp (Eq, EVar "lst", EVar "sorted")
+                    , EVar "lst"
+                    , EApp (EVar "sort", EVar "sorted") ) ) ) )
+    ; DLet (false, PVar "l", EList [])
+    ; DLet (false, PVar "sorted", EApp (EVar "sort", EVar "l"))
+    ]
+;;

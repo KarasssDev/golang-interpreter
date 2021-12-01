@@ -17,16 +17,15 @@ let str_converter = function
 ;;
 
 let exval_to_str = function
-  | Some (IntV x) -> str_converter (IntV x)
-  | Some (BoolV x) -> str_converter (BoolV x)
-  | Some (StringV x) -> str_converter (StringV x)
-  | Some (TupleV x) -> String.concat " " (List.map str_converter x)
-  | Some (ListV x) -> String.concat " " (List.map str_converter x)
-  | Some (FunV (pat, _, _)) ->
+  | IntV x -> str_converter (IntV x)
+  | BoolV x -> str_converter (BoolV x)
+  | StringV x -> str_converter (StringV x)
+  | TupleV x -> String.concat " " (List.map str_converter x)
+  | ListV x -> String.concat " " (List.map str_converter x)
+  | FunV (pat, _, _) ->
     (match pat with
     | PVar x -> x
     | _ -> "error")
-  | None -> "error"
 ;;
 
 type env = exval Env.t
@@ -150,17 +149,10 @@ let rec eval_exp env = function
       List.fold_left
         (fun env binding ->
           match binding with
-          | false, pat, exp ->
+          | _, pat, exp ->
             let evaled = eval_exp env exp in
             let binds = match_pat pat evaled in
-            List.fold_left (fun env (id, v) -> extend id v env) env binds
-          | true, pat, exp ->
-            let vars = vars_pat pat in
-            let env = List.fold_left (fun env id -> reserve id env) env vars in
-            let vb = eval_exp env exp in
-            let binds = match_pat pat vb in
-            List.iter (fun (id, v) -> emplace id v env) binds;
-            env)
+            List.fold_left (fun env (id, v) -> extend id v env) env binds)
         env
         bindings
     in
@@ -171,7 +163,12 @@ let rec eval_exp env = function
     | FunV (pat, exp, fenv) ->
       let binds = match_pat pat (eval_exp env exp2) in
       let new_env = List.fold_left (fun env (id, v) -> extend id v env) fenv binds in
-      eval_exp new_env exp
+      let very_new_env =
+        match exp1 with
+        | EVar x -> extend x (eval_exp env exp1) new_env
+        | _ -> new_env
+      in
+      eval_exp very_new_env exp
     | _ -> failwith "Interpretation error: wrong application")
   | EMatch (exp, mathchings) ->
     let evaled = eval_exp env exp in
@@ -191,17 +188,10 @@ let rec eval_exp env = function
 let eval_dec env = function
   | DLet bindings ->
     (match bindings with
-    | false, pat, exp ->
+    | _, pat, exp ->
       let evaled = eval_exp env exp in
       let binds = match_pat pat evaled in
       let env = List.fold_left (fun env (id, v) -> extend id v env) env binds in
-      env
-    | true, pat, exp ->
-      let vars = vars_pat pat in
-      let env = List.fold_left (fun env id -> reserve id env) env vars in
-      let vb = eval_exp env exp in
-      let binds = match_pat pat vb in
-      List.iter (fun (id, v) -> emplace id v env) binds;
       env)
   | _ -> failwith "Interpretation error: unimpl"
 ;;
@@ -213,7 +203,7 @@ let eval_test decls expected =
     let res =
       IdMap.fold
         (fun k v ln ->
-          let new_res = ln ^ Printf.sprintf "%s -> %s " k (exval_to_str !v) in
+          let new_res = ln ^ Printf.sprintf "%s -> %s " k (exval_to_str v) in
           new_res)
         env
         ""
@@ -453,7 +443,7 @@ let%test _ =
     if lst = sorted then lst else sort sorted
   ;;
 
-  let l = []
+  let l = [1; 2; 3]
   let sorted = sort l
 *)
 let%test _ =

@@ -70,34 +70,41 @@ let apply_infix_op op x y =
   | Less, StringV x, StringV y -> BoolV (x < y)
   | Less, BoolV x, BoolV y -> BoolV (x < y)
   | Less, TupleV x, TupleV y when List.length x = List.length y -> BoolV (x < y)
+  | Less, ListV x, ListV y -> BoolV (x < y)
   (* "<=" block *)
   | Leq, IntV x, IntV y -> BoolV (x <= y)
   | Leq, StringV x, StringV y -> BoolV (x <= y)
   | Leq, BoolV x, BoolV y -> BoolV (x <= y)
   | Leq, TupleV x, TupleV y when List.length x = List.length y -> BoolV (x <= y)
+  | Leq, ListV x, ListV y -> BoolV (x <= y)
   (* ">" block *)
   | Gre, IntV x, IntV y -> BoolV (x > y)
   | Gre, StringV x, StringV y -> BoolV (x > y)
   | Gre, BoolV x, BoolV y -> BoolV (x > y)
   | Gre, TupleV x, TupleV y when List.length x = List.length y -> BoolV (x > y)
+  | Gre, ListV x, ListV y -> BoolV (x > y)
   (* ">=" block *)
   | Geq, IntV x, IntV y -> BoolV (x >= y)
   | Geq, StringV x, StringV y -> BoolV (x >= y)
   | Geq, BoolV x, BoolV y -> BoolV (x >= y)
   | Geq, TupleV x, TupleV y when List.length x = List.length y -> BoolV (x >= y)
+  | Geq, ListV x, ListV y -> BoolV (x >= y)
   (* "=" block *)
   | Eq, IntV x, IntV y -> BoolV (x = y)
   | Eq, StringV x, StringV y -> BoolV (x = y)
   | Eq, BoolV x, BoolV y -> BoolV (x = y)
   | Eq, TupleV x, TupleV y -> BoolV (x = y)
+  | Eq, ListV x, ListV y -> BoolV (x = y)
   (* "!=" block *)
   | Neq, IntV x, IntV y -> BoolV (x != y)
   | Neq, StringV x, StringV y -> BoolV (x != y)
   | Neq, BoolV x, BoolV y -> BoolV (x != y)
   | Neq, TupleV x, TupleV y -> BoolV (x != y)
+  | Neq, ListV x, ListV y -> BoolV (x != y)
   (* Other bool ops *)
   | And, BoolV x, BoolV y -> BoolV (x && y)
   | Or, BoolV x, BoolV y -> BoolV (x || y)
+  (* failures *)
   | _, TupleV x, TupleV y when List.length x != List.length y -> raise Tuple_compare
   | _ -> failwith "Interpretation error: Wrong infix operation."
 ;;
@@ -433,8 +440,53 @@ let%test _ =
     "fact -> n x -> 6 "
 ;;
 
+(* Eval test 13 *)
+
+(*
+  let rec sort lst =
+    let sorted =
+      match lst with
+      | hd1 :: hd2 :: tl ->
+        if hd1 > hd2 then hd2 :: sort (hd1 :: tl) else hd1 :: sort (hd2 :: tl)
+      | tl -> tl
+    in
+    if lst = sorted then lst else sort sorted
+  ;;
+
+  let l = []
+  let sorted = sort l
+*)
 let%test _ =
-  test
-    "let third lst = match lst with | fst :: snd :: third :: _ -> third | _ -> 0;; let t = third [1; 2; 3];;"
-    ""
+  eval_test
+    [ DLet
+        ( true
+        , PVar "sort"
+        , EFun
+            ( PVar "lst"
+            , ELet
+                ( [ ( false
+                    , PVar "sorted"
+                    , EMatch
+                        ( EVar "lst"
+                        , [ ( PCons (PVar "hd1", PCons (PVar "hd2", PVar "tl"))
+                            , EIf
+                                ( EOp (Gre, EVar "hd1", EVar "hd2")
+                                , ECons
+                                    ( EVar "hd2"
+                                    , EApp (EVar "sort", ECons (EVar "hd1", EVar "tl")) )
+                                , ECons
+                                    ( EVar "hd1"
+                                    , EApp (EVar "sort", ECons (EVar "hd2", EVar "tl")) )
+                                ) )
+                          ; PVar "tl", EVar "tl"
+                          ] ) )
+                  ]
+                , EIf
+                    ( EOp (Eq, EVar "lst", EVar "sorted")
+                    , EVar "lst"
+                    , EApp (EVar "sort", EVar "sorted") ) ) ) )
+    ; DLet (false, PVar "l", EList [ EConst (CInt 1); EConst (CInt 3); EConst (CInt 2) ])
+    ; DLet (false, PVar "sorted", EApp (EVar "sort", EVar "l"))
+    ]
+    "l -> 1 3 2 sort -> lst sorted -> 1 2 3 "
 ;;

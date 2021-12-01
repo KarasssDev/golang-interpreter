@@ -20,8 +20,8 @@ let exval_to_str = function
   | IntV x -> str_converter (IntV x)
   | BoolV x -> str_converter (BoolV x)
   | StringV x -> str_converter (StringV x)
-  | TupleV x -> String.concat " " (List.map str_converter x)
-  | ListV x -> String.concat " " (List.map str_converter x)
+  | TupleV x -> Printf.sprintf "(%s)" (String.concat "," (List.map str_converter x))
+  | ListV x -> Printf.sprintf "[%s]" (String.concat ";" (List.map str_converter x))
   | FunV (pat, _, _) ->
     (match pat with
     | PVar x -> x
@@ -478,5 +478,5 @@ let%test _ =
     ; DLet (false, PVar "l", EList [ EConst (CInt 1); EConst (CInt 3); EConst (CInt 2) ])
     ; DLet (false, PVar "sorted", EApp (EVar "sort", EVar "l"))
     ]
-    "l -> 1 3 2 sort -> lst sorted -> 1 2 3 "
+    "l -> [1;3;2] sort -> lst sorted -> [1;2;3] "
 ;;

@@ -57,7 +57,8 @@ and pat =
   | PCons of pat * pat (*  hd :: tl  *)
   | PList of pat list  (*  [a; b]    *)
   | PTuple of pat list (*  a, b      *)
-  | PEffect of pat * cont_val
+  | PEffect of eff * (pat list)
+  | PEffectH of pat * cont_val
 [@@deriving show { with_path = false }]
 
 and decl =
@@ -65,6 +66,8 @@ and decl =
   | DEffect of id * tyexp (*  effect E : string -> int  *)
 [@@deriving show { with_path = false }]
 
-and cont_val = Continuation of exp [@@deriving show { with_path = false }]
+and cont_val = Continuation of id [@@deriving show { with_path = false }]
+
+and eff = id [@@deriving show { with_path = false }]
 
 and prog = decl list [@@deriving show { with_path = false }]

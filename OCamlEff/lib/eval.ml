@@ -1,9 +1,12 @@
 open Ast
 open Env
+open Typing
+
+type effval = EffectH of pat * cont_val
 
 type state =
   { env : exval Env.id_t
-  ; context : exval Env.eff_t
+  ; context : effval Env.eff_t
   }
 
 and exval =
@@ -13,6 +16,7 @@ and exval =
   | TupleV of exval list
   | ListV of exval list
   | FunV of pat * exp * state
+  | EffV of id * tyexp
 
 let str_converter = function
   | IntV x -> string_of_int x
@@ -31,6 +35,7 @@ let exval_to_str = function
     (match pat with
     | PVar x -> x
     | _ -> "error")
+  | EffV (_, _) -> "kek"
 ;;
 
 let lookup_in_env id state = lookup_id_map id state.env
@@ -123,6 +128,17 @@ let apply_unary_op op x =
   | _ -> failwith "Interpretation error: Wrong unary operation."
 ;;
 
+let rec scan_cases = function
+  | hd :: tl ->
+    (match hd with
+    | PEffectH (pat, cont_val) ->
+      (match pat with
+      | PEffect (id, _) -> (id, EffectH (pat, cont_val)) :: scan_cases tl
+      | _ -> failwith "error")
+    | _ -> scan_cases tl)
+  | [] -> []
+;;
+
 let rec eval_exp state = function
   | EConst x ->
     (match x with
@@ -181,6 +197,8 @@ let rec eval_exp state = function
       eval_exp very_new_state exp
     | _ -> failwith "Interpretation error: wrong application")
   | EMatch (exp, mathchings) ->
+    let effh = scan_cases (List.map (fun (p, _) -> p) mathchings) in
+    (* let exp_state = extend_context *)
     let evaled = eval_exp state exp in
     let rec do_match = function
       | [] -> failwith "Pattern matching is not exhaustive!"
@@ -496,8 +514,4 @@ let%test _ =
     "l -> [1;3;2] sort -> lst sorted -> [1;2;3] "
 ;;
 
-let%test _ =
-  test
-    "let rec inf init = 1 + inf init;; let y = inf 0"
-    ""
-;;
+let%test _ = test "let rec inf init = 1 + inf init;; let y = inf 0" ""

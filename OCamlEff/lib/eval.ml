@@ -1,13 +1,18 @@
 open Ast
 open Env
 
-type exval =
+type state =
+  { env : exval Env.id_t
+  ; context : exval Env.eff_t
+  }
+
+and exval =
   | IntV of int
   | BoolV of bool
   | StringV of string
   | TupleV of exval list
   | ListV of exval list
-  | FunV of pat * exp * exval Env.t
+  | FunV of pat * exp * state
 
 let str_converter = function
   | IntV x -> string_of_int x
@@ -28,7 +33,10 @@ let exval_to_str = function
     | _ -> "error")
 ;;
 
-type env = exval Env.t
+let lookup_in_env id state = lookup_id_map id state.env
+let lookup_in_context id state = lookup_eff_map id state.context
+let extend_env id v state = { state with env = extend_id_map id v state.env }
+let extend_context id v state = { state with context = extend_eff_map id v state.context }
 
 exception Tuple_compare
 exception Match_fail
@@ -115,97 +123,104 @@ let apply_unary_op op x =
   | _ -> failwith "Interpretation error: Wrong unary operation."
 ;;
 
-let rec eval_exp env = function
+let rec eval_exp state = function
   | EConst x ->
     (match x with
     | CInt x -> IntV x
     | CBool x -> BoolV x
     | CString x -> StringV x)
   | EVar x ->
-    (try Env.lookup x env with
+    (try lookup_in_env x state with
     | Env.Not_bound -> failwith "Interpretation error: undef variable.")
   | EOp (op, x, y) ->
-    let exp_x = eval_exp env x in
-    let exp_y = eval_exp env y in
+    let exp_x = eval_exp state x in
+    let exp_y = eval_exp state y in
     apply_infix_op op exp_x exp_y
   | EUnOp (op, x) ->
-    let exp_x = eval_exp env x in
+    let exp_x = eval_exp state x in
     apply_unary_op op exp_x
-  | EList exps -> ListV (List.map (eval_exp env) exps)
-  | ETuple exps -> TupleV (List.map (eval_exp env) exps)
+  | EList exps -> ListV (List.map (eval_exp state) exps)
+  | ETuple exps -> TupleV (List.map (eval_exp state) exps)
   | ECons (exp1, exp2) ->
-    let exp1_evaled = eval_exp env exp1 in
-    let exp2_evaled = eval_exp env exp2 in
+    let exp1_evaled = eval_exp state exp1 in
+    let exp2_evaled = eval_exp state exp2 in
     (match exp2_evaled with
     | ListV list -> ListV ([ exp1_evaled ] @ list)
     | x -> ListV [ exp1_evaled; x ])
   | EIf (exp1, exp2, exp3) ->
-    (match eval_exp env exp1 with
-    | BoolV true -> eval_exp env exp2
-    | BoolV false -> eval_exp env exp3
+    (match eval_exp state exp1 with
+    | BoolV true -> eval_exp state exp2
+    | BoolV false -> eval_exp state exp3
     | _ -> failwith "Interpretation error: couldn't interpret \"if\" expression")
   | ELet (bindings, exp1) ->
-    let gen_env =
+    let gen_state =
       List.fold_left
-        (fun env binding ->
+        (fun state binding ->
           match binding with
           | _, pat, exp ->
-            let evaled = eval_exp env exp in
+            let evaled = eval_exp state exp in
             let binds = match_pat pat evaled in
-            List.fold_left (fun env (id, v) -> extend id v env) env binds)
-        env
+            List.fold_left (fun state (id, v) -> extend_env id v state) state binds)
+        state
         bindings
     in
-    eval_exp gen_env exp1
-  | EFun (pat, exp) -> FunV (pat, exp, env)
+    eval_exp gen_state exp1
+  | EFun (pat, exp) -> FunV (pat, exp, state)
   | EApp (exp1, exp2) ->
-    (match eval_exp env exp1 with
-    | FunV (pat, exp, fenv) ->
-      let binds = match_pat pat (eval_exp env exp2) in
-      let new_env = List.fold_left (fun env (id, v) -> extend id v env) fenv binds in
-      let very_new_env =
-        match exp1 with
-        | EVar x -> extend x (eval_exp env exp1) new_env
-        | _ -> new_env
+    (match eval_exp state exp1 with
+    | FunV (pat, exp, fstate) ->
+      let binds = match_pat pat (eval_exp state exp2) in
+      let new_state =
+        List.fold_left (fun state (id, v) -> extend_env id v state) fstate binds
       in
-      eval_exp very_new_env exp
+      let very_new_state =
+        match exp1 with
+        | EVar x -> extend_env x (eval_exp state exp1) new_state
+        | _ -> new_state
+      in
+      eval_exp very_new_state exp
     | _ -> failwith "Interpretation error: wrong application")
   | EMatch (exp, mathchings) ->
-    let evaled = eval_exp env exp in
+    let evaled = eval_exp state exp in
     let rec do_match = function
       | [] -> failwith "Pattern matching is not exhaustive!"
       | (pat, exp) :: tl ->
         (try
            let binds = match_pat pat evaled in
-           let env = List.fold_left (fun env (id, v) -> extend id v env) env binds in
-           eval_exp env exp
+           let state =
+             List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+           in
+           eval_exp state exp
          with
         | Match_fail -> do_match tl)
     in
     do_match mathchings
+  | _ -> failwith "unimpl"
 ;;
 
-let eval_dec env = function
+let eval_dec state = function
   | DLet bindings ->
     (match bindings with
     | _, pat, exp ->
-      let evaled = eval_exp env exp in
+      let evaled = eval_exp state exp in
       let binds = match_pat pat evaled in
-      let env = List.fold_left (fun env (id, v) -> extend id v env) env binds in
-      env)
+      let state =
+        List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+      in
+      state)
   | _ -> failwith "Interpretation error: unimpl"
 ;;
 
 let eval_test decls expected =
   try
-    let init_env = Env.empty in
-    let env = List.fold_left (fun env decl -> eval_dec env decl) init_env decls in
+    let init_state = { env = empty_id_map; context = empty_eff_map } in
+    let state = List.fold_left (fun state decl -> eval_dec state decl) init_state decls in
     let res =
       IdMap.fold
         (fun k v ln ->
           let new_res = ln ^ Printf.sprintf "%s -> %s " k (exval_to_str v) in
           new_res)
-        env
+        state.env
         ""
     in
     if res = expected

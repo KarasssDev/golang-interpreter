@@ -86,6 +86,7 @@ let is_keyword = function
   | "then"
   | "with"
   | "effect"
+  | "function"
   | "match" -> true
   | _ -> false
 ;;
@@ -119,6 +120,7 @@ let tmatch = token "match"
 let tbar = token "|"
 let twith = token "with"
 let tarrow = token "->"
+let tfunction = token "function"
 
 (****************** Const ctors ******************)
 
@@ -136,6 +138,7 @@ let etuple l = ETuple l
 let econs e1 e2 = ECons (e1, e2)
 let eif e1 e2 e3 = EIf (e1, e2, e3)
 let elet binds e = ELet (binds, e)
+let efunction cases = EFun (PVar "match", EMatch (EVar "match", cases))
 let efun p e = EFun (p, e)
 let eapp = return (fun e1 e2 -> EApp (e1, e2))
 let ematch e cases = EMatch (e, cases)
@@ -308,10 +311,14 @@ let pack =
     in
     let efun = ws *> lift2 efun (tfun *> many pat <* tarrow) (d.exp d) <* ws in
     let ematch =
-      let case = lift2 ccase (tbar *> pat <* tarrow) (d.exp d) in
-      lift2 ematch (tmatch *> d.exp d <* twith) (many1 case)
+      let fst_case = lift2 ccase (option "" tbar *> pat <* tarrow) (d.exp d) in
+      let other_cases = lift2 ccase (tbar *> pat <* tarrow) (d.exp d) in
+      let cases = lift2 (fun fst other -> fst :: other) fst_case (many other_cases) in
+      let pmatch = lift2 ematch (tmatch *> d.exp d <* twith) cases in
+      let pfunction = tfunction *> cases >>| efunction in
+      ws *> (pfunction <|> pmatch) <* ws
     in
-    choice [ elet; eif; efun; ematch ]
+    choice [ elet; eif; ematch; efun ]
   in
   let tuple d =
     lift2 ( @ ) (many1 (d.op d <* comma)) (d.op d <|> d.key d >>| fun rhs -> [ rhs ])
@@ -648,7 +655,6 @@ let%test _ =
      ]
 ;;
 
-
 let%test _ =
   test_prog_suc
     "let rec sort lst = let sorted = match lst with | hd1 :: hd2 :: tl -> if hd1 > hd2 \
@@ -683,5 +689,25 @@ let%test _ =
                     , EApp (EVar "sort", EVar "sorted") ) ) ) )
     ; DLet (false, PVar "l", EList [])
     ; DLet (false, PVar "sorted", EApp (EVar "sort", EVar "l"))
+    ]
+;;
+
+let%test _ =
+  test_prog_suc
+    "let map f = function [] -> [] | hd :: tl -> hd :: map f tl"
+    [ DLet
+        ( false
+        , PVar "map"
+        , EFun
+            ( PVar "f"
+            , EFun
+                ( PVar "match"
+                , EMatch
+                    ( EVar "match"
+                    , [ PList [], EList []
+                      ; ( PCons (PVar "hd", PVar "tl")
+                        , ECons (EVar "hd", EApp (EApp (EVar "map", EVar "f"), EVar "tl"))
+                        )
+                      ] ) ) ) )
     ]
 ;;

@@ -436,5 +436,5 @@ let%test _ =
 let%test _ =
   test
     "let third lst = match lst with | fst :: snd :: third :: _ -> third | _ -> 0;; let t = third [1; 2; 3];;"
-    ""
+    "" 
 ;;

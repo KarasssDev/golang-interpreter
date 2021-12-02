@@ -498,6 +498,6 @@ let%test _ =
 
 let%test _ =
   test
-    "let rec x  ;;"
+    "let rec inf init = 1 + inf init;; let y = inf 0"
     ""
 ;;

@@ -173,7 +173,7 @@ let rec eval_exp env = function
   | EMatch (exp, mathchings) ->
     let evaled = eval_exp env exp in
     let rec do_match = function
-      | [] -> failwith "Interpretation error: match fail"
+      | [] -> failwith "Pattern matching is not exhaustive!"
       | (pat, exp) :: tl ->
         (try
            let binds = match_pat pat evaled in
@@ -479,4 +479,10 @@ let%test _ =
     ; DLet (false, PVar "sorted", EApp (EVar "sort", EVar "l"))
     ]
     "l -> [1;3;2] sort -> lst sorted -> [1;2;3] "
+;;
+
+let%test _ =
+  test
+    "let rec x  ;;"
+    ""
 ;;

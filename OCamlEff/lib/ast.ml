@@ -46,8 +46,9 @@ and exp =
   | EFun of pat * exp           (*    fun x -> x * 2          *)
   | EApp of exp * exp           (*    f x                     *)
   | EMatch of exp * case list   (*    match e with | _ -> 0   *)
-  | EPerform of pat * exp
-  | EContinue of cont_val * exp
+  | EPerform of exp
+  | EEffect of id * exp
+  | EContinue of id * exp
 [@@deriving show { with_path = false }]
 
 and pat =
@@ -57,14 +58,13 @@ and pat =
   | PCons of pat * pat (*  hd :: tl  *)
   | PList of pat list  (*  [a; b]    *)
   | PTuple of pat list (*  a, b      *)
-  | PEffect of pat * cont_val
+  | PEffect of id
+  | PEffectH of id * pat * id
 [@@deriving show { with_path = false }]
 
 and decl =
   | DLet of binding       (*  let x = 10                *)
-  | DEffect of id * tyexp (*  effect E : string -> int  *)
+  | DEffect of id * tyexp (*  effect E : int -> int  *)
 [@@deriving show { with_path = false }]
-
-and cont_val = Continuation of exp [@@deriving show { with_path = false }]
 
 and prog = decl list [@@deriving show { with_path = false }]

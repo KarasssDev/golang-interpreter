@@ -133,10 +133,8 @@ let apply_unary_op op x =
 let rec scan_cases = function
   | hd :: tl ->
     (match hd with
-    | PEffectH (pat, cont_val), exp ->
-      (match pat with
-      | PEffect id -> (id, EffectH (pat, cont_val, exp)) :: scan_cases tl
-      | _ -> failwith "error")
+    | PEffectH (name, pat, cont_val), exp ->
+      (name, EffectH (pat, cont_val, exp)) :: scan_cases tl
     | _ -> scan_cases tl)
   | [] -> []
 ;;
@@ -149,7 +147,7 @@ let rec eval_exp state = function
     | CString x -> StringV x)
   | EVar x ->
     (try lookup_in_env x state with
-    | Env.Not_bound -> failwith "Interpretation error: undef variable.")
+    | Not_bound -> failwith "Interpretation error: undef variable.")
   | EOp (op, x, y) ->
     let exp_x = eval_exp state x in
     let exp_y = eval_exp state y in
@@ -196,18 +194,12 @@ let rec eval_exp state = function
         | EVar x -> extend_env x (eval_exp state exp1) new_state
         | _ -> new_state
       in
-      eval_exp very_new_state exp
+      eval_exp { very_new_state with context = state.context } exp
     | _ -> failwith "Interpretation error: wrong application")
   | EMatch (exp, mathchings) ->
     let effh = scan_cases mathchings in
     let exp_state =
-      { state with
-        context =
-          List.fold_left
-            (fun context (id, v) -> extend_eff_map id v context)
-            state.context
-            effh
-      }
+      List.fold_left (fun state (id, v) -> extend_context id v state) state effh
     in
     let evaled = eval_exp exp_state exp in
     let rec do_match = function
@@ -225,7 +217,6 @@ let rec eval_exp state = function
     do_match mathchings
   | EPerform exp -> eval_exp state exp
   | EEffect (eff, exp) ->
-    Printf.printf "was in effect expression";
     let (EffectH (pat, cont_val, exph)) =
       try lookup_in_context eff state with
       | Not_bound -> failwith "no handler for effect"
@@ -262,7 +253,6 @@ let rec eval_exp state = function
 
 let eval_dec state = function
   | DLet bindings ->
-    Printf.printf "was in let decl";
     (match bindings with
     | _, pat, exp ->
       let evaled = eval_exp state exp in
@@ -559,8 +549,20 @@ let%test _ =
     "l -> [1;3;2] sort -> lst sorted -> [1;2;3] "
 ;;
 
-(* let%test _ = test "let rec inf init = 1 + inf init;; let y = inf 0" "" *)
+(* Eval test 14 *)
 
+(* 
+  effect Failure: int -> int
+
+  let helper x = 1 + perform (Failure x)
+
+  let matcher x = match helper x with
+    | effect (Failure s) k -> continue k (1 + s)
+    | 3 -> 0 <- success if this one since both helper and effect perform did 1+
+    | _ -> 100
+  
+  let y = matcher 1 <- must be 3 upon success
+*)
 let%test _ =
   eval_test
     [ DEffect ("Failure", TArrow (TInt, TInt))
@@ -577,12 +579,12 @@ let%test _ =
             ( PVar "x"
             , EMatch
                 ( EApp (EVar "helper", EVar "x")
-                , [ ( PEffectH (PVar "s", "k")
-                    , EContinue ("k", EOp (Add, EConst (CInt 1), EVar "S")) )
+                , [ ( PEffectH ("Failure", PVar "s", "k")
+                    , EContinue ("k", EOp (Add, EConst (CInt 1), EVar "s")) )
                   ; PConst (CInt 3), EConst (CInt 0)
                   ; PWild, EConst (CInt 100)
                   ] ) ) )
     ; DLet (false, PVar "y", EApp (EVar "matcher", EConst (CInt 1)))
     ]
-    ""
+    "Failure -> eff helper -> x matcher -> x y -> 0 "
 ;;

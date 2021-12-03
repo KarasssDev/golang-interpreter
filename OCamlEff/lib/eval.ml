@@ -498,6 +498,6 @@ let%test _ =
 
 let%test _ =
   test
-    "let rec inf init = 1 + inf init;; let y = inf 0"
+    "let fact = let rec helper acc = function 0 -> acc | n -> helper (acc * n) (n - 1) in helper 1;; let ans = fact 10 "
     ""
 ;;

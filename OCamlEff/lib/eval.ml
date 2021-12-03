@@ -2,7 +2,7 @@ open Ast
 open Env
 open Typing
 
-type effval = EffectH of pat * cont_val
+type effval = EffectH of pat * id * exp
 
 type state =
   { env : exval Env.id_t
@@ -16,7 +16,8 @@ and exval =
   | TupleV of exval list
   | ListV of exval list
   | FunV of pat * exp * state
-  | EffV of id * tyexp
+  | ContV of tyexp * id
+  | EffV of tyexp
 
 let str_converter = function
   | IntV x -> string_of_int x
@@ -35,7 +36,8 @@ let exval_to_str = function
     (match pat with
     | PVar x -> x
     | _ -> "error")
-  | EffV (_, _) -> "kek"
+  | ContV _ -> "cont"
+  | EffV _ -> "eff"
 ;;
 
 let lookup_in_env id state = lookup_id_map id state.env
@@ -131,9 +133,9 @@ let apply_unary_op op x =
 let rec scan_cases = function
   | hd :: tl ->
     (match hd with
-    | PEffectH (pat, cont_val) ->
+    | PEffectH (pat, cont_val), exp ->
       (match pat with
-      | PEffect (id, _) -> (id, EffectH (pat, cont_val)) :: scan_cases tl
+      | PEffect id -> (id, EffectH (pat, cont_val, exp)) :: scan_cases tl
       | _ -> failwith "error")
     | _ -> scan_cases tl)
   | [] -> []
@@ -197,9 +199,17 @@ let rec eval_exp state = function
       eval_exp very_new_state exp
     | _ -> failwith "Interpretation error: wrong application")
   | EMatch (exp, mathchings) ->
-    let effh = scan_cases (List.map (fun (p, _) -> p) mathchings) in
-    (* let exp_state = extend_context *)
-    let evaled = eval_exp state exp in
+    let effh = scan_cases mathchings in
+    let exp_state =
+      { state with
+        context =
+          List.fold_left
+            (fun context (id, v) -> extend_eff_map id v context)
+            state.context
+            effh
+      }
+    in
+    let evaled = eval_exp exp_state exp in
     let rec do_match = function
       | [] -> failwith "Pattern matching is not exhaustive!"
       | (pat, exp) :: tl ->
@@ -213,11 +223,46 @@ let rec eval_exp state = function
         | Match_fail -> do_match tl)
     in
     do_match mathchings
-  | _ -> failwith "unimpl"
+  | EPerform exp -> eval_exp state exp
+  | EEffect (eff, exp) ->
+    Printf.printf "was in effect expression";
+    let (EffectH (pat, cont_val, exph)) =
+      try lookup_in_context eff state with
+      | Not_bound -> failwith "no handler for effect"
+    in
+    let lookup =
+      try lookup_in_env eff state with
+      | Not_bound -> failwith "no effect found"
+    in
+    (match lookup with
+    | EffV tp ->
+      let binds = (cont_val, ContV (tp, eff)) :: match_pat pat (eval_exp state exp) in
+      let state =
+        List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+      in
+      eval_exp state exph
+    | _ -> failwith "internal error")
+  | EContinue (cont_val, exp) ->
+    let lookup_cont =
+      try lookup_in_env cont_val state with
+      | Not_bound -> failwith "not a continuation value"
+    in
+    (match lookup_cont with
+    | ContV (tp_cont, eff) ->
+      let lookup_eff =
+        try lookup_in_env eff state with
+        | Not_bound -> failwith "effect not found"
+      in
+      (match lookup_eff with
+      | EffV tp_eff ->
+        if tp_cont = tp_eff then eval_exp state exp else failwith "wrong cont"
+      | _ -> failwith "internal error")
+    | _ -> failwith "internal error")
 ;;
 
 let eval_dec state = function
   | DLet bindings ->
+    Printf.printf "was in let decl";
     (match bindings with
     | _, pat, exp ->
       let evaled = eval_exp state exp in
@@ -226,7 +271,7 @@ let eval_dec state = function
         List.fold_left (fun state (id, v) -> extend_env id v state) state binds
       in
       state)
-  | _ -> failwith "Interpretation error: unimpl"
+  | DEffect (name, tp) -> extend_env name (EffV tp) state
 ;;
 
 let eval_test decls expected =
@@ -514,4 +559,30 @@ let%test _ =
     "l -> [1;3;2] sort -> lst sorted -> [1;2;3] "
 ;;
 
-let%test _ = test "let rec inf init = 1 + inf init;; let y = inf 0" ""
+(* let%test _ = test "let rec inf init = 1 + inf init;; let y = inf 0" "" *)
+
+let%test _ =
+  eval_test
+    [ DEffect ("Failure", TArrow (TInt, TInt))
+    ; DLet
+        ( false
+        , PVar "helper"
+        , EFun
+            ( PVar "x"
+            , EOp (Add, EConst (CInt 1), EPerform (EEffect ("Failure", EVar "x"))) ) )
+    ; DLet
+        ( false
+        , PVar "matcher"
+        , EFun
+            ( PVar "x"
+            , EMatch
+                ( EApp (EVar "helper", EVar "x")
+                , [ ( PEffectH (PVar "s", "k")
+                    , EContinue ("k", EOp (Add, EConst (CInt 1), EVar "S")) )
+                  ; PConst (CInt 3), EConst (CInt 0)
+                  ; PWild, EConst (CInt 100)
+                  ] ) ) )
+    ; DLet (false, PVar "y", EApp (EVar "matcher", EConst (CInt 1)))
+    ]
+    ""
+;;

@@ -114,14 +114,10 @@ let ptr value =
   space *> many (token "*") >>= fun num_ptrs ->
   return (build_ptr (List.length num_ptrs) value)
 
-let get_number = function
-  | CINT v -> return v
-  | _ -> fail "expected int"
+let get_number = function CINT v -> return v | _ -> fail "expected int"
 
 let token_datatypes =
   pos >>= fun col ->
- 
-
   token "int" *> ptr CT_INT
   <|> token "char" *> ptr CT_CHAR
   <|> token "void" *> ptr CT_VOID
@@ -149,8 +145,7 @@ let expr =
       let arg_sizeof = token_datatypes >>= fun t -> return @@ TYPE t in
       let func_call =
         (* accesor <|> arrow <|> indexer_exp <|> var_name  *)
-        identifier
-        >>= fun idd ->
+        identifier >>= fun idd ->
         token "(" *> sep_by (token ",") (arg_sizeof <|> expr) <* token ")"
         >>= fun arg_list -> return @@ FUNC_CALL (idd, arg_list)
       in
@@ -212,72 +207,70 @@ let expr =
             choice [ nnot; compare ])
       in
       let bterm = chainl1 bfactor (_and <* space) in
-      
+
       let oldexpr = chainl1 bterm (_or <* space) in
-      
-      let inc =
-        accesor <|> arrow <|> indexer_exp <|> var_name <* string "++" >>= fun v ->
-        return @@ ADD (v, LITERAL (CINT 1))
+
+      (* let inc =
+           accesor <|> arrow <|> indexer_exp <|> var_name <* string "++" >>= fun v ->
+           return @@ ADD (v, LITERAL (CINT 1))
+         in
+         let dec =
+           accesor <|> arrow <|> indexer_exp <|> var_name <* string "--" >>= fun v ->
+           return @@ SUB (v, LITERAL (CINT 1))
+         in *)
+      let newexpr =
+        fix (fun newexpr -> (* inc <|> dec <|>  *)
+                            oldexpr <|> parens newexpr)
       in
-      let dec =
-        accesor <|> arrow <|> indexer_exp <|> var_name <* string "--" >>= fun v ->
-        return @@ SUB (v, LITERAL (CINT 1))
-      in
-      
-      let newexpr = fix (fun newexpr -> inc <|> dec <|> oldexpr <|> parens newexpr) in
-      newexpr
-      )
-(* 
-let indexer_exp = identifier >>= fun idd -> indexer idd rec_expr
+      newexpr)
+(*
+   let indexer_exp = identifier >>= fun idd -> indexer idd rec_expr
 
-let var_name = identifier >>= fun id -> return @@ VAR_NAME id
+   let var_name = identifier >>= fun id -> return @@ VAR_NAME id
 
-let access l r = ACCESOR (l, r)
+   let access l r = ACCESOR (l, r)
 
-let arrow_cast l r = ACCESOR (DEREFERENCE l, r)
+   let arrow_cast l r = ACCESOR (DEREFERENCE l, r)
 
-let accesor =
-  let accessible = indexer_exp <|> var_name in
-  accessible >>= fun h ->
-  many1 @@ (token "." *> accessible) >>= fun a ->
-  return @@ List.fold_left access h a
+   let accesor =
+     let accessible = indexer_exp <|> var_name in
+     accessible >>= fun h ->
+     many1 @@ (token "." *> accessible) >>= fun a ->
+     return @@ List.fold_left access h a
 
-let accesor =
-  let accessible = indexer_exp <|> var_name in
-  accessible >>= fun h ->
-  many1 @@ (token "." *> accessible) >>= fun a ->
-  return @@ List.fold_left access h a
+   let accesor =
+     let accessible = indexer_exp <|> var_name in
+     accessible >>= fun h ->
+     many1 @@ (token "." *> accessible) >>= fun a ->
+     return @@ List.fold_left access h a
 
-let arrow =
-  indexer_exp <|> parens var_name <|> var_name >>= fun h ->
-  many @@ (token "->" *> (indexer_exp <|> parens var_name <|> var_name))
-  >>= fun a -> return @@ List.fold_left arrow_cast h a
+   let arrow =
+     indexer_exp <|> parens var_name <|> var_name >>= fun h ->
+     many @@ (token "->" *> (indexer_exp <|> parens var_name <|> var_name))
+     >>= fun a -> return @@ List.fold_left arrow_cast h a
 
-let inc =
-  accesor <|> arrow <|> indexer_exp <|> var_name <* string "++" >>= fun v ->
-  return @@ ADD (v, LITERAL (CINT 1))
+   let inc =
+     accesor <|> arrow <|> indexer_exp <|> var_name <* string "++" >>= fun v ->
+     return @@ ADD (v, LITERAL (CINT 1))
 
-let dec =
-  accesor <|> arrow <|> indexer_exp <|> var_name <* string "--" >>= fun v ->
-  return @@ SUB (v, LITERAL (CINT 1))
+   let dec =
+     accesor <|> arrow <|> indexer_exp <|> var_name <* string "--" >>= fun v ->
+     return @@ SUB (v, LITERAL (CINT 1))
 
-let expr = fix (fun expr -> inc <|> dec <|> rec_expr <|> parens expr) *)
+   let expr = fix (fun expr -> inc <|> dec <|> rec_expr <|> parens expr) *)
 
 (** STATEMENTS PARSING FUNCTIONS *)
 
 let struct_decl =
-  let tkd = 
-    (token "int" *> identifier 
-    >>= fun idd ->
-    between (token "[") (token "]") number
-    >>= fun v -> get_number v 
-    >>= fun n ->
-    return @@ CARGS (CT_ARRAY (n, CT_INT), idd))
-    <|>
-    (token_datatypes >>= fun tdd ->
-    identifier >>= fun idd -> return @@ CARGS (tdd, idd))
-
+  let tkd =
+    token "int" *> identifier
+    >>= (fun idd ->
+          between (token "[") (token "]") number >>= fun v ->
+          get_number v >>= fun n -> return @@ CARGS (CT_ARRAY (n, CT_INT), idd))
+    <|> ( token_datatypes >>= fun tdd ->
+          identifier >>= fun idd -> return @@ CARGS (tdd, idd) )
   in
+
   let content =
     token "{"
     *> skip_while (fun c -> is_whitespace c || is_end_of_line c)
@@ -292,10 +285,11 @@ let struct_decl =
   skip_while (fun c -> is_whitespace c || is_end_of_line c) *> content
   >>= fun cont -> token ";" *> (return @@ TOP_STRUCT_DECL (idd, cont))
 
-let struct_initialize = fix (fun struct_initialize ->
-  token "{" *> space *> sep_by1 (token "," *> space) (expr <|> struct_initialize) >>= fun ls_init ->
-  token "}" *> (return @@ INITIALIZER ls_init)
-)
+let struct_initialize =
+  fix (fun struct_initialize ->
+      token "{" *> space
+      *> sep_by1 (token "," *> space) (expr <|> struct_initialize)
+      >>= fun ls_init -> token "}" *> (return @@ INITIALIZER ls_init))
 
 let var_decl =
   let p_array =
@@ -305,7 +299,7 @@ let var_decl =
   let transformate ls =
     let size = List.length ls in
     let rec helper acc i =
-      if i < size then helper (acc @ [ ((*i,*) List.nth ls i) ]) (i + 1) else acc
+      if i < size then helper (acc @ [ (*i,*) List.nth ls i ]) (i + 1) else acc
     in
     helper [] 0
   in
@@ -319,9 +313,13 @@ let var_decl =
               | LITERAL CNULL -> return @@ VAR_DECL (idd, CT_CHAR, Some e)
               | _ -> fail "char can't be an expression" )
     | CT_PTR typ -> (
-        get_value idd typ >>= function
-        | VAR_DECL (idd, tt, v) -> return @@ VAR_DECL (idd, CT_PTR tt, v)
-        | _ -> fail "Wrong Initial value")
+        match typ with
+        | CT_VOID | CT_CHAR | CT_STRUCT _ ->
+            expr >>= fun x -> return @@ VAR_DECL (idd, CT_PTR typ, Some x)
+        | _ -> (
+            get_value idd typ >>= function
+            | VAR_DECL (idd, tt, v) -> return @@ VAR_DECL (idd, CT_PTR tt, v)
+            | _ -> fail "Wrong Initial value"))
     | CT_ARRAY (len, bt) -> (
         struct_initialize >>= function
         | INITIALIZER inits ->
@@ -334,7 +332,10 @@ let var_decl =
     | CT_STRUCT name -> (
         struct_initialize <|> expr >>= fun init_ls ->
         match init_ls with
-        | INITIALIZER _ | FUNC_CALL _ | DEREFERENCE _ | LITERAL CNULL | VAR_NAME _ | INDEXER _ -> (*VARNAAAAME *)
+        | INITIALIZER _ | FUNC_CALL _ | DEREFERENCE _
+        | LITERAL CNULL
+        | VAR_NAME _ | INDEXER _ ->
+            (*VARNAAAAME *)
             return @@ VAR_DECL (idd, CT_STRUCT name, Some init_ls)
         | _ -> fail "Struct can't be an expression")
     | CT_VOID -> fail "VOID cannot be a type for variable declaration"
@@ -348,10 +349,8 @@ let var_decl =
         advance 1
         *>
         match t with
-        | CT_ARRAY _ -> return (VAR_DECL (idd, t, 
-        None
-        (* Some (LITERAL (CARRAY [])) *)
-        ))
+        | CT_ARRAY _ ->
+            return (VAR_DECL (idd, t, None (* Some (LITERAL (CARRAY [])) *)))
         | _ -> return (VAR_DECL (idd, t, None)))
     | None | _ -> fail "ERROR"
   in
@@ -374,7 +373,7 @@ let var_assign_proc_call no_ends_semic =
   let rec build_def n acc =
     if n = 0 then acc else build_def (n - 1) (DEREFERENCE acc)
   in
-  let assign p name exprr = T_ASSIGN (build_def p name, exprr) in
+  let assign p name exprr = ASSIGN (build_def p name, exprr) in
   let ass_add p name exprr = ASSIGN_ADD (build_def p name, exprr) in
   let ass_sub p name exprr = ASSIGN_SUB (build_def p name, exprr) in
   let ass_mul p name exprr = ASSIGN_MUL (build_def p name, exprr) in
@@ -390,6 +389,7 @@ let var_assign_proc_call no_ends_semic =
       let ret = return @@ un_op num_ptrs left_cons (LITERAL (CINT 1)) in
       if no_ends_semic then ret else ret <* token ";"
     in
+
     space *> peek_char_fail <* space >>= function
     | '=' -> token "=" *> (assign_op @@ assign num_ptrs left_cons)
     | '+' ->
@@ -409,6 +409,7 @@ let var_assign_proc_call no_ends_semic =
   | FUNC_CALL _ when num_ptrs == [] -> func_call e
   | ACCESOR _ when num_ptrs == [] -> assign_left_cons (List.length num_ptrs) e
   | INDEXER _ | VAR_NAME _ -> assign_left_cons (List.length num_ptrs) e
+  | _ when num_ptrs <> [] -> assign_left_cons (List.length num_ptrs) e
   | _ -> fail "a"
 
 let del_space_newline =
@@ -418,7 +419,7 @@ let block stmtss =
   del_space_newline *> token "{"
   *> many1 (del_space_newline *> stmtss <* del_space_newline)
   <* token "}"
-  >>= fun stat_list -> del_space_newline *> (return @@ T_BLOCK stat_list)
+  >>= fun stat_list -> del_space_newline *> (return @@ BLOCK stat_list)
 
 let func_decl stmtss =
   token_datatypes >>= fun ret_typ ->
@@ -441,9 +442,16 @@ let if_else_stmts stmtss =
   return @@ IF_ELSE (rel_expr, blk_if, blk_else)
 
 let for_statement stmtss =
-  token "for" *> token "(" *> var_decl >>= fun var ->
-  expr >>= fun re ->
-  token ";" *> var_assign_proc_call true >>= fun step ->
+  token "for" *> token "("
+  *> (var_decl >>= (fun var -> return @@ Some var) <|> return None)
+  >>= fun var ->
+  token ";" *> (expr >>= (fun re -> return @@ Some re) <|> return None)
+  >>= fun re ->
+  token ";"
+  *> (var_assign_proc_call true
+     >>= (fun step -> return @@ Some step)
+     <|> return None)
+  >>= fun step ->
   token ")"
   *> skip_while (fun c -> is_whitespace c || is_end_of_line c)
   *> block stmtss

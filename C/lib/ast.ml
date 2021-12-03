@@ -34,7 +34,6 @@ and expr =
   | LT of expr * expr
   | LITERAL of values
   | FUNC_CALL of string * expr list
-  (* | FUNC_CALL of expr * expr list *)
   | VAR_NAME of string
   | INDEXER of string * expr  (** ~ name\[expr\] *)
   | ACCESOR of expr * expr  (** ~ expr.expr *)
@@ -47,21 +46,20 @@ and expr =
 
 type statements =
   | VAR_DECL of string * types * expr option
-  (* | STRUCT_DECL of string * args list *)
   | EXPRESSION of expr
   | RETURN of expr
-  | T_BLOCK of statements list
+  | BLOCK of statements list
   | IF of expr * statements
   | IF_ELSE of expr * statements * statements
   | WHILE of expr * statements
-  | FOR of statements * expr * statements * statements
-  | STRUCT of string * args list
-  | T_ASSIGN of expr * expr
+  | FOR of (statements option) * (expr option) * (statements option) * statements
+  | ASSIGN of expr * expr
   | ASSIGN_SUB of expr * expr
   | ASSIGN_ADD of expr * expr
   | ASSIGN_MUL of expr * expr
   | ASSIGN_DIV of expr * expr
   | ASSIGN_MOD of expr * expr
+  
   | BREAK
   | CONTINUE
 [@@deriving show { with_path = false }]

@@ -1,6 +1,5 @@
 open Angstrom
 open Ast
-open Typing
 open Format
 
 (****************** Main parser ******************)
@@ -353,8 +352,7 @@ let tyexp =
   @@ fun tyexp ->
   let prim =
     ws
-    *> (twild *> return TWild
-       <|> token "int" *> return TInt
+    *> (token "int" *> return TInt
        <|> token "string" *> return TString
        <|> token "bool" *> return TBool
        <|> (uns >>| fun bind -> TVar (int_of_string bind))
@@ -638,12 +636,12 @@ let%test _ =
      ]
 ;;
 
-let%test _ =
+(* let%test _ =
   test_tyexp_suc "_ * int -> (int list list -> bool -> string) -> 1 list"
   @@ TArrow
        ( TTuple [ TWild; TInt ]
        , TArrow (TArrow (TList (TList TInt), TArrow (TBool, TString)), TList (TVar 1)) )
-;;
+;; *)
 
 let%test _ =
   test_prog_suc "effect Choice : string -> int;; let f x y = f (x y)"

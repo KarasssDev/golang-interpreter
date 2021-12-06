@@ -1,6 +1,6 @@
 open Ast
 open Env
-open Typing
+open Parser
 
 type effval = EffectH of pat * id * exp
 

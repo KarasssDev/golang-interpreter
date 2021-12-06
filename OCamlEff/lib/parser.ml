@@ -711,3 +711,9 @@ let%test _ =
                       ] ) ) ) )
     ]
 ;;
+
+let%test _ =
+  test_prog_suc
+    "let x = matchf with [] -> []"
+    []
+

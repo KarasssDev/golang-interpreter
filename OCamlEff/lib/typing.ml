@@ -239,18 +239,27 @@ let infer =
       | CInt _ -> return (Subst.empty, TInt)
       | CBool _ -> return (Subst.empty, TBool)
       | CString _ -> return (Subst.empty, TString))
-    (* TODO: Fix EOp infer *)
     | EOp (op, exp1, exp2) ->
+      let* s1, t1 = helper context exp1 in
+      let* s2, t2 = helper context exp2 in
+      let* s = unify t1 t2 in
       (match op, exp1, exp2 with
       | Add, _, _ | Sub, _, _ | Mul, _, _ | Div, _, _ ->
-        return (Subst.empty, arrow TInt (arrow TInt TInt))
-      | _, expr, _ ->
-        let* subst, t = helper context expr in
-        return (subst, arrow t (arrow t TBool)))
-    | EUnOp (op, _) ->
+        let* s_int = unify t1 TInt in
+        let app = Subst.apply Subst.(s ++ s_int) t1 in
+        return (Subst.(s ++ s1 ++ s2 ++ s_int), arrow app (arrow app TInt))
+      | _, _, _ -> return (Subst.(s1 ++ s2 ++ s), arrow t1 (arrow t1 TBool)))
+    | EUnOp (op, exp) ->
+      let* s, t = helper context exp in
       (match op with
-      | Minus -> return (Subst.empty, arrow TInt TInt)
-      | Not -> return (Subst.empty, arrow TBool TBool))
+      | Minus ->
+        let* s_int = unify t TInt in
+        let app = Subst.apply s_int t in
+        return (Subst.(s_int ++ s), arrow app TInt)
+      | Not ->
+        let* s_bool = unify t TInt in
+        let app = Subst.apply s_bool t in
+        return (Subst.(s_bool ++ s), arrow app TBool))
     | EVar x ->
       let* subst, tyexp = lookup_context x context in
       return (subst, tyexp)
@@ -260,10 +269,19 @@ let infer =
         let* s1, t1 = helper context hd in
         let* s_tl, t_tl = helper context (EList tl) in
         let* s = unify t1 t_tl in
-        return (Subst.(s1 ++ s_tl ++ s), TList t1)
+        return (Subst.(s1 ++ s_tl ++ s), TList (Subst.apply s t1))
       | [] ->
         let* fresh = fresh_var in
         return (Subst.empty, TList fresh))
+    | ETuple exps ->
+      (match exps with
+      | hd :: tl ->
+        let* s1, t1 = helper context hd in
+        let* s_tl, t_tl = helper context (ETuple tl) in
+        (match t_tl with
+        | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
+        | _ -> failwith "error")
+      | [] -> return (Subst.empty, TTuple []))
     | _ -> failwith "unimpl"
   in
   helper
@@ -279,22 +297,50 @@ let rec tyexp_to_st = function
   | TArrow (tyexp1, tyexp2) ->
     String.concat " " [ tyexp_to_st tyexp1; "->"; tyexp_to_st tyexp2 ]
   | TVar x -> string_of_int x
-  | _ -> "uimpl"
+  | TTuple l ->
+    let line = List.fold_left (fun ln tyexp -> ln ^ ";" ^ tyexp_to_st tyexp) "" l in
+    String.concat "" [ "("; line; ")" ]
 ;;
 
 let error_to_st = function
   | Occurs_check -> "oc check"
   | NoVariable _ -> "no var"
   | UnificationFailed (x, y) ->
-    String.concat " " [ "uni fail"; tyexp_to_st x; tyexp_to_st y ]
+    String.concat " " [ "uni fail:"; tyexp_to_st x; tyexp_to_st y ]
 ;;
 
 let%test _ =
   match w (EList [ EConst (CInt 5); EConst (CInt 6); EConst (CInt 3) ]) with
   | Error x ->
     Printf.printf "%s\n" (error_to_st x);
+    Printf.printf "-----\n";
     false
   | Ok x ->
     Printf.printf "%s\n" (tyexp_to_st x);
+    Printf.printf "-----\n";
+    true
+;;
+
+let%test _ =
+  match w (EOp (Add, EConst (CInt 5), EConst (CInt 6))) with
+  | Error x ->
+    Printf.printf "%s\n" (error_to_st x);
+    Printf.printf "-----\n";
+    false
+  | Ok x ->
+    Printf.printf "%s\n" (tyexp_to_st x);
+    Printf.printf "-----\n";
+    true
+;;
+
+let%test _ =
+  match w (ETuple [ EConst (CInt 5); EConst (CString "kek") ]) with
+  | Error x ->
+    Printf.printf "%s\n" (error_to_st x);
+    Printf.printf "-----\n";
+    false
+  | Ok x ->
+    Printf.printf "%s\n" (tyexp_to_st x);
+    Printf.printf "-----\n";
     true
 ;;

@@ -266,7 +266,7 @@ let pack =
       in
       trim @@ lift2 elet (many1 binding) (d.exp d)
     in
-    let efun = trim @@ lift2 efun (kwd "fun" *> many pat <* bar) (d.exp d) in
+    let efun = trim @@ lift2 efun (kwd "fun" *> many pat <* arrow) (d.exp d) in
     let ematch =
       let fst_case = lift2 ccase (option "" bar *> pat <* arrow) (d.exp d) in
       let other_cases = lift2 ccase (bar *> pat <* arrow) (d.exp d) in
@@ -354,4 +354,4 @@ let decl =
 (****************** Prog parsing ******************)
 
 let pprog (l : decl list) : prog = l
-let prog = many1 (trim @@ decl <* option "" semisemi) >>| pprog
+let prog = many1 (trim @@ decl <* trim @@ option "" semisemi) >>| pprog

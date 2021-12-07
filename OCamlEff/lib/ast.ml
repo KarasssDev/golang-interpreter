@@ -44,8 +44,7 @@ and const =
 
 and binding = bool * pat * exp [@@deriving show { with_path = false }]
 
-and case = pat * exp
-(*  | _ :: [] -> 5  *)
+and case = pat * exp (*  | _ :: [] -> 5  *) [@@deriving show { with_path = false }]
 
 and exp =
   | EConst of const (*    true    *)
@@ -64,9 +63,9 @@ and exp =
   | EContinue of continuation * exp (*    continue k (x - 1)    *)
 [@@deriving show { with_path = false }]
 
-and continuation = Continuation of ident
+and continuation = Continuation of ident [@@deriving show { with_path = false }]
 
-and effect = Effect of capitalized_ident
+and effect = Effect of capitalized_ident [@@deriving show { with_path = false }]
 
 and pat =
   | PWild (*  _  *)

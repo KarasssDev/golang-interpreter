@@ -1,5 +1,3 @@
-open Tester
-
 (*  Catamorphism  *)
 let%test _ =
   Tester.test_parse

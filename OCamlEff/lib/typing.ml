@@ -309,7 +309,7 @@ let error_to_st = function
     String.concat " " [ "uni fail:"; tyexp_to_st x; tyexp_to_st y ]
 ;;
 
-let%test _ =
+(* let%test _ =
   match w (EList [ EConst (CInt 5); EConst (CInt 6); EConst (CInt 3) ]) with
   | Error x ->
     Printf.printf "%s\n" (error_to_st x);
@@ -343,4 +343,4 @@ let%test _ =
     Printf.printf "%s\n" (tyexp_to_st x);
     Printf.printf "-----\n";
     true
-;;
+;; *)

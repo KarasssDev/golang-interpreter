@@ -1,4 +1,4 @@
-type ident = string (*  var_name  *)
+type ident = string [@@deriving show] (*  var_name  *)
 
 type capitalized_ident = string [@@deriving show]
 (*  Choice  *)
@@ -33,10 +33,9 @@ type infix_op =
 (*  ||  *)
 
 and unary_op =
-  | Minus
-  (*  - *)
-  | Not
-(*  not  *)
+  | Minus (*  - *)
+  | Not (*  not  *)
+[@@deriving show]
 
 and const =
   | CInt of int (*    1    *)

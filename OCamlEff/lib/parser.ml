@@ -1,7 +1,6 @@
 open Angstrom
 open Ast
 open Base
-open Format
 
 (*-------------- Main --------------*)
 
@@ -213,13 +212,13 @@ let uns = trim @@ take_while1 is_digit
 
 let cunsint =
   let* uns = uns in
-  return @@ int_of_string uns >>| cint
+  return @@ Base.Int.of_string uns >>| cint
 ;;
 
 let cint =
   let* sgn = option "" (token "+" <|> token "-") in
   let* uns = uns in
-  return @@ int_of_string (sgn ^ uns) >>| cint
+  return @@ Base.Int.of_string (sgn ^ uns) >>| cint
 ;;
 
 let cbool =
@@ -367,7 +366,7 @@ let tyexp =
          [ token "int" *> return TInt
          ; token "string" *> return TString
          ; token "bool" *> return TBool
-         ; (uns >>| fun bind -> TVar (int_of_string bind))
+         ; (uns >>| fun bind -> TVar (Base.Int.of_string bind))
          ; parens tyexp
          ]
   in

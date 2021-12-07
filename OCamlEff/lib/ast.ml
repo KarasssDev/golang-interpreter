@@ -75,7 +75,7 @@ and pat =
   | PCons of pat * pat (*  hd :: tl  *)
   | PList of pat list (*  [a; b]  *)
   | PTuple of pat list (*  a, b   *)
-  | PEffectH of effect * pat * continuation
+  | PEffectH of effect * pat * continuation (*  effect (Choice x) k *)
 [@@deriving show {with_path= false}]
 
 and decl =

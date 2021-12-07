@@ -12,10 +12,9 @@ bug-reports: "loktevsergay.2003@gmail.com"
 depends: [
   "dune" {>= "2.8"}
   "angstrom"
-  "str"
   "ppx_inline_test" {with-test}
   "qcheck-core"
-  "ppx_deriving.eq"
+  "ppx_deriving"
   "ppx_expect"
   "ppx_show"
   "odoc" {with-doc}

@@ -4,7 +4,9 @@
    (:standard -warn-error -A -w -3-9-32-58)))
  (release
   (flags
-   (:standard -warn-error -A -w -58))))
+   (:standard -warn-error -A -w -26)
+   (:standard -warn-error -A -w -58)
+   (-short-paths))))
 
 (executable
  (name REPL)
@@ -12,4 +14,4 @@
  (modules REPL)
  (libraries C.Lib)
  (preprocess
-  (pps ppx_expect ppx_show)))
+  (pps ppx_deriving.show ppx_deriving.eq)))

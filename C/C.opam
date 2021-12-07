@@ -2,7 +2,17 @@
 opam-version: "2.0"
 version: "0.1"
 synopsis: "C_mini"
-description: "soon"
+description: 
+  "Не поддерживается:
+  - Изменение значений большего типа меньшим
+    ( int* arr = malloc(sizeof(int));
+      arr[0] = 1000000000;
+      char *pt = arr;
+      pt[0] = 'y';) -> arr[0] != 1000000121 
+  - Многомерные массивы (не указатели)
+  ...
+
+  запись x++/x-- эквивалентна x = x + 1 / x = x - 1"
 maintainer: ["a.oleynikov@outlook.com"]
 authors: ["Andrew Olejnikov"]
 license: "LGPL-3.0-only"

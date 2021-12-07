@@ -17,8 +17,7 @@
 (package
  (name C) ; FIXME and regenerate .opam file using 'dune build @install'
  (synopsis "C_mini")
- (description
-  "soon")
+ (description "soon")
  (version 0.1)
  (depends
   dune
@@ -29,8 +28,7 @@
   ppx_show
   (odoc :with-doc)
   (ocamlformat :build)
-  base 
-  
+  base
   ppx_deriving
   ; After adding dependencies to 'dune' files and the same dependecies here too
   ))

@@ -158,14 +158,15 @@ let expr =
       in
       let defr_op =
         fix (fun defr_op ->
-            token "*" *> (indexer_exp <|> var_name <|> defr_op <|> expr)
+            token "*"
+            *> (parens expr <|> indexer_exp <|> var_name <|> defr_op <|> expr)
             >>= function
             | ACCESOR _ -> fail "accesor ptr"
             | dexp -> return @@ DEREFERENCE dexp)
       in
       let addr_op =
-        token "&" *> (indexer_exp <|> var_name <|> expr) >>= fun pvar ->
-        return @@ ADDRESS pvar
+        token "&" *> (indexer_exp <|> parens expr <|> var_name <|> expr)
+        >>= fun pvar -> return @@ ADDRESS pvar
       in
       let null = token "NULL" *> (return @@ LITERAL CNULL) in
       let other =
@@ -223,41 +224,6 @@ let expr =
                             oldexpr <|> parens newexpr)
       in
       newexpr)
-(*
-   let indexer_exp = identifier >>= fun idd -> indexer idd rec_expr
-
-   let var_name = identifier >>= fun id -> return @@ VAR_NAME id
-
-   let access l r = ACCESOR (l, r)
-
-   let arrow_cast l r = ACCESOR (DEREFERENCE l, r)
-
-   let accesor =
-     let accessible = indexer_exp <|> var_name in
-     accessible >>= fun h ->
-     many1 @@ (token "." *> accessible) >>= fun a ->
-     return @@ List.fold_left access h a
-
-   let accesor =
-     let accessible = indexer_exp <|> var_name in
-     accessible >>= fun h ->
-     many1 @@ (token "." *> accessible) >>= fun a ->
-     return @@ List.fold_left access h a
-
-   let arrow =
-     indexer_exp <|> parens var_name <|> var_name >>= fun h ->
-     many @@ (token "->" *> (indexer_exp <|> parens var_name <|> var_name))
-     >>= fun a -> return @@ List.fold_left arrow_cast h a
-
-   let inc =
-     accesor <|> arrow <|> indexer_exp <|> var_name <* string "++" >>= fun v ->
-     return @@ ADD (v, LITERAL (CINT 1))
-
-   let dec =
-     accesor <|> arrow <|> indexer_exp <|> var_name <* string "--" >>= fun v ->
-     return @@ SUB (v, LITERAL (CINT 1))
-
-   let expr = fix (fun expr -> inc <|> dec <|> rec_expr <|> parens expr) *)
 
 (** STATEMENTS PARSING FUNCTIONS *)
 
@@ -443,10 +409,11 @@ let if_else_stmts stmtss =
 
 let for_statement stmtss =
   token "for" *> token "("
-  *> (var_decl >>= (fun var -> return @@ Some var) <|> return None)
+  *> (var_decl
+     >>= (fun var -> return @@ Some var)
+     <|> (return None <* token ";"))
   >>= fun var ->
-  token ";" *> (expr >>= (fun re -> return @@ Some re) <|> return None)
-  >>= fun re ->
+  expr >>= (fun re -> return @@ Some re) <|> return None >>= fun re ->
   token ";"
   *> (var_assign_proc_call true
      >>= (fun step -> return @@ Some step)

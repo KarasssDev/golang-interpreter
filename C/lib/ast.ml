@@ -52,14 +52,13 @@ type statements =
   | IF of expr * statements
   | IF_ELSE of expr * statements * statements
   | WHILE of expr * statements
-  | FOR of (statements option) * (expr option) * (statements option) * statements
+  | FOR of statements option * expr option * statements option * statements
   | ASSIGN of expr * expr
   | ASSIGN_SUB of expr * expr
   | ASSIGN_ADD of expr * expr
   | ASSIGN_MUL of expr * expr
   | ASSIGN_DIV of expr * expr
   | ASSIGN_MOD of expr * expr
-  
   | BREAK
   | CONTINUE
 [@@deriving show { with_path = false }]
@@ -74,9 +73,10 @@ and prog =
 
 module Hashtbl = struct
   include Hashtbl
-  
-  let pp pp_key pp_value ppf  values =
-    Hashtbl.iter (fun key data ->
-      Format.fprintf ppf "@[<1>%a: %a@]@." pp_key key pp_value data)
-        values
-end 
+
+  let pp pp_key pp_value ppf values =
+    Hashtbl.iter
+      (fun key data ->
+        Format.fprintf ppf "@[<1>%a: %a@]@." pp_key key pp_value data)
+      values
+end

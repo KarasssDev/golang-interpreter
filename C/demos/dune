@@ -5,11 +5,53 @@
    (-short-paths))))
 
 (executable
- (name demoParser)
- (modules demoParser)
+ (name demoList)
+ (modules demoList)
  (libraries C.Lib)
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq)))
 
+(executable
+ (name demoFactorial)
+ (modules demoFactorial)
+ (libraries C.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(executable
+ (name demoMemcpy)
+ (modules demoMemcpy)
+ (libraries C.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(executable
+ (name demoFib)
+ (modules demoFib)
+ (libraries C.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(executable
+ (name demoFree)
+ (modules demoFree)
+ (libraries C.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(executable
+ (name demoMultiPtrs)
+ (modules demoMultiPtrs)
+ (libraries C.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+
 (cram
- (deps ./demoParser.exe))
+ (deps 
+   ./demoList.exe
+   ./demoFactorial.exe
+   ./demoMemcpy.exe
+   ./demoFib.exe
+   ./demoFree.exe
+   ./demoMultiPtrs.exe))

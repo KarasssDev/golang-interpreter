@@ -43,7 +43,6 @@ and const =
 [@@deriving show { with_path = false }]
 
 and binding = bool * pat * exp [@@deriving show { with_path = false }]
-
 and case = pat * exp (*  | _ :: [] -> 5  *) [@@deriving show { with_path = false }]
 
 and exp =
@@ -64,7 +63,6 @@ and exp =
 [@@deriving show { with_path = false }]
 
 and continuation = Continuation of ident [@@deriving show { with_path = false }]
-
 and effect = Effect of capitalized_ident [@@deriving show { with_path = false }]
 
 and pat =

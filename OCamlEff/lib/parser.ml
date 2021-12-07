@@ -1,44 +1,17 @@
 open Angstrom
 open Ast
+open Base
 open Format
 
 (****************** Main parser ******************)
 
 let parse p s = parse_string ~consume:All p s
 
-(****************** Utils for testing ******************)
-
-let parse_test_suc pp p s expected =
-  match parse p s with
-  | Error _ -> false
-  | Result.Ok res ->
-    if expected = res
-    then true
-    else (
-      print_string "Actual is:\n";
-      pp std_formatter res;
-      false)
-;;
-
-let parse_test_fail pp p s =
-  match parse p s with
-  | Error _ -> true
-  | Result.Ok res ->
-    print_string "Actual is:\n";
-    pp std_formatter res;
-    false
-;;
-
-(****************** Helpers ******************)
-
-let is_ws = function
-  | ' ' | '\t' -> true
-  | _ -> false
-;;
+(****************** Helper combinators ******************)
 
 let chainl1 e op =
   let rec go acc = lift2 (fun f x -> f acc x) op e >>= go <|> return acc in
-  e >>= fun init -> go init
+  e >>= go
 ;;
 
 let rec chainr1 e op = e >>= fun a -> op >>= (fun f -> chainr1 e op >>| f a) <|> return a
@@ -56,11 +29,13 @@ let procl op pl pr =
   let rec go acc =
     lift2 (fun f x -> f acc x) op (choice [ pl >>= go; pr ]) <|> return acc
   in
-  pl >>= fun init -> go init
+  pl >>= go
 ;;
 
-let is_eol = function
-  | '\r' | '\n' -> true
+(****************** Util parsers and tokens ******************)
+
+let is_empty = function
+  | ' ' | '\t' | '\r' | '\n' -> true
   | _ -> false
 ;;
 
@@ -68,8 +43,6 @@ let is_digit = function
   | '0' .. '9' -> true
   | _ -> false
 ;;
-
-let skip = take_while (fun c -> is_ws c || is_eol c)
 
 let is_keyword = function
   | "let"
@@ -90,36 +63,21 @@ let is_keyword = function
   | _ -> false
 ;;
 
-let ws = take_while is_ws
-let eol = take_while is_eol
-let token s = ws *> string s
-let rp = token ")"
-let lp = token "("
+let empty = take_while is_empty
+let empty1 = take_while1 is_empty
+let trim p = empty *> p <* empty
+let token s = empty *> string s
+let kwd s = token s <* empty1
 let rsb = token "]"
 let lsb = token "["
 let comma = token ","
-let semicol = token ";"
+let colon = token ":"
+let semi = token ";"
+let semisemi = token ";;"
+let bar = token "|"
+let arrow = token "->"
 let between l r p = l *> p <* r
-let parens p = between lp rp p
-
-(****************** Tokens ******************)
-
-let tthen = token "then"
-let telse = token "else"
-let tif = token "if"
-let tfun = token "fun"
-let tin = token "in"
-let ttrue = token "true"
-let tfalse = token "false"
-let tlet = token "let"
-let teol = token "\n"
-let trec = token "rec"
-let twild = token "_"
-let tmatch = token "match"
-let tbar = token "|"
-let twith = token "with"
-let tarrow = token "->"
-let tfunction = token "function"
+let parens p = token "(" *> p <* token ")"
 
 (****************** Const ctors ******************)
 
@@ -141,6 +99,8 @@ let efunction cases = EFun (PVar "match", EMatch (EVar "match", cases))
 let efun p e = EFun (p, e)
 let eapp = return (fun e1 e2 -> EApp (e1, e2))
 let ematch e cases = EMatch (e, cases)
+let efun args rhs = List.fold_right args ~f:efun ~init:rhs
+let eop o e1 e2 = EOp (o, e1, e2)
 
 (****************** Case ctors ******************)
 let ccase p e = p, e
@@ -157,6 +117,7 @@ let pconst c = PConst c
 let plist pl = PList pl
 let ptuple pl = PTuple pl
 let popcons = token "::" *> return (fun p1 p2 -> PCons (p1, p2))
+let pcons = return @@ fun p1 p2 -> PCons (p1, p2)
 
 (****************** Decl ctors ******************)
 
@@ -165,80 +126,89 @@ let deff p te = DEffect (p, te)
 
 (****************** Plain parsers ******************)
 
-let eop o e1 e2 = EOp (o, e1, e2)
-let add_ = token "+" *> (return @@ eop Add)
-let sub_ = token "-" *> (return @@ eop Sub)
-let mul_ = token "*" *> (return @@ eop Mul)
-let div_ = token "/" *> (return @@ eop Div)
-let eq_ = token "=" *> (return @@ eop Eq)
-let neq_ = token "<>" *> (return @@ eop Eq)
-let less_ = token "<" *> (return @@ eop Less)
-let gre_ = token ">" *> (return @@ eop Gre)
-let leq_ = token "<=" *> (return @@ eop Leq)
-let geq_ = token ">=" *> (return @@ eop Geq)
-let and_ = token "&&" *> (return @@ eop And)
-let or_ = token "||" *> (return @@ eop Or)
-let cons_ = token "::" *> return econs
+let choice_op ops =
+  choice @@ List.map ~f:(fun (tok, cons) -> token tok *> (return @@ eop cons)) ops
+;;
+
+let add_sub = choice_op [ "+", Add; "-", Sub ]
+let mult_div = choice_op [ "*", Mul; "/", Div ]
+let cmp = choice_op [ ">=", Geq; ">", Gre; "<=", Leq; "<", Less ]
+let eq_uneq = choice_op [ "=", Eq; "<>", Neq ]
+let conj = choice_op [ "&&", And ]
+let disj = choice_op [ "||", Or ]
+let cons = token "::" *> return econs
 
 let app_unop p =
   choice
-    [ token "-" *> p >>| eunop Minus; token "not" *> p >>| eunop Not; token "+" *> p; p ]
+    [ token "-" *> p >>| eunop Minus; kwd "not" *> p >>| eunop Not; token "+" *> p; p ]
 ;;
 
-let id_ check_fst =
-  let check_inner c = check_fst c || is_digit c in
-  ws *> satisfy check_fst
-  >>= fun fst ->
-  (match fst with
-  | '_' -> take_while1
-  | _ -> take_while)
-    check_inner
-  >>= function
-  | _ as inner ->
-    if is_keyword @@ Char.escaped fst ^ inner
-    then fail "Keyword is reserved"
-    else return @@ Char.escaped fst ^ inner
+let id valid_fst =
+  let valid_inner = function
+    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
+    | _ -> false
+  in
+  let* fst = empty *> satisfy valid_fst in
+  let take_func =
+    match fst with
+    | '_' -> many1
+    | _ -> many
+  in
+  let* inner = take_func (satisfy valid_inner) in
+  let id = Base.String.of_char_list @@ (fst :: inner) in
+  if is_keyword id then fail "Keyword" else return id
 ;;
 
-let id =
-  id_
+let ident =
+  id
   @@ function
   | 'a' .. 'z' | '_' -> true
   | _ -> false
 ;;
 
+let capitalized_ident =
+  id
+  @@ function
+  | 'A' .. 'Z' -> true
+  | _ -> false
+;;
+
 (****************** Const parsing ******************)
 
-let uns = take_while1 is_digit <* ws >>= fun uns -> return @@ uns
-let cunsint = uns >>= fun uns -> return @@ int_of_string uns >>| cint
+let uns = trim @@ take_while1 is_digit
+
+let cunsint =
+  let* uns = uns in
+  return @@ int_of_string uns >>| cint
+;;
 
 let cint =
-  option "" (token "+" <|> token "-")
-  >>= fun sgn -> uns >>= fun uns -> return @@ int_of_string (sgn ^ uns) >>| cint
+  let* sgn = option "" (token "+" <|> token "-") in
+  let* uns = uns in
+  return @@ int_of_string (sgn ^ uns) >>| cint
 ;;
 
 let cbool =
-  let _true = ttrue *> return (cbool true) in
-  let _false = tfalse *> return (cbool false) in
+  let _true = kwd "true" *> return (cbool true) in
+  let _false = kwd "false" *> return (cbool false) in
   _true <|> _false
 ;;
 
 let cstring =
-  char '"'
-  *> take_while (function
-         | '"' -> false
-         | _ -> true)
-  <* char '"'
+  between (char '"') (char '"')
+  @@ take_while (function
+      | '"' -> false
+      | _ -> true)
   >>| cstring
 ;;
 
-let const = ws *> choice [ cint; cbool; cstring ] <* ws
-let uns_const = ws *> choice [ cunsint; cbool; cstring ] <* ws
+let const = trim @@ choice [ cint; cbool; cstring ]
+let uns_const = trim @@ choice [ cunsint; cbool; cstring ]
 
 (****************** Pattern parsing ******************)
 
-let pvar = id >>| pvar
-let pwild = twild >>| pwild
+let pvar = ident >>| pvar
+let pwild = token "_" >>| pwild
 let pconst = const >>| pconst
 
 type pdispatch =
@@ -247,23 +217,20 @@ type pdispatch =
   ; pat : pdispatch -> pat t
   }
 
-let pcons = return @@ fun p1 p2 -> PCons (p1, p2)
-
 let pack =
-  let pat d = fix @@ fun _self -> ws *> (d.tuple d <|> d.cons d) <* ws in
+  let pat d = fix @@ fun _self -> trim @@ d.tuple d <|> d.cons d in
   let tuple d =
     fix
     @@ fun _self ->
-    ws *> lift2 (fun hd tl -> hd :: tl) (d.cons d) (many1 (comma *> d.cons d))
+    trim @@ lift2 (fun hd tl -> hd :: tl) (d.cons d) (many1 (comma *> d.cons d))
     >>| ptuple
-    <* ws
   in
   let cons d =
     fix
     @@ fun _self ->
-    let plist = ws *> (between lsb rsb @@ sep_by semicol @@ d.pat d >>| plist) <* ws in
-    let prim = ws *> choice [ pconst; pvar; pwild; plist; parens @@ d.pat d ] <* ws in
-    ws *> chainr1 prim popcons <* ws
+    let plist = trim @@ between lsb rsb @@ sep_by semi @@ d.pat d >>| plist in
+    let prim = trim @@ choice [ pconst; pvar; pwild; plist; parens @@ d.pat d ] in
+    trim @@ chainr1 prim popcons
   in
   { tuple; cons; pat }
 ;;
@@ -279,43 +246,34 @@ type edispatch =
   ; op : edispatch -> exp t
   }
 
-let efun args rhs = List.fold_right efun args rhs
-
-let wthdebug p =
-  p
-  >>= fun res ->
-  (pp_print_list pp_exp std_formatter) [ res ];
-  return res
-;;
-
 let pack =
-  let exp d = fix @@ fun _self -> ws *> (d.key d <|> d.tuple d <|> d.op d) <* ws in
+  let exp d = fix @@ fun _self -> trim @@ d.key d <|> d.tuple d <|> d.op d in
   let key d =
     fix
     @@ fun _self ->
     let eif =
-      ws *> lift3 eif (tif *> d.exp d) (tthen *> d.exp d) (telse *> d.exp d) <* ws
+      trim
+      @@ lift3 eif (kwd "if" *> d.exp d) (kwd "then" *> d.exp d) (kwd "else" *> d.exp d)
     in
     let elet =
       let binding =
-        ws
-        *> lift3
-             bbind
-             (tlet *> option false (trec >>| fun _ -> true))
-             pat
-             (lift2 efun (ws *> many pat <* token "=") (d.exp d <* tin))
-        <* ws
+        trim
+        @@ lift3
+          bbind
+          (kwd "let" *> option false (kwd "rec" >>| fun _ -> true))
+          pat
+          (lift2 efun (empty *> many pat <* token "=") (d.exp d <* kwd "in"))
       in
-      ws *> lift2 elet (many1 binding) (d.exp d) <* ws
+      trim @@ lift2 elet (many1 binding) (d.exp d)
     in
-    let efun = ws *> lift2 efun (tfun *> many pat <* tarrow) (d.exp d) <* ws in
+    let efun = trim @@ lift2 efun (kwd "fun" *> many pat <* bar) (d.exp d) in
     let ematch =
-      let fst_case = lift2 ccase (option "" tbar *> pat <* tarrow) (d.exp d) in
-      let other_cases = lift2 ccase (tbar *> pat <* tarrow) (d.exp d) in
+      let fst_case = lift2 ccase (option "" bar *> pat <* arrow) (d.exp d) in
+      let other_cases = lift2 ccase (bar *> pat <* arrow) (d.exp d) in
       let cases = lift2 (fun fst other -> fst :: other) fst_case (many other_cases) in
-      let pmatch = lift2 ematch (tmatch *> d.exp d <* twith) cases in
-      let pfunction = tfunction *> cases >>| efunction in
-      ws *> (pfunction <|> pmatch) <* ws
+      let pmatch = lift2 ematch (kwd "match" *> d.exp d <* kwd "with") cases in
+      let pfunction = kwd "function" *> cases >>| efunction in
+      trim @@ pfunction <|> pmatch
     in
     choice [ elet; eif; ematch; efun ]
   in
@@ -326,19 +284,19 @@ let pack =
   let op d =
     fix
     @@ fun _self ->
-    let lst = ws *> (between lsb rsb @@ sep_by semicol (d.exp d)) <* ws in
+    let lst = trim @@ between lsb rsb @@ sep_by semi (d.exp d) in
     let prim =
-      ws *> choice [ lst >>| elist; uns_const >>| econst; id >>| evar; parens @@ d.exp d ]
-      <* ws
+      trim
+      @@ choice [ lst >>| elist; uns_const >>| econst; ident >>| evar; parens @@ d.exp d ]
     in
-    let app = ws *> chainl1 prim eapp <* ws in
-    let mul = procl (mul_ <|> div_) app @@ d.key d in
-    let add = procl (add_ <|> sub_) (app_unop mul) (app_unop @@ d.key d) in
-    let cons = procr cons_ add @@ d.key d in
-    let cmp = procl (leq_ <|> less_ <|> geq_ <|> gre_) cons @@ d.key d in
-    let eq = procl (eq_ <|> neq_) cmp @@ d.key d in
-    let _and = procl and_ eq @@ d.key d in
-    ws *> (procl or_ _and @@ d.key d) <* ws
+    let app_op = trim @@ chainl1 prim eapp in
+    let mul_op = procl mult_div app_op @@ d.key d in
+    let add_op = procl add_sub (app_unop mul_op) (app_unop @@ d.key d) in
+    let cons_op = procr cons add_op @@ d.key d in
+    let cmp_op = procl cmp cons_op @@ d.key d in
+    let eq_op = procl eq_uneq cmp_op @@ d.key d in
+    let conj_op = procl conj eq_op @@ d.key d in
+    trim @@ procl disj conj_op @@ d.key d
   in
   { key; tuple; exp; op }
 ;;
@@ -351,33 +309,32 @@ let tyexp =
   fix
   @@ fun tyexp ->
   let prim =
-    ws
-    *> (token "int" *> return TInt
-       <|> token "string" *> return TString
-       <|> token "bool" *> return TBool
-       <|> (uns >>| fun bind -> TVar (int_of_string bind))
-       <|> parens tyexp)
-    <* ws
+    trim
+    @@ choice
+      [ token "int" *> return TInt
+      ; token "string" *> return TString
+      ; token "bool" *> return TBool
+      ; (uns >>| fun bind -> TVar (int_of_string bind))
+      ; parens tyexp
+      ]
   in
   let list =
-    prim
-    >>= fun ty ->
-    many1 @@ (ws *> token "list")
-    >>= fun l ->
+    let* lst_ty = prim in
+    let* l = many1 @@ (empty *> token "list") in
     let rec wrap acc n =
       match n with
       | 0 -> acc
       | _ -> wrap (TList acc) (n - 1)
     in
-    return @@ wrap ty (List.length l)
+    return @@ wrap lst_ty (List.length l)
   in
   let tup =
-    sep_by1 (token "*" *> ws) (list <|> prim)
+    sep_by1 (token "*" *> empty) (list <|> prim)
     >>| function
     | [ a ] -> a
     | tup -> TTuple tup
   in
-  ws *> chainr1 tup (tarrow *> return (fun t1 t2 -> TArrow (t1, t2))) <* ws
+  trim @@ chainr1 tup (arrow *> return (fun t1 t2 -> TArrow (t1, t2)))
 ;;
 
 (****************** Decl parsing ******************)
@@ -386,332 +343,15 @@ let decl =
   let dlet =
     lift3
       dlet
-      (tlet *> option false (trec >>| fun _ -> true))
+      (kwd "let" *> option false (kwd "rec" >>| fun _ -> true))
       pat
-      (lift2 efun (ws *> many pat <* token "=") exp)
+      (lift2 efun (empty *> many pat <* token "=") exp)
   in
-  let deff =
-    let id =
-      id_
-      @@ function
-      | 'a' .. 'z' | 'A' .. 'Z' -> true
-      | _ -> false
-    in
-    lift2 deff (token "effect" *> id <* token ":") tyexp
-  in
-  ws *> (deff <|> dlet) <* ws
+  let deff = lift2 deff (kwd "effect" *> capitalized_ident <* colon) tyexp in
+  trim @@ deff <|> dlet
 ;;
 
 (****************** Prog parsing ******************)
 
 let pprog (l : decl list) : prog = l
-let prog = many1 (skip *> decl <* option "" (token ";;") <* skip) >>| pprog
-
-(****************** Tests ******************)
-let test_exp_suc = parse_test_suc pp_exp exp
-let test_pat_suc = parse_test_suc pp_pat pat
-let test_prog_suc = parse_test_suc pp_prog prog
-let test_tyexp_suc = parse_test_suc pp_tyexp tyexp
-
-let%test _ =
-  test_prog_suc
-    {|
-let fold init f lst = match lst with | [] -> acc | hd :: tl -> fold (f init hd) f tl
-|}
-  @@ [ DLet
-         ( false
-         , PVar "fold"
-         , EFun
-             ( PVar "init"
-             , EFun
-                 ( PVar "f"
-                 , EFun
-                     ( PVar "lst"
-                     , EMatch
-                         ( EVar "lst"
-                         , [ PList [], EVar "acc"
-                           ; ( PCons (PVar "hd", PVar "tl")
-                             , EApp
-                                 ( EApp
-                                     ( EApp
-                                         ( EVar "fold"
-                                         , EApp (EApp (EVar "f", EVar "init"), EVar "hd")
-                                         )
-                                     , EVar "f" )
-                                 , EVar "tl" ) )
-                           ] ) ) ) ) )
-     ]
-;;
-
-let%test _ =
-  test_prog_suc
-    {|
-let rec fact n = match n with | 0 -> 1 | _ -> n * fact (n + -1)
-|}
-    [ DLet
-        ( true
-        , PVar "fact"
-        , EFun
-            ( PVar "n"
-            , EMatch
-                ( EVar "n"
-                , [ PConst (CInt 0), EConst (CInt 1)
-                  ; ( PWild
-                    , EOp
-                        ( Mul
-                        , EVar "n"
-                        , EApp
-                            ( EVar "fact"
-                            , EOp (Add, EVar "n", EUnOp (Minus, EConst (CInt 1))) ) ) )
-                  ] ) ) )
-    ]
-;;
-
-let%test _ =
-  test_prog_suc
-    {|
-let a, b, (c, (d, e)) = 1, 2, (3, (4, 5));; let f _ = a + b + c + d + e;;
-|}
-    [ DLet
-        ( false
-        , PTuple
-            [ PVar "a"; PVar "b"; PTuple [ PVar "c"; PTuple [ PVar "d"; PVar "e" ] ] ]
-        , ETuple
-            [ EConst (CInt 1)
-            ; EConst (CInt 2)
-            ; ETuple [ EConst (CInt 3); ETuple [ EConst (CInt 4); EConst (CInt 5) ] ]
-            ] )
-    ; DLet
-        ( false
-        , PVar "f"
-        , EFun
-            ( PWild
-            , EOp
-                ( Add
-                , EVar "a"
-                , EOp (Add, EVar "b", EOp (Add, EVar "c", EOp (Add, EVar "d", EVar "e")))
-                ) ) )
-    ]
-;;
-
-let%test _ =
-  test_prog_suc "let map f l = match l with | [] -> [] | hd :: tl -> f hd :: map f tl"
-  @@ [ DLet
-         ( false
-         , PVar "map"
-         , EFun
-             ( PVar "f"
-             , EFun
-                 ( PVar "l"
-                 , EMatch
-                     ( EVar "l"
-                     , [ PList [], EList []
-                       ; ( PCons (PVar "hd", PVar "tl")
-                         , ECons
-                             ( EApp (EVar "f", EVar "hd")
-                             , EApp (EApp (EVar "map", EVar "f"), EVar "tl") ) )
-                       ] ) ) ) )
-     ]
-;;
-
-let%test _ =
-  test_prog_suc "let x, y = 1 :: [2; 3], match z with | _ -> 4 :: 5 :: 6 :: rest;;"
-  @@ [ DLet
-         ( false
-         , PTuple [ PVar "x"; PVar "y" ]
-         , ETuple
-             [ ECons (EConst (CInt 1), EList [ EConst (CInt 2); EConst (CInt 3) ])
-             ; EMatch
-                 ( EVar "z"
-                 , [ ( PWild
-                     , ECons
-                         ( EConst (CInt 4)
-                         , ECons (EConst (CInt 5), ECons (EConst (CInt 6), EVar "rest"))
-                         ) )
-                   ] )
-             ] )
-     ]
-;;
-
-let%test _ =
-  test_prog_suc
-    "let fib n = let rec helper fst snd n = match n with | 0 -> fst | 1 -> snd | _ -> \
-     helper snd (fst + snd) (n + -1) in helper 0 1 n "
-  @@ [ DLet
-         ( false
-         , PVar "fib"
-         , EFun
-             ( PVar "n"
-             , ELet
-                 ( [ ( true
-                     , PVar "helper"
-                     , EFun
-                         ( PVar "fst"
-                         , EFun
-                             ( PVar "snd"
-                             , EFun
-                                 ( PVar "n"
-                                 , EMatch
-                                     ( EVar "n"
-                                     , [ PConst (CInt 0), EVar "fst"
-                                       ; PConst (CInt 1), EVar "snd"
-                                       ; ( PWild
-                                         , EApp
-                                             ( EApp
-                                                 ( EApp (EVar "helper", EVar "snd")
-                                                 , EOp (Add, EVar "fst", EVar "snd") )
-                                             , EOp
-                                                 ( Add
-                                                 , EVar "n"
-                                                 , EUnOp (Minus, EConst (CInt 1)) ) ) )
-                                       ] ) ) ) ) )
-                   ]
-                 , EApp
-                     ( EApp (EApp (EVar "helper", EConst (CInt 0)), EConst (CInt 1))
-                     , EVar "n" ) ) ) )
-     ]
-;;
-
-let%test _ =
-  test_prog_suc
-    "let reverse = let rec helper acc l = match l with | [] -> acc | hd :: tl -> helper \
-     tl (hd :: acc) in helper []"
-  @@ [ DLet
-         ( false
-         , PVar "reverse"
-         , ELet
-             ( [ ( true
-                 , PVar "helper"
-                 , EFun
-                     ( PVar "acc"
-                     , EFun
-                         ( PVar "l"
-                         , EMatch
-                             ( EVar "l"
-                             , [ PList [], EVar "acc"
-                               ; ( PCons (PVar "hd", PVar "tl")
-                                 , EApp
-                                     ( EApp (EVar "helper", EVar "tl")
-                                     , ECons (EVar "hd", EVar "acc") ) )
-                               ] ) ) ) )
-               ]
-             , EApp (EVar "helper", EList []) ) )
-     ]
-;;
-
-let%test _ =
-  test_exp_suc "1 + f x < (fun x -> g x y) = true || 1=0"
-  @@ EOp
-       ( Or
-       , EOp
-           ( Eq
-           , EOp
-               ( Less
-               , EOp (Add, EConst (CInt 1), EApp (EVar "f", EVar "x"))
-               , EFun (PVar "x", EApp (EApp (EVar "g", EVar "x"), EVar "y")) )
-           , EConst (CBool true) )
-       , EOp (Eq, EConst (CInt 1), EConst (CInt 0)) )
-;;
-
-let%test _ =
-  test_prog_suc
-    "let rec all predicate list = match list with | [] -> true | hd :: tl -> if not \
-     predicate hd then false else all predicate tl"
-  @@ [ DLet
-         ( true
-         , PVar "all"
-         , EFun
-             ( PVar "predicate"
-             , EFun
-                 ( PVar "list"
-                 , EMatch
-                     ( EVar "list"
-                     , [ PList [], EConst (CBool true)
-                       ; ( PCons (PVar "hd", PVar "tl")
-                         , EIf
-                             ( EUnOp (Not, EApp (EVar "predicate", EVar "hd"))
-                             , EConst (CBool false)
-                             , EApp (EApp (EVar "all", EVar "predicate"), EVar "tl") ) )
-                       ] ) ) ) )
-     ]
-;;
-
-(* let%test _ =
-  test_tyexp_suc "_ * int -> (int list list -> bool -> string) -> 1 list"
-  @@ TArrow
-       ( TTuple [ TWild; TInt ]
-       , TArrow (TArrow (TList (TList TInt), TArrow (TBool, TString)), TList (TVar 1)) )
-;; *)
-
-let%test _ =
-  test_prog_suc "effect Choice : string -> int;; let f x y = f (x y)"
-  @@ [ DEffect ("Choice", TArrow (TString, TInt))
-     ; DLet
-         ( false
-         , PVar "f"
-         , EFun (PVar "x", EFun (PVar "y", EApp (EVar "f", EApp (EVar "x", EVar "y")))) )
-     ]
-;;
-
-let%test _ =
-  test_prog_suc
-    "let rec sort lst = let sorted = match lst with | hd1 :: hd2 :: tl -> if hd1 > hd2 \
-     then  hd2 :: sort (hd1 :: tl)  else hd1 :: sort (hd2 :: tl) | tl -> tl in if lst = \
-     sorted then lst else sort sorted;; let l = [];; let sorted = sort l;;"
-    [ DLet
-        ( true
-        , PVar "sort"
-        , EFun
-            ( PVar "lst"
-            , ELet
-                ( [ ( false
-                    , PVar "sorted"
-                    , EMatch
-                        ( EVar "lst"
-                        , [ ( PCons (PVar "hd1", PCons (PVar "hd2", PVar "tl"))
-                            , EIf
-                                ( EOp (Gre, EVar "hd1", EVar "hd2")
-                                , ECons
-                                    ( EVar "hd2"
-                                    , EApp (EVar "sort", ECons (EVar "hd1", EVar "tl")) )
-                                , ECons
-                                    ( EVar "hd1"
-                                    , EApp (EVar "sort", ECons (EVar "hd2", EVar "tl")) )
-                                ) )
-                          ; PVar "tl", EVar "tl"
-                          ] ) )
-                  ]
-                , EIf
-                    ( EOp (Eq, EVar "lst", EVar "sorted")
-                    , EVar "lst"
-                    , EApp (EVar "sort", EVar "sorted") ) ) ) )
-    ; DLet (false, PVar "l", EList [])
-    ; DLet (false, PVar "sorted", EApp (EVar "sort", EVar "l"))
-    ]
-;;
-
-let%test _ =
-  test_prog_suc
-    "let map f = function [] -> [] | hd :: tl -> hd :: map f tl"
-    [ DLet
-        ( false
-        , PVar "map"
-        , EFun
-            ( PVar "f"
-            , EFun
-                ( PVar "match"
-                , EMatch
-                    ( EVar "match"
-                    , [ PList [], EList []
-                      ; ( PCons (PVar "hd", PVar "tl")
-                        , ECons (EVar "hd", EApp (EApp (EVar "map", EVar "f"), EVar "tl"))
-                        )
-                      ] ) ) ) )
-    ]
-;;
-
-let%test _ =
-  test_prog_suc
-    "let x = matchf with [] -> []"
-    []
-
+let prog = many1 (trim @@ decl <* option "" semisemi) >>| pprog

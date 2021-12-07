@@ -3,7 +3,7 @@ opam-version: "2.0"
 version: "0.1"
 synopsis: "C_mini"
 description: 
-  "Не поддерживается:
+"Не поддерживается:
   - Изменение значений большего типа меньшим
     ( int* arr = malloc(sizeof(int));
       arr[0] = 1000000000;

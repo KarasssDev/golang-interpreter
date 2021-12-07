@@ -37,27 +37,22 @@ type exec_ctx =
   ; strct_bgns : strct_bgns
   ; cur_t : types
   }
-[@@deriving show { with_path = false }]
 
 and vars = (string, types * int * h_value) Ast.Hashtbl.t
-[@@deriving show { with_path = false }]
 
-and heap = (int, h_value) Ast.Hashtbl.t [@@deriving show { with_path = false }]
+and heap = (int, h_value) Ast.Hashtbl.t
 
 and functions = (string, vars * types * args list * statements list) Ast.Hashtbl.t
-[@@deriving show { with_path = false }]
 
 and struct_tags = (string, (types * string) list) Ast.Hashtbl.t
-[@@deriving show { with_path = false }]
 
 and jump_stmt =
   | None
   | Break
   | Continue
   | Return of v_value
-[@@deriving show { with_path = false }]
 
-and allocated = (int * int) list [@@deriving show { with_path = false }]
+and allocated = (int * int) list
 
 and strct_bgns = (int, string) Ast.Hashtbl.t
 
@@ -93,7 +88,7 @@ let make_dep_ctx ctx () =
   }
 ;;
 
-let dbg_print ctx palcs =
+(* let dbg_print ctx palcs =
   "\n*******************\n"
   ^ "\nstruct_tags: "
   ^ show_struct_tags ctx.struct_tags
@@ -115,7 +110,7 @@ let dbg_print ctx palcs =
   ^ show_heap ctx.heap
   ^ "\nlocal_vars: "
   ^ show_vars ctx.vars
-;;
+;; *)
 
 module type MONAD = sig
   type 'a t
@@ -1335,8 +1330,8 @@ module Eval (M : MONADERROR) = struct
           error "Wrong number of elements"
         | _ -> error "Type error")
         >> return ctxs
-      | e -> error @@ show_v_value e ^ "  ----\n")
-    | _ -> error "______1"
+      | _ -> error "~~")
+    | _ -> error "~~"
 
   and cast_default_struct_init (ctxs : exec_ctx) tag =
     let rec unpack_t (n : string) = function
@@ -1695,7 +1690,7 @@ module Eval (M : MONADERROR) = struct
 
   let add_null ctx = add_in_heap ctx ctx.free_addr (Vdval (ctx.free_addr, Vnull)) CT_INT
 
-  let test1 =
+  (* let test1 =
     add_null (() |> make_exec_ctx)
     >>= fun ctx ->
     declare_fun ctx
@@ -1875,7 +1870,7 @@ module Eval (M : MONADERROR) = struct
     eval_stmt ctx' false false false CT_INT CT_VOID [ max_int, max_int ]
     @@ EXPRESSION (FUNC_CALL ("main", []))
     >>= fun (c, als) -> return @@ dbg_print c als
-  ;;
+  ;; *)
 
   let rec collect ctx stmts =
     match stmts with
@@ -1885,7 +1880,7 @@ module Eval (M : MONADERROR) = struct
       | TOP_VAR_DECL _ -> declare_top ctx top >>= fun ctx' -> collect ctx' tops
       | TOP_FUNC_DECL _ -> declare_fun ctx top >>= fun ctx' -> collect ctx' tops
       | TOP_STRUCT_DECL _ -> declare_struct ctx top >>= fun ctx' -> collect ctx' tops
-      | _ -> collect ctx tops (* eval' ctx palcs st *))
+      | _ -> collect ctx tops)
   ;;
 
   let eval_d stmts vrs =
@@ -1896,7 +1891,7 @@ module Eval (M : MONADERROR) = struct
     let ct = { ct with pack_addr = ct.free_addr } in
     eval_stmt ct false false false CT_INT CT_VOID [ max_int, max_int ]
     @@ EXPRESSION (FUNC_CALL ("main", []))
-    >>= fun (ct, als) ->
+    >>= fun (ct, _) ->
     let vs =
       List.map
         (fun x ->
@@ -1918,7 +1913,7 @@ module Eval (M : MONADERROR) = struct
      print_string @@ Result.get_ok Interpreterctx.E.test0;;
   *)
 
-  let eval_dd stmts vrs =
+  (* let eval_dd stmts vrs =
     add_null (() |> make_exec_ctx)
     >>= fun ctx ->
     collect ctx stmts
@@ -1927,7 +1922,7 @@ module Eval (M : MONADERROR) = struct
     eval_stmt ct false false false CT_INT CT_VOID [ max_int, max_int ]
     @@ EXPRESSION (FUNC_CALL ("main", []))
     >>= fun (ct, als) -> return @@ dbg_print ct als
-  ;;
+  ;; *)
   (*
      print_string @@ Result.get_ok Interpreterctx.E.test0;;
   *)
@@ -1936,4 +1931,4 @@ end
 module E = Eval (Result)
 
 let eval_d prg = E.eval_d prg
-let eval_dd prg = E.eval_dd prg
+(* let eval_dd prg = E.eval_dd prg *)

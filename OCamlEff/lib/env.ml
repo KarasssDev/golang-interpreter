@@ -24,7 +24,11 @@ let extend_id_map id x = IdMap.add id x
 let extend_eff_map id x = EffMap.add id x
 
 let lookup_id_map id env =
-  try IdMap.find id env with Not_found -> raise Not_bound
+  try IdMap.find id env with
+  | Not_found -> raise Not_bound
+;;
 
 let lookup_eff_map id context =
-  try EffMap.find id context with Not_found -> raise Not_bound
+  try EffMap.find id context with
+  | Not_found -> raise Not_bound
+;;

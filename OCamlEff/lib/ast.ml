@@ -1,9 +1,9 @@
-type ident = string [@@deriving show {with_path= false}] (*  var_name  *)
+type ident = string [@@deriving show { with_path = false }] (*  var_name  *)
 
-type capitalized_ident = string [@@deriving show {with_path= false}]
+type capitalized_ident = string [@@deriving show { with_path = false }]
 (*  Choice  *)
 
-type binder = int [@@deriving show {with_path= false}]
+type binder = int [@@deriving show { with_path = false }]
 
 type tyexp =
   | TInt (*   int   *)
@@ -13,7 +13,7 @@ type tyexp =
   | TTuple of tyexp list (*   int list * string   *)
   | TVar of binder (*   1 (polymorphic type)   *)
   | TArrow of tyexp * tyexp (*   string -> int   *)
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
 type infix_op =
   | Add (*  +   *)
@@ -28,21 +28,21 @@ type infix_op =
   | Neq (*  <>  *)
   | And (*  &&  *)
   | Or (*  ||  *)
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
 and unary_op =
   | Minus
   (*  - *)
   | Not (*  not  *)
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
 and const =
   | CInt of int (*    1    *)
   | CString of string (*  "abc"  *)
   | CBool of bool (*  true   *)
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
-and binding = bool * pat * exp [@@deriving show {with_path= false}]
+and binding = bool * pat * exp [@@deriving show { with_path = false }]
 
 and case = pat * exp
 (*  | _ :: [] -> 5  *)
@@ -62,7 +62,7 @@ and exp =
   | EMatch of exp * case list (*    match lst with [] -> 0 | hd :: tl -> hd    *)
   | EPerform of effect * exp (*    perform (Choice x)   *)
   | EContinue of continuation * exp (*    continue k (x - 1)    *)
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
 and continuation = Continuation of ident
 
@@ -76,11 +76,11 @@ and pat =
   | PList of pat list (*  [a; b]  *)
   | PTuple of pat list (*  a, b   *)
   | PEffectH of effect * pat * continuation (*  effect (Choice x) k *)
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
 and decl =
   | DLet of binding (*  let x = 10   *)
   | DEffect of ident * tyexp (*  effect E : int -> int  *)
-[@@deriving show {with_path= false}]
+[@@deriving show { with_path = false }]
 
-and prog = decl list [@@deriving show {with_path= false}]
+and prog = decl list [@@deriving show { with_path = false }]

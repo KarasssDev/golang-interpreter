@@ -26,14 +26,14 @@ let isort xs =
                     ( PVar "xs"
                     , EMatch
                         ( EVar "xs"
-                        , [ (PList [], EVar "e")
+                        , [ PList [], EVar "e"
                           ; ( PCons (PVar "x", PVar "xs")
                             , EApp
                                 ( EApp (EVar "f", EVar "x")
                                 , EApp
-                                    ( EApp
-                                        (EApp (EVar "cata", EVar "f"), EVar "e")
-                                    , EVar "xs" ) ) ) ] ) ) ) ) )
+                                    ( EApp (EApp (EVar "cata", EVar "f"), EVar "e")
+                                    , EVar "xs" ) ) )
+                          ] ) ) ) ) )
     ; DLet
         ( false
         , PVar "isort"
@@ -48,21 +48,22 @@ let isort xs =
                             ( PVar "lst"
                             , EMatch
                                 ( EVar "lst"
-                                , [ (PList [], EList [EVar "x"])
+                                , [ PList [], EList [ EVar "x" ]
                                   ; ( PCons (PVar "h", PVar "xs")
                                     , EIf
                                         ( EOp (Less, EVar "x", EVar "h")
-                                        , ECons
-                                            ( EVar "x"
-                                            , ECons (EVar "h", EVar "xs") )
+                                        , ECons (EVar "x", ECons (EVar "h", EVar "xs"))
                                         , ECons
                                             ( EVar "h"
                                             , EApp
-                                                ( EApp (EVar "insert", EVar "x")
-                                                , EVar "xs" ) ) ) ) ] ) ) ) ) ]
-                , EApp
-                    ( EApp (EApp (EVar "cata", EVar "insert"), EVar "xs")
-                    , EList [] ) ) ) ) ]
+                                                (EApp (EVar "insert", EVar "x"), EVar "xs")
+                                            ) ) )
+                                  ] ) ) ) )
+                  ]
+                , EApp (EApp (EApp (EVar "cata", EVar "insert"), EVar "xs"), EList []) )
+            ) )
+    ]
+;;
 
 (*  LCS  *)
 let%test _ =
@@ -99,50 +100,49 @@ let%test _ =
                             ( PVar "match"
                             , EMatch
                                 ( EVar "match"
-                                , [ (PTuple [PList []; PWild], EList [])
-                                  ; (PTuple [PWild; PList []], EList [])
+                                , [ PTuple [ PList []; PWild ], EList []
+                                  ; PTuple [ PWild; PList [] ], EList []
                                   ; ( PTuple
                                         [ PCons (PVar "x", PVar "xs")
-                                        ; PCons (PVar "y", PVar "ys") ]
+                                        ; PCons (PVar "y", PVar "ys")
+                                        ]
                                     , EIf
                                         ( EOp (Eq, EVar "x", EVar "y")
                                         , ECons
                                             ( EVar "x"
                                             , EApp
                                                 ( EVar "helper"
-                                                , ETuple [EVar "xs"; EVar "ys"]
-                                                ) )
+                                                , ETuple [ EVar "xs"; EVar "ys" ] ) )
                                         , ELet
                                             ( [ ( false
                                                 , PVar "r1"
                                                 , EApp
                                                     ( EVar "helper"
                                                     , ETuple
-                                                        [ ECons
-                                                            (EVar "x", EVar "xs")
-                                                        ; EVar "ys" ] ) )
+                                                        [ ECons (EVar "x", EVar "xs")
+                                                        ; EVar "ys"
+                                                        ] ) )
                                               ; ( false
                                                 , PVar "r2"
                                                 , EApp
                                                     ( EVar "helper"
                                                     , ETuple
                                                         [ EVar "xs"
-                                                        ; ECons
-                                                            (EVar "y", EVar "ys")
-                                                        ] ) ) ]
+                                                        ; ECons (EVar "y", EVar "ys")
+                                                        ] ) )
+                                              ]
                                             , EIf
                                                 ( EOp
                                                     ( Gre
-                                                    , EApp
-                                                        ( EVar "list_len"
-                                                        , EVar "r1" )
-                                                    , EApp
-                                                        ( EVar "list_len"
-                                                        , EVar "r2" ) )
+                                                    , EApp (EVar "list_len", EVar "r1")
+                                                    , EApp (EVar "list_len", EVar "r2") )
                                                 , EVar "r1"
-                                                , EVar "r2" ) ) ) ) ] ) ) ) ]
-                    , EApp (EVar "helper", ETuple [EVar "xs"; EVar "ys"]) ) ) )
-        ) ]
+                                                , EVar "r2" ) ) ) )
+                                  ] ) ) )
+                      ]
+                    , EApp (EVar "helper", ETuple [ EVar "xs"; EVar "ys" ]) ) ) ) )
+    ]
+;;
 
 (*  Buggy para  *)
 
@@ -174,17 +174,17 @@ let%test _ =
                     ( PVar "xs"
                     , EMatch
                         ( EVar "xs"
-                        , [ (PList [], EVar "e")
+                        , [ PList [], EVar "e"
                           ; ( PCons (PVar "x", PVar "xs")
                             , EApp
                                 ( EApp (EVar "f", EVar "x")
                                 , ETuple
                                     [ EVar "xs"
                                     ; EApp
-                                        ( EApp
-                                            ( EApp (EVar "para", EVar "f")
-                                            , EVar "e" )
-                                        , EVar "xs" ) ] ) ) ] ) ) ) ) )
+                                        ( EApp (EApp (EVar "para", EVar "f"), EVar "e")
+                                        , EVar "xs" )
+                                    ] ) )
+                          ] ) ) ) ) )
     ; DLet
         ( false
         , PVar "isort"
@@ -206,28 +206,25 @@ let%test _ =
                                             , EFun
                                                 ( PVar "h"
                                                 , EFun
-                                                    ( PTuple
-                                                        [PVar "tl"; PVar "acc"]
+                                                    ( PTuple [ PVar "tl"; PVar "acc" ]
                                                     , EIf
                                                         ( EApp
-                                                            ( EApp
-                                                                ( EVar "lt"
-                                                                , EVar "x" )
+                                                            ( EApp (EVar "lt", EVar "x")
                                                             , EVar "h" )
                                                         , ECons
                                                             ( EVar "x"
-                                                            , ECons
-                                                                ( EVar "h"
-                                                                , EVar "tl" ) )
-                                                        , ECons
-                                                            ( EVar "h"
-                                                            , EVar "acc" ) ) )
-                                                ) )
-                                        , EList [EVar "x"] )
-                                    , EVar "lst" ) ) ) ) ]
+                                                            , ECons (EVar "h", EVar "tl")
+                                                            )
+                                                        , ECons (EVar "h", EVar "acc") )
+                                                    ) ) )
+                                        , EList [ EVar "x" ] )
+                                    , EVar "lst" ) ) ) )
+                      ]
                     , EApp
-                        ( EApp (EApp (EVar "cata_", EVar "insert3"), EVar "xs")
-                        , EList [] ) ) ) ) ) ]
+                        (EApp (EApp (EVar "cata_", EVar "insert3"), EVar "xs"), EList [])
+                    ) ) ) )
+    ]
+;;
 
 let%test _ =
   Tester.test_parse
@@ -249,9 +246,8 @@ effect Failure: int -> int
         ( false
         , PVar "helper"
         , EFun
-            ( PVar "x"
-            , EOp (Add, EConst (CInt 1), EPerform (Effect "Failure", EVar "x"))
-            ) )
+            (PVar "x", EOp (Add, EConst (CInt 1), EPerform (Effect "Failure", EVar "x")))
+        )
     ; DLet
         ( false
         , PVar "matcher"
@@ -260,10 +256,12 @@ effect Failure: int -> int
             , EMatch
                 ( EApp (EVar "helper", EVar "x")
                 , [ ( PEffectH (Effect "Failure", PVar "s", Continuation "k")
-                    , EContinue
-                        (Continuation "k", EOp (Add, EConst (CInt 1), EVar "s"))
-                    ); (PConst (CInt 3), EConst (CInt 0))
-                  ; (PWild, EConst (CInt 100)) ] ) ) ) ]
+                    , EContinue (Continuation "k", EOp (Add, EConst (CInt 1), EVar "s")) )
+                  ; PConst (CInt 3), EConst (CInt 0)
+                  ; PWild, EConst (CInt 100)
+                  ] ) ) )
+    ]
+;;
 
 let%test _ =
   Tester.test_parse
@@ -292,19 +290,16 @@ let%test _ =
                 ( PVar "m"
                 , EIf
                     ( EOp (Geq, EVar "x", EVar "m")
-                    , EApp
-                        ( EApp (EVar "mod", EOp (Sub, EVar "x", EVar "m"))
-                        , EVar "m" )
+                    , EApp (EApp (EVar "mod", EOp (Sub, EVar "x", EVar "m")), EVar "m")
                     , EVar "x" ) ) ) )
     ; DLet
         ( false
         , PVar "list"
         , EList
-            [ EConst (CInt 1); EConst (CInt 2)
-            ; EOp
-                ( Sub
-                , EConst (CInt 2)
-                , EOp (Mul, EConst (CInt 1), EConst (CInt 7)) ) ] )
+            [ EConst (CInt 1)
+            ; EConst (CInt 2)
+            ; EOp (Sub, EConst (CInt 2), EOp (Mul, EConst (CInt 1), EConst (CInt 7)))
+            ] )
     ; DLet
         ( false
         , PVar "sum_by_choice"
@@ -315,10 +310,8 @@ let%test _ =
                     ( PVar "acc"
                     , EFun
                         ( PVar "e"
-                        , EOp
-                            ( Add
-                            , EVar "acc"
-                            , EPerform (Effect "Choice", EVar "e") ) ) ) )
+                        , EOp (Add, EVar "acc", EPerform (Effect "Choice", EVar "e")) ) )
+                )
             , EConst (CInt 0) ) )
     ; DLet
         ( false
@@ -327,9 +320,12 @@ let%test _ =
             ( EApp (EVar "sum_by_choice", EVar "list")
             , [ ( PEffectH (Effect "Choice", PVar "e", Continuation "k")
                 , EContinue
-                    ( Continuation "k"
-                    , EApp (EApp (EVar "e", EVar "mod"), EConst (CInt 2)) ) )
-              ; (PVar "res", EVar "res") ] ) ) ]
+                    (Continuation "k", EApp (EApp (EVar "e", EVar "mod"), EConst (CInt 2)))
+                )
+              ; PVar "res", EVar "res"
+              ] ) )
+    ]
+;;
 
 let%test _ =
   Tester.test_parse
@@ -351,10 +347,10 @@ let%test _ =
                     ( Mul
                     , EOp (And, EConst (CInt 7), EConst (CBool false))
                     , EConst (CInt 3) )
-                , EOp
-                    ( Mul
-                    , EConst (CInt 2)
-                    , EOp (Or, EConst (CInt 20), EConst (CInt 29)) ) ) ) ) ]
+                , EOp (Mul, EConst (CInt 2), EOp (Or, EConst (CInt 20), EConst (CInt 29)))
+                ) ) )
+    ]
+;;
 
 let%test _ =
   Tester.test_parse
@@ -374,14 +370,13 @@ let%test _ =
             ( PVar "match"
             , EMatch
                 ( EVar "match"
-                , [ (PConst (CInt 1), EConst (CInt 1))
+                , [ PConst (CInt 1), EConst (CInt 1)
                   ; ( PVar "n"
                     , ECons
                         ( EVar "n"
-                        , EApp
-                            ( EVar "list_to_n"
-                            , EOp (Sub, EVar "n", EConst (CInt 1)) ) ) ) ] ) )
-        )
+                        , EApp (EVar "list_to_n", EOp (Sub, EVar "n", EConst (CInt 1))) )
+                    )
+                  ] ) ) )
     ; DLet
         ( true
         , PVar "reduce"
@@ -391,12 +386,12 @@ let%test _ =
                 ( PVar "match"
                 , EMatch
                     ( EVar "match"
-                    , [ (PList [], EConst (CInt 1))
+                    , [ PList [], EConst (CInt 1)
                       ; ( PCons (PVar "x", PVar "xs")
                         , EApp
                             ( EApp (EVar "f", EVar "x")
-                            , EApp (EApp (EVar "reduce", EVar "f"), EVar "xs")
-                            ) ) ] ) ) ) )
+                            , EApp (EApp (EVar "reduce", EVar "f"), EVar "xs") ) )
+                      ] ) ) ) )
     ; DLet
         ( false
         , PVar "fact"
@@ -405,7 +400,7 @@ let%test _ =
             , EApp
                 ( EApp
                     ( EVar "reduce"
-                    , EFun
-                        ( PVar "x"
-                        , EFun (PVar "y", EOp (Mul, EVar "x", EVar "y")) ) )
-                , EApp (EVar "list_to_n", EVar "n") ) ) ) ]
+                    , EFun (PVar "x", EFun (PVar "y", EOp (Mul, EVar "x", EVar "y"))) )
+                , EApp (EVar "list_to_n", EVar "n") ) ) )
+    ]
+;;

@@ -307,7 +307,7 @@ let%test _ =
       true
 
 let%test _ =
-  match w (ETuple [ EConst (CInt 5); EConst (CString "kk") ]) with
+  match w (ETuple [EConst (CInt 5); EConst (CString "kk")]) with
   | Error x ->
       Printf.printf "%s\n" (error_to_st x);
       Printf.printf "-----\n";

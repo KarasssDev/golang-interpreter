@@ -3,7 +3,7 @@ type types =
   | CT_CHAR
   | CT_STRUCT of string
   | CT_PTR of types
-  | CT_ARRAY of int * types (**size and type of array*)
+  | CT_ARRAY of int * types  (**size and type of array*)
   | CT_VOID
 [@@deriving show { with_path = false }]
 
@@ -12,7 +12,7 @@ type args = CARGS of types * string [@@deriving show { with_path = false }]
 type values =
   | CINT of int
   | CCHAR of char
-  | CARRAY of expr list (**array of indexed values in array*)
+  | CARRAY of expr list  (**array of indexed values in array*)
   | CNULL
   | CVOID
 [@@deriving show { with_path = false }]
@@ -35,13 +35,13 @@ and expr =
   | LITERAL of values
   | FUNC_CALL of string * expr list
   | VAR_NAME of string
-  | INDEXER of string * expr (** ~ name\[expr\] *)
-  | ACCESOR of expr * expr (** ~ expr.expr *)
+  | INDEXER of string * expr  (** ~ name\[expr\] *)
+  | ACCESOR of expr * expr  (** ~ expr.expr *)
   | INITIALIZER of expr list
       (** Initilizer for structures and arrays. For example: ct_name name = \{arg1, arg2\}, then INITIALIZER ~ \{arg1, arg2\}*)
-  | TYPE of types (** For example: sizeof(int), then TYPE ~ int *)
-  | DEREFERENCE of expr (** ~ *expr *)
-  | ADDRESS of expr (** ~ &expr *)
+  | TYPE of types  (** For example: sizeof(int), then TYPE ~ int *)
+  | DEREFERENCE of expr  (** ~ *expr *)
+  | ADDRESS of expr  (** ~ &expr *)
 [@@deriving show { with_path = false }]
 
 type statements =
@@ -76,7 +76,7 @@ module Hashtbl = struct
 
   let pp pp_key pp_value ppf values =
     Hashtbl.iter
-      (fun key data -> Format.fprintf ppf "@[<1>%a: %a@]@." pp_key key pp_value data)
+      (fun key data ->
+        Format.fprintf ppf "@[<1>%a: %a@]@." pp_key key pp_value data)
       values
-  ;;
 end

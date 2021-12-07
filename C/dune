@@ -10,4 +10,6 @@
  (name REPL)
  (public_name REPL)
  (modules REPL)
- (libraries C.Lib))
+ (libraries C.Lib)
+ (preprocess
+  (pps ppx_expect ppx_show)))

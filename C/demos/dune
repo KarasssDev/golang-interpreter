@@ -1,8 +1,18 @@
 (env
  (dev
   (flags
+   (:standard -warn-error -A -w -3-9-32-58)
    (:standard -warn-error -A -w -26)
-   (-short-paths))))
+   (-short-paths)))
+ (release
+  (flags
+   (:standard -warn-error -A -w -58))))
+
+; (env
+;  (dev
+;   (flags
+;    (:standard -warn-error -A -w -26)
+;    (-short-paths))))
 
 (executable
  (name demoList)

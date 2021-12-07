@@ -1,3 +1,13 @@
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A -w -3-9-32-58)
+   (:standard -warn-error -A -w -26)
+   (-short-paths)))
+ (release
+  (flags
+   (:standard -warn-error -A -w -58))))
+
 (library
  (name c_lib)
  (public_name C.Lib)

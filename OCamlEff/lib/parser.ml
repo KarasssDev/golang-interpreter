@@ -116,7 +116,6 @@ let cstring s = CString s
 let econst c = EConst c
 let eunop o e = EUnOp (o, e)
 let evar id = EVar id
-let elist l = EList l
 let etuple l = ETuple l
 let econs e1 e2 = ECons (e1, e2)
 let eif e1 e2 e3 = EIf (e1, e2, e3)
@@ -129,6 +128,7 @@ let efun args rhs = List.fold_right args ~f:efun ~init:rhs
 let eop o e1 e2 = EOp (o, e1, e2)
 let eperform id exp = EPerform (id, exp)
 let econtinue id exp = EContinue (id, exp)
+let elist = List.fold_right ~f:econs ~init:ENil
 
 (*-------------- Case ctors --------------*)
 let ccase p e = p, e
@@ -142,11 +142,11 @@ let bbind isrec p e = isrec, p, e
 let pwild _ = PWild
 let pvar id = PVar id
 let pconst c = PConst c
-let plist pl = PList pl
-let ptuple pl = PTuple pl
+let ptuple l = PTuple l
 let peffecth eff_id pat k_id = PEffectH (eff_id, pat, k_id)
 let popcons = token "::" *> return (fun p1 p2 -> PCons (p1, p2))
 let pcons = return @@ fun p1 p2 -> PCons (p1, p2)
+let plist = List.fold_right ~f:(fun p1 p2 -> PCons (p1, p2)) ~init:PNil
 
 (*-------------- Decl ctors --------------*)
 

@@ -50,9 +50,9 @@ and exp =
   | EOp of infix_op * exp * exp (**    1 / (2 + 3)    *)
   | EUnOp of unary_op * exp (**    not predicate    *)
   | EVar of ident (**    x    *)
-  | EList of exp list (**    [x; y; z]    *)
   | ETuple of exp list (**    x, y, z    *)
   | ECons of exp * exp (**    x :: xs    *)
+  | ENil (** [] *)
   | EIf of exp * exp * exp (**    if predicate then x else y    *)
   | ELet of binding list * exp (**    let x = 5 in 10    *)
   | EFun of pat * exp (**    fun x,y,z -> x + y * z    *)
@@ -70,7 +70,7 @@ and pat =
   | PVar of ident (**  abc   *)
   | PConst of const (**  1   *)
   | PCons of pat * pat (**  hd :: tl  *)
-  | PList of pat list (**  [a; b]  *)
+  | PNil
   | PTuple of pat list (**  a, b   *)
   | PEffectH of effect * pat * continuation (**  effect (Choice x) k *)
 [@@deriving show { with_path = false }]

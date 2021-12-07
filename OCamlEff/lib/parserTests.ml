@@ -24,7 +24,7 @@ let isort xs =
                     ( PVar "xs"
                     , EMatch
                         ( EVar "xs"
-                        , [ PList [], EVar "e"
+                        , [ PNil, EVar "e"
                           ; ( PCons (PVar "x", PVar "xs")
                             , EApp
                                 ( EApp (EVar "f", EVar "x")
@@ -46,7 +46,7 @@ let isort xs =
                             ( PVar "lst"
                             , EMatch
                                 ( EVar "lst"
-                                , [ PList [], EList [ EVar "x" ]
+                                , [ PNil, ECons (EVar "x", ENil)
                                   ; ( PCons (PVar "h", PVar "xs")
                                     , EIf
                                         ( EOp (Less, EVar "x", EVar "h")
@@ -58,8 +58,7 @@ let isort xs =
                                             ) ) )
                                   ] ) ) ) )
                   ]
-                , EApp (EApp (EApp (EVar "cata", EVar "insert"), EVar "xs"), EList []) )
-            ) )
+                , EApp (EApp (EApp (EVar "cata", EVar "insert"), EVar "xs"), ENil) ) ) )
     ]
 ;;
 
@@ -98,8 +97,8 @@ let%test _ =
                             ( PVar "match"
                             , EMatch
                                 ( EVar "match"
-                                , [ PTuple [ PList []; PWild ], EList []
-                                  ; PTuple [ PWild; PList [] ], EList []
+                                , [ PTuple [ PNil; PWild ], ENil
+                                  ; PTuple [ PWild; PNil ], ENil
                                   ; ( PTuple
                                         [ PCons (PVar "x", PVar "xs")
                                         ; PCons (PVar "y", PVar "ys")
@@ -172,7 +171,7 @@ let%test _ =
                     ( PVar "xs"
                     , EMatch
                         ( EVar "xs"
-                        , [ PList [], EVar "e"
+                        , [ PNil, EVar "e"
                           ; ( PCons (PVar "x", PVar "xs")
                             , EApp
                                 ( EApp (EVar "f", EVar "x")
@@ -215,11 +214,10 @@ let%test _ =
                                                             )
                                                         , ECons (EVar "h", EVar "acc") )
                                                     ) ) )
-                                        , EList [ EVar "x" ] )
+                                        , ECons (EVar "x", ENil) )
                                     , EVar "lst" ) ) ) )
                       ]
-                    , EApp
-                        (EApp (EApp (EVar "cata_", EVar "insert3"), EVar "xs"), EList [])
+                    , EApp (EApp (EApp (EVar "cata_", EVar "insert3"), EVar "xs"), ENil)
                     ) ) ) )
     ]
 ;;
@@ -293,11 +291,14 @@ let%test _ =
     ; DLet
         ( false
         , PVar "list"
-        , EList
-            [ EConst (CInt 1)
-            ; EConst (CInt 2)
-            ; EOp (Sub, EConst (CInt 2), EOp (Mul, EConst (CInt 1), EConst (CInt 7)))
-            ] )
+        , ECons
+            ( EConst (CInt 1)
+            , ECons
+                ( EConst (CInt 2)
+                , ECons
+                    ( EOp
+                        (Sub, EConst (CInt 2), EOp (Mul, EConst (CInt 1), EConst (CInt 7)))
+                    , ENil ) ) ) )
     ; DLet
         ( false
         , PVar "sum_by_choice"
@@ -384,7 +385,7 @@ let%test _ =
                 ( PVar "match"
                 , EMatch
                     ( EVar "match"
-                    , [ PList [], EConst (CInt 1)
+                    , [ PNil, EConst (CInt 1)
                       ; ( PCons (PVar "x", PVar "xs")
                         , EApp
                             ( EApp (EVar "f", EVar "x")

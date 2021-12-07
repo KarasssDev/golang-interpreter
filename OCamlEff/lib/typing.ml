@@ -263,16 +263,6 @@ let infer =
     | EVar x ->
       let* subst, tyexp = lookup_context x context in
       return (subst, tyexp)
-    | EList exps ->
-      (match exps with
-      | hd :: tl ->
-        let* s1, t1 = helper context hd in
-        let* s_tl, t_tl = helper context (EList tl) in
-        let* s = unify t1 t_tl in
-        return (Subst.(s1 ++ s_tl ++ s), TList (Subst.apply s t1))
-      | [] ->
-        let* fresh = fresh_var in
-        return (Subst.empty, TList fresh))
     | ETuple exps ->
       (match exps with
       | hd :: tl ->

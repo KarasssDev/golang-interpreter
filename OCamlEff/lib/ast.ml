@@ -1,7 +1,8 @@
-type ident = string [@@deriving show { with_path = false }] (** var_name  *)
+(** var_name  *)
+type ident = string [@@deriving show { with_path = false }]
 
-type capitalized_ident = string [@@deriving show { with_path = false }]
 (** Choice  *)
+type capitalized_ident = string [@@deriving show { with_path = false }]
 
 type binder = int [@@deriving show { with_path = false }]
 
@@ -42,7 +43,7 @@ and const =
 [@@deriving show { with_path = false }]
 
 and binding = bool * pat * exp [@@deriving show { with_path = false }]
-and case = pat * exp (**  | _ :: [] -> 5  *) [@@deriving show { with_path = false }]
+and case = pat * exp [@@deriving show { with_path = false }]
 
 and exp =
   | EConst of const (**    true    *)

@@ -10,11 +10,8 @@ let is_keyword = function
   | _ -> false
 
 let types_keywords = [ "int"; "char"; "void" ]
-
 let is_whitespace = function ' ' | '\t' -> true | _ -> false
-
 let is_end_of_line = function '\n' | '\r' -> true | _ -> false
-
 let is_digit = function '0' .. '9' -> true | _ -> false
 
 let is_valid_id_char = function
@@ -22,9 +19,7 @@ let is_valid_id_char = function
   | _ -> false
 
 let space = take_while is_whitespace
-
 let space1 = take_while1 is_whitespace
-
 let token s = space *> string s
 
 let number =
@@ -58,35 +53,20 @@ let char_value =
 (**EXPRESSION PARSING FUNCTIONS*)
 
 let add = token "+" *> return (fun e1 e2 -> ADD (e1, e2))
-
 let sub = token "-" *> return (fun e1 e2 -> SUB (e1, e2))
-
 let mul = token "*" *> return (fun e1 e2 -> MUL (e1, e2))
-
 let div = token "/" *> return (fun e1 e2 -> DIV (e1, e2))
-
 let _mod = token "%" *> return (fun e1 e2 -> MOD (e1, e2))
-
 let _not = token "!" *> return (fun e1 -> NOT e1)
-
 let _and = token "&&" *> return (fun e1 e2 -> AND (e1, e2))
-
 let _or = token "||" *> return (fun e1 e2 -> OR (e1, e2))
-
 let _eq = token "==" *> return (fun e1 e2 -> EQUAL (e1, e2))
-
 let _neq = token "!=" *> return (fun e1 e2 -> NOT_EQUAL (e1, e2))
-
 let _lt = token "<" *> return (fun e1 e2 -> LT (e1, e2))
-
 let _gt = token ">" *> return (fun e1 e2 -> GT (e1, e2))
-
 let _lte = token "<=" *> return (fun e1 e2 -> LTE (e1, e2))
-
 let _gte = token ">=" *> return (fun e1 e2 -> GTE (e1, e2))
-
 let factop = mul <|> div <|> _mod <?> "'*' or '/' or '%' expected" <* space
-
 let termop = space *> add <|> sub <?> "'+' or '-' expected" <* space
 
 let cmpop =
@@ -94,11 +74,8 @@ let cmpop =
   <* space
 
 let left_of p1 p = p <* space <* p1
-
 let right_of p1 p = p1 *> space *> p
-
 let between p1 p2 p = left_of p2 (right_of p1 p)
-
 let parens p = between (token "(") (token ")") p
 
 let chainl1 e op =
@@ -420,7 +397,6 @@ let for_statement stmtss =
   >>= fun blk -> return @@ FOR (var, re, step, blk)
 
 let _continue = token "continue" *> token ";" *> return CONTINUE
-
 let _break = token "break" *> token ";" *> return BREAK
 
 let while_stmt stmtss =

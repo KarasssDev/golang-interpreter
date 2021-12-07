@@ -112,9 +112,7 @@ module type MONAD = sig
   type 'a t
 
   val return : 'a -> 'a t
-
   val ( >>= ) : 'a t -> ('a -> 'b t) -> 'b t
-
   val ( >> ) : 'a t -> 'b t -> 'b t
 end
 
@@ -128,13 +126,9 @@ module Result = struct
   type 'a t = ('a, string) Result.t
 
   let ( >>= ) = Result.bind
-
   let ( >> ) x f = x >>= fun _ -> f
-
   let return = Result.ok
-
   let error = Result.error
-
   let get_ok = Result.get_ok
 end
 
@@ -1804,5 +1798,4 @@ end
 module E = Eval (Result)
 
 let eval_d prg = E.eval_d prg
-
 let eval_dd prg = E.eval_dd prg

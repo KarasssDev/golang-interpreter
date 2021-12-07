@@ -1,3 +1,5 @@
+open Ast
+
 type 'name t = 'name Ast.t =
   | Var of 'name
   | Abs of 'name * 'name t

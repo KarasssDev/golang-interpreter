@@ -1,9 +1,9 @@
 type ident = string (*  var_name  *)
 
-type capitalized_ident = string
+type capitalized_ident = string [@@deriving show]
 (*  Choice  *)
 
-type binder = int
+type binder = int [@@deriving show]
 
 type tyexp =
   | TInt (*   int   *)
@@ -13,6 +13,7 @@ type tyexp =
   | TTuple of tyexp list (*   int list * string   *)
   | TVar of binder (*   1 (polymorphic type)   *)
   | TArrow of tyexp * tyexp
+[@@deriving show]
 (*   string -> int   *)
 
 type infix_op =
@@ -28,6 +29,7 @@ type infix_op =
   | Neq (*  <>  *)
   | And (*  &&  *)
   | Or
+[@@deriving show]
 (*  ||  *)
 
 and unary_op =
@@ -39,12 +41,12 @@ and unary_op =
 and const =
   | CInt of int (*    1    *)
   | CString of string (*  "abc"  *)
-  | CBool of bool
-(*  true   *)
+  | CBool of bool (*  true   *)
+[@@deriving show]
 
-and binding = bool * pat * exp
+and binding = bool * pat * exp [@@deriving show]
 
-and case = pat * exp
+and case = pat * exp [@@deriving show]
 (*  | _ :: [] -> 5  *)
 
 and exp =
@@ -61,12 +63,12 @@ and exp =
   | EApp of exp * exp (*    fold f list init    *)
   | EMatch of exp * case list (*    match lst with [] -> 0 | hd :: tl -> hd    *)
   | EPerform of effect * exp (*    perform (Choice x)   *)
-  | EContinue of continuation * exp
-(*    continue k (x - 1)    *)
+  | EContinue of continuation * exp (*    continue k (x - 1)    *)
+[@@deriving show]
 
-and continuation = Continuation of ident
+and continuation = Continuation of ident [@@deriving show]
 
-and effect = Effect of capitalized_ident
+and effect = Effect of capitalized_ident [@@deriving show]
 
 and pat =
   | PWild (*  _  *)
@@ -76,11 +78,11 @@ and pat =
   | PList of pat list (*  [a; b]  *)
   | PTuple of pat list (*  a, b   *)
   | PEffectH of effect * pat * continuation
+[@@deriving show]
 
 and decl =
-  | DLet of binding
-  (*  let x = 10   *)
-  | DEffect of ident * tyexp
-(*  effect E : int -> int  *)
+  | DLet of binding (*  let x = 10   *)
+  | DEffect of ident * tyexp (*  effect E : int -> int  *)
+[@@deriving show]
 
-and prog = decl list
+and prog = decl list [@@deriving show]

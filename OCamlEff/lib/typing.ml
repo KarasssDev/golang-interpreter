@@ -75,7 +75,7 @@ type binder_set = VarSet.t [@@deriving show {with_path= false}]
 type scheme = S of binder_set * tyexp [@@deriving show {with_path= false}]
 
 module TypeMap = Map.Make (struct
-  type t = id
+  type t = ident
 
   let compare = compare
 end)

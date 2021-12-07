@@ -1,15 +1,18 @@
-type id = string [@@deriving show {with_path= false}] (*  var_name  *)
+type ident = string [@@deriving show {with_path= false}] (*  var_name  *)
+
+type capitalized_ident = string [@@deriving show {with_path= false}]
+(*  Choice  *)
 
 type binder = int [@@deriving show {with_path= false}]
 
 type tyexp =
-  | TInt
-  | TBool
-  | TString
-  | TList of tyexp
-  | TTuple of tyexp list
-  | TVar of binder
-  | TArrow of tyexp * tyexp
+  | TInt (*   int   *)
+  | TBool (*   bool   *)
+  | TString (*   string   *)
+  | TList of tyexp (*   int list list   *)
+  | TTuple of tyexp list (*   int list * string   *)
+  | TVar of binder (*   1 (polymorphic type)   *)
+  | TArrow of tyexp * tyexp (*   string -> int   *)
 [@@deriving show {with_path= false}]
 
 type infix_op =
@@ -29,7 +32,7 @@ type infix_op =
 
 and unary_op =
   | Minus
-  (*  -    *)
+  (*  - *)
   | Not (*  not  *)
 [@@deriving show {with_path= false}]
 
@@ -45,36 +48,38 @@ and case = pat * exp
 (*  | _ :: [] -> 5  *)
 
 and exp =
-  | EConst of const (*    1                       *)
-  | EOp of infix_op * exp * exp (*    1 + 1                   *)
-  | EUnOp of unary_op * exp (*    -1                      *)
-  | EVar of id (*    hey                     *)
-  | EList of exp list (*    [1; 2]                  *)
-  | ETuple of exp list (*    1, 2                    *)
-  | ECons of exp * exp (*    hd :: tl                *)
-  | EIf of exp * exp * exp (*    if true then 1 else 0   *)
-  | ELet of binding list * exp (*    let x = 5 in 10         *)
-  | EFun of pat * exp (*    fun x -> x * 2          *)
-  | EApp of exp * exp (*    f x                     *)
-  | EMatch of exp * case list (*    match e with | _ -> 0   *)
-  | EPerform of exp
-  | EEffect of id * exp
-  | EContinue of id * exp
+  | EConst of const (*    true    *)
+  | EOp of infix_op * exp * exp (*    1 / (2 + 3)    *)
+  | EUnOp of unary_op * exp (*    not predicate    *)
+  | EVar of ident (*    x    *)
+  | EList of exp list (*    [x; y; z]    *)
+  | ETuple of exp list (*    x, y, z    *)
+  | ECons of exp * exp (*    x :: xs    *)
+  | EIf of exp * exp * exp (*    if predicate then x else y    *)
+  | ELet of binding list * exp (*    let x = 5 in 10    *)
+  | EFun of pat * exp (*    fun x,y,z -> x + y * z    *)
+  | EApp of exp * exp (*    fold f list init    *)
+  | EMatch of exp * case list (*    match lst with [] -> 0 | hd :: tl -> hd    *)
+  | EPerform of effect * exp (*    perform (Choice x)   *)
+  | EContinue of continuation * exp (*    continue k (x - 1)    *)
 [@@deriving show {with_path= false}]
 
+and continuation = Continuation of ident
+and effect = Effect of capitalized_ident
+
 and pat =
-  | PWild (*  _         *)
-  | PVar of id (*  abc       *)
-  | PConst of const (*  1         *)
+  | PWild (*  _  *)
+  | PVar of ident (*  abc   *)
+  | PConst of const (*  1   *)
   | PCons of pat * pat (*  hd :: tl  *)
-  | PList of pat list (*  [a; b]    *)
-  | PTuple of pat list (*  a, b      *)
-  | PEffectH of id * pat * id
+  | PList of pat list (*  [a; b]  *)
+  | PTuple of pat list (*  a, b   *)
+  | PEffectH of effect * pat * continuation
 [@@deriving show {with_path= false}]
 
 and decl =
-  | DLet of binding (*  let x = 10                *)
-  | DEffect of id * tyexp (*  effect E : int -> int  *)
+  | DLet of binding (*  let x = 10   *)
+  | DEffect of ident * tyexp (*  effect E : int -> int  *)
 [@@deriving show {with_path= false}]
 
 and prog = decl list [@@deriving show {with_path= false}]

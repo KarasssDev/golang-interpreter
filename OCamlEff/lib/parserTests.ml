@@ -228,3 +228,184 @@ let%test _ =
                     , EApp
                         ( EApp (EApp (EVar "cata_", EVar "insert3"), EVar "xs")
                         , EList [] ) ) ) ) ) ]
+
+let%test _ =
+  Tester.test_parse
+    {|
+
+effect Failure: int -> int
+
+  let helper x = 1 + perform (((((Failure)))) x)
+
+  let matcher x = match helper x with
+    | effect (((Failure)) s) k -> continue k (1 + s)
+    | 3 -> 0 
+    | _ -> 100
+
+
+    |}
+    [ DEffect ("Failure", TArrow (TInt, TInt))
+    ; DLet
+        ( false
+        , PVar "helper"
+        , EFun
+            ( PVar "x"
+            , EOp (Add, EConst (CInt 1), EPerform (Effect "Failure", EVar "x"))
+            ) )
+    ; DLet
+        ( false
+        , PVar "matcher"
+        , EFun
+            ( PVar "x"
+            , EMatch
+                ( EApp (EVar "helper", EVar "x")
+                , [ ( PEffectH (Effect "Failure", PVar "s", Continuation "k")
+                    , EContinue
+                        (Continuation "k", EOp (Add, EConst (CInt 1), EVar "s"))
+                    ); (PConst (CInt 3), EConst (CInt 0))
+                  ; (PWild, EConst (CInt 100)) ] ) ) ) ]
+
+let%test _ =
+  Tester.test_parse
+    {|
+
+    effect Choice : int -> int 
+
+    let rec mod x m = if x >= m then mod (x - m) m else x
+
+    let list = [1; 2; 2 - 1 * 7]
+
+    let sum_by_choice = fold (fun acc e -> acc + perform (Choice e)) 0
+
+    let res = match sum_by_choice list with
+    effect (Choice e) k -> continue k (e mod 2)
+    | res -> res
+
+    |}
+    [ DEffect ("Choice", TArrow (TInt, TInt))
+    ; DLet
+        ( true
+        , PVar "mod"
+        , EFun
+            ( PVar "x"
+            , EFun
+                ( PVar "m"
+                , EIf
+                    ( EOp (Geq, EVar "x", EVar "m")
+                    , EApp
+                        ( EApp (EVar "mod", EOp (Sub, EVar "x", EVar "m"))
+                        , EVar "m" )
+                    , EVar "x" ) ) ) )
+    ; DLet
+        ( false
+        , PVar "list"
+        , EList
+            [ EConst (CInt 1); EConst (CInt 2)
+            ; EOp
+                ( Sub
+                , EConst (CInt 2)
+                , EOp (Mul, EConst (CInt 1), EConst (CInt 7)) ) ] )
+    ; DLet
+        ( false
+        , PVar "sum_by_choice"
+        , EApp
+            ( EApp
+                ( EVar "fold"
+                , EFun
+                    ( PVar "acc"
+                    , EFun
+                        ( PVar "e"
+                        , EOp
+                            ( Add
+                            , EVar "acc"
+                            , EPerform (Effect "Choice", EVar "e") ) ) ) )
+            , EConst (CInt 0) ) )
+    ; DLet
+        ( false
+        , PVar "res"
+        , EMatch
+            ( EApp (EVar "sum_by_choice", EVar "list")
+            , [ ( PEffectH (Effect "Choice", PVar "e", Continuation "k")
+                , EContinue
+                    ( Continuation "k"
+                    , EApp (EApp (EVar "e", EVar "mod"), EConst (CInt 2)) ) )
+              ; (PVar "res", EVar "res") ] ) ) ]
+
+let%test _ =
+  Tester.test_parse
+    {|
+
+    let ar = 2 -(7 && false ) *     3 - (2 * ( 20 || 29))
+
+
+    |}
+    [ DLet
+        ( false
+        , PVar "ar"
+        , EOp
+            ( Sub
+            , EConst (CInt 2)
+            , EOp
+                ( Sub
+                , EOp
+                    ( Mul
+                    , EOp (And, EConst (CInt 7), EConst (CBool false))
+                    , EConst (CInt 3) )
+                , EOp
+                    ( Mul
+                    , EConst (CInt 2)
+                    , EOp (Or, EConst (CInt 20), EConst (CInt 29)) ) ) ) ) ]
+
+let%test _ =
+  Tester.test_parse
+    {|
+
+    let rec list_to_n = function 1 -> 1 | n -> n :: list_to_n (n - 1)
+
+    let rec reduce f = function [] -> 1 | x :: xs -> f x (reduce f xs)
+
+    let fact n = reduce (fun x y -> x * y) (list_to_n n)
+
+    |}
+    [ DLet
+        ( true
+        , PVar "list_to_n"
+        , EFun
+            ( PVar "match"
+            , EMatch
+                ( EVar "match"
+                , [ (PConst (CInt 1), EConst (CInt 1))
+                  ; ( PVar "n"
+                    , ECons
+                        ( EVar "n"
+                        , EApp
+                            ( EVar "list_to_n"
+                            , EOp (Sub, EVar "n", EConst (CInt 1)) ) ) ) ] ) )
+        )
+    ; DLet
+        ( true
+        , PVar "reduce"
+        , EFun
+            ( PVar "f"
+            , EFun
+                ( PVar "match"
+                , EMatch
+                    ( EVar "match"
+                    , [ (PList [], EConst (CInt 1))
+                      ; ( PCons (PVar "x", PVar "xs")
+                        , EApp
+                            ( EApp (EVar "f", EVar "x")
+                            , EApp (EApp (EVar "reduce", EVar "f"), EVar "xs")
+                            ) ) ] ) ) ) )
+    ; DLet
+        ( false
+        , PVar "fact"
+        , EFun
+            ( PVar "n"
+            , EApp
+                ( EApp
+                    ( EVar "reduce"
+                    , EFun
+                        ( PVar "x"
+                        , EFun (PVar "y", EOp (Mul, EVar "x", EVar "y")) ) )
+                , EApp (EVar "list_to_n", EVar "n") ) ) ) ]

@@ -2,7 +2,7 @@ open Ast
 open Env
 open Parser
 
-type effval = EffectH of pat * id * exp
+type effval = EffectH of pat * ident * exp
 
 type state =
   { env : exval Env.id_t
@@ -16,7 +16,7 @@ and exval =
   | TupleV of exval list
   | ListV of exval list
   | FunV of pat * exp * state
-  | ContV of tyexp * id
+  | ContV of tyexp * ident
   | EffV of tyexp
 
 let str_converter = function
@@ -133,7 +133,7 @@ let apply_unary_op op x =
 let rec scan_cases = function
   | hd :: tl ->
     (match hd with
-    | PEffectH (name, pat, cont_val), exp ->
+    | PEffectH (Effect name, pat, Continuation cont_val), exp ->
       (name, EffectH (pat, cont_val, exp)) :: scan_cases tl
     | _ -> scan_cases tl)
   | [] -> []
@@ -215,9 +215,8 @@ let rec eval_exp state = function
         | Match_fail -> do_match tl)
     in
     do_match mathchings
-  | EPerform exp -> eval_exp state exp
-  | EEffect (eff, exp) ->
-    let (EffectH (pat, cont_val, exph)) =
+  | EPerform (Effect eff, exp) -> 
+  let (EffectH (pat, cont_val, exph)) =
       try lookup_in_context eff state with
       | Not_bound -> failwith "no handler for effect"
     in
@@ -233,7 +232,7 @@ let rec eval_exp state = function
       in
       eval_exp state exph
     | _ -> failwith "internal error")
-  | EContinue (cont_val, exp) ->
+  | EContinue (Continuation cont_val, exp) ->
     let lookup_cont =
       try lookup_in_env cont_val state with
       | Not_bound -> failwith "not a continuation value"
@@ -571,7 +570,7 @@ let%test _ =
         , PVar "helper"
         , EFun
             ( PVar "x"
-            , EOp (Add, EConst (CInt 1), EPerform (EEffect ("Failure", EVar "x"))) ) )
+            , EOp (Add, EConst (CInt 1), EPerform (Effect "Failure", EVar "x")) ) )
     ; DLet
         ( false
         , PVar "matcher"
@@ -579,8 +578,8 @@ let%test _ =
             ( PVar "x"
             , EMatch
                 ( EApp (EVar "helper", EVar "x")
-                , [ ( PEffectH ("Failure", PVar "s", "k")
-                    , EContinue ("k", EOp (Add, EConst (CInt 1), EVar "s")) )
+                , [ ( PEffectH (Effect "Failure", PVar "s", Continuation "k")
+                    , EContinue (Continuation "k", EOp (Add, EConst (CInt 1), EVar "s")) )
                   ; PConst (CInt 3), EConst (CInt 0)
                   ; PWild, EConst (CInt 100)
                   ] ) ) )

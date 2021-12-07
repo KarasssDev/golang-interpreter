@@ -3,11 +3,11 @@ open Ast
 open Base
 open Format
 
-(****************** Main parser ******************)
+(*-------------- Main --------------*)
 
 let parse p s = parse_string ~consume:All p s
 
-(****************** Helper combinators ******************)
+(*-------------- Combinators --------------*)
 
 let chainl1 e op =
   let rec go acc = lift2 (fun f x -> f acc x) op e >>= go <|> return acc in
@@ -30,10 +30,14 @@ let procl op pl pr =
     lift2 (fun f x -> f acc x) op (choice [pl >>= go; pr]) <|> return acc in
   pl >>= go
 
-(****************** Util parsers and tokens ******************)
+(*-------------- Utility and tokens --------------*)
 
 let is_empty = function ' ' | '\t' | '\r' | '\n' -> true | _ -> false
 let is_digit = function '0' .. '9' -> true | _ -> false
+let is_lower = function 'a' .. 'z' -> true | _ -> false
+let is_upper = function 'A' .. 'Z' -> true | _ -> false
+let is_wild = function '_' -> true | _ -> false
+let is_idchar c = is_digit c || is_lower c || is_upper c || is_wild c
 
 let is_keyword = function
   | "let" | "in" | "true" | "false" | "rec" | "fun" | "perform" | "if"
@@ -45,7 +49,15 @@ let empty = take_while is_empty
 let empty1 = take_while1 is_empty
 let trim p = empty *> p <* empty
 let token s = empty *> string s
-let kwd s = token s <* empty1
+
+let kwd s =
+  token s
+  <* ( peek_char
+     >>| function
+     | Some x when is_idchar x -> fail "Incorrect kwd" | _ -> return None )
+
+let lp = token "("
+let rp = token ")"
 let rsb = token "]"
 let lsb = token "["
 let comma = token ","
@@ -55,15 +67,15 @@ let semisemi = token ";;"
 let bar = token "|"
 let arrow = token "->"
 let between l r p = l *> p <* r
-let parens p = token "(" *> p <* token ")"
+let parens p = lp *> p <* rp
 
-(****************** Const ctors ******************)
+(*-------------- Const ctors --------------*)
 
 let cint n = CInt n
 let cbool b = CBool b
 let cstring s = CString s
 
-(****************** Exp ctors ******************)
+(*-------------- Exp ctors --------------*)
 
 let econst c = EConst c
 let eunop o e = EUnOp (o, e)
@@ -79,30 +91,41 @@ let eapp = return (fun e1 e2 -> EApp (e1, e2))
 let ematch e cases = EMatch (e, cases)
 let efun args rhs = List.fold_right args ~f:efun ~init:rhs
 let eop o e1 e2 = EOp (o, e1, e2)
+let eperform id exp = EPerform (id, exp)
+let econtinue id exp = EContinue (id, exp)
 
-(****************** Case ctors ******************)
+(*-------------- Case ctors --------------*)
 let ccase p e = (p, e)
 
-(****************** Binding ctors ******************)
+(*-------------- Binding ctors --------------*)
 
 let bbind isrec p e = (isrec, p, e)
 
-(****************** Pat ctors ******************)
+(*-------------- Pat ctors --------------*)
 
 let pwild _ = PWild
 let pvar id = PVar id
 let pconst c = PConst c
 let plist pl = PList pl
 let ptuple pl = PTuple pl
+let peffecth eff_id pat k_id = PEffectH (eff_id, pat, k_id)
 let popcons = token "::" *> return (fun p1 p2 -> PCons (p1, p2))
 let pcons = return @@ fun p1 p2 -> PCons (p1, p2)
 
-(****************** Decl ctors ******************)
+(*-------------- Decl ctors --------------*)
 
 let dlet isrec p e = DLet (isrec, p, e)
 let deff p te = DEffect (p, te)
 
-(****************** Plain parsers ******************)
+(*-------------- Concinutation ctors --------------*)
+
+let continuation ident = Continuation ident
+
+(*-------------- Effect ctors --------------*)
+
+let effect ident = Effect ident
+
+(*-------------- Plain parsers --------------*)
 
 let choice_op ops =
   choice
@@ -122,19 +145,16 @@ let app_unop p =
     ; token "+" *> p; p ]
 
 let id valid_fst =
-  let valid_inner = function
-    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
-    | _ -> false in
   let* fst = empty *> satisfy valid_fst in
   let take_func = match fst with '_' -> many1 | _ -> many in
-  let* inner = take_func (satisfy valid_inner) in
+  let* inner = take_func @@ satisfy is_idchar in
   let id = Base.String.of_char_list @@ (fst :: inner) in
   if is_keyword id then fail "Keyword" else return id
 
 let ident = id @@ function 'a' .. 'z' | '_' -> true | _ -> false
 let capitalized_ident = id @@ function 'A' .. 'Z' -> true | _ -> false
 
-(****************** Const parsing ******************)
+(*-------------- Const parsing --------------*)
 
 let uns = trim @@ take_while1 is_digit
 
@@ -160,17 +180,35 @@ let cstring =
 let const = trim @@ choice [cint; cbool; cstring]
 let uns_const = trim @@ choice [cunsint; cbool; cstring]
 
-(****************** Pattern parsing ******************)
+(*-------------- Continuation and effect parsing --------------*)
+let pure_or_parens p =
+  let helper = fix @@ fun helper -> parens helper <|> p in
+  helper
+
+let continuation = pure_or_parens ident >>| continuation
+let effect = pure_or_parens capitalized_ident >>| effect
+
+(*-------------- Pattern parsing --------------*)
 
 let pvar = ident >>| pvar
 let pwild = token "_" >>| pwild
 let pconst = const >>| pconst
 
 type pdispatch =
-  {tuple: pdispatch -> pat t; cons: pdispatch -> pat t; pat: pdispatch -> pat t}
+  { effecth: pdispatch -> pat t
+  ; tuple: pdispatch -> pat t
+  ; cons: pdispatch -> pat t
+  ; pat: pdispatch -> pat t }
 
 let pack =
-  let pat d = fix @@ fun _self -> trim @@ d.tuple d <|> d.cons d in
+  let pat d =
+    fix @@ fun _self -> trim @@ choice [d.effecth d; d.tuple d; d.cons d] in
+  let effecth d =
+    fix
+    @@ fun _self ->
+    kwd "effect"
+    *> lift3 peffecth (lp *> trim effect) (d.pat d <* rp) (trim continuation)
+  in
   let tuple d =
     fix
     @@ fun _self ->
@@ -182,11 +220,11 @@ let pack =
     let plist = trim @@ between lsb rsb @@ sep_by semi @@ d.pat d >>| plist in
     let prim = trim @@ choice [pconst; pvar; pwild; plist; parens @@ d.pat d] in
     trim @@ chainr1 prim popcons in
-  {tuple; cons; pat}
+  {effecth; tuple; cons; pat}
 
 let pat = pack.pat pack
 
-(****************** Expr parsing ******************)
+(*-------------- Expr parsing --------------*)
 
 type edispatch =
   { key: edispatch -> exp t
@@ -223,7 +261,12 @@ let pack =
       let pmatch = lift2 ematch (kwd "match" *> d.exp d <* kwd "with") cases in
       let pfunction = kwd "function" *> cases >>| efunction in
       trim @@ pfunction <|> pmatch in
-    choice [elet; eif; ematch; efun] in
+    let eperform =
+      trim @@ (kwd "perform" *> (parens @@ lift2 eperform effect (d.exp d)))
+    in
+    let econtinue =
+      trim @@ (kwd "continue" *> lift2 econtinue continuation (d.exp d)) in
+    choice [elet; eif; eperform; econtinue; ematch; efun] in
   let tuple d =
     lift2 ( @ )
       (many1 (d.op d <* comma))
@@ -250,7 +293,7 @@ let pack =
 
 let exp = pack.exp pack
 
-(****************** Type parsing ******************)
+(*-------------- Type parsing --------------*)
 
 let tyexp =
   fix
@@ -272,7 +315,7 @@ let tyexp =
     >>| function [a] -> a | tup -> TTuple tup in
   trim @@ chainr1 tup (arrow *> return (fun t1 t2 -> TArrow (t1, t2)))
 
-(****************** Decl parsing ******************)
+(*-------------- Decl parsing --------------*)
 
 let decl =
   let dlet =
@@ -283,7 +326,7 @@ let decl =
   let deff = lift2 deff (kwd "effect" *> capitalized_ident <* colon) tyexp in
   trim @@ deff <|> dlet
 
-(****************** Prog parsing ******************)
+(*-------------- Prog parsing --------------*)
 
 let pprog (l : decl list) : prog = l
 let prog = many1 (trim @@ decl <* trim @@ option "" semisemi) >>| pprog

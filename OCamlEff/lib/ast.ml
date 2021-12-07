@@ -1,6 +1,6 @@
-type id = string [@@deriving show { with_path = false }] (*  var_name  *)
+type id = string [@@deriving show {with_path= false}] (*  var_name  *)
 
-type binder = int [@@deriving show { with_path = false }]
+type binder = int [@@deriving show {with_path= false}]
 
 type tyexp =
   | TInt
@@ -10,7 +10,7 @@ type tyexp =
   | TTuple of tyexp list
   | TVar of binder
   | TArrow of tyexp * tyexp
-[@@deriving show { with_path = false }]
+[@@deriving show {with_path= false}]
 
 type infix_op =
   | Add (*  +   *)
@@ -25,20 +25,21 @@ type infix_op =
   | Neq (*  <>  *)
   | And (*  &&  *)
   | Or (*  ||  *)
-[@@deriving show { with_path = false }]
+[@@deriving show {with_path= false}]
 
 and unary_op =
-  | Minus (*  -    *)
+  | Minus
+  (*  -    *)
   | Not (*  not  *)
-[@@deriving show { with_path = false }]
+[@@deriving show {with_path= false}]
 
 and const =
   | CInt of int (*    1    *)
   | CString of string (*  "abc"  *)
   | CBool of bool (*  true   *)
-[@@deriving show { with_path = false }]
+[@@deriving show {with_path= false}]
 
-and binding = bool * pat * exp [@@deriving show { with_path = false }]
+and binding = bool * pat * exp [@@deriving show {with_path= false}]
 
 and case = pat * exp
 (*  | _ :: [] -> 5  *)
@@ -59,7 +60,7 @@ and exp =
   | EPerform of exp
   | EEffect of id * exp
   | EContinue of id * exp
-[@@deriving show { with_path = false }]
+[@@deriving show {with_path= false}]
 
 and pat =
   | PWild (*  _         *)
@@ -70,11 +71,11 @@ and pat =
   | PTuple of pat list (*  a, b      *)
   | PEffect of id
   | PEffectH of id * pat * id
-[@@deriving show { with_path = false }]
+[@@deriving show {with_path= false}]
 
 and decl =
   | DLet of binding (*  let x = 10                *)
   | DEffect of id * tyexp (*  effect E : int -> int  *)
-[@@deriving show { with_path = false }]
+[@@deriving show {with_path= false}]
 
-and prog = decl list [@@deriving show { with_path = false }]
+and prog = decl list [@@deriving show {with_path= false}]

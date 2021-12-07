@@ -4,8 +4,8 @@ open Env
 type effval = EffectH of pat * ident * exp
 
 type state =
-  { env : exval Env.id_t
-  ; context : effval Env.eff_t
+  { env: exval Env.id_t
+  ; context: effval Env.eff_t
   }
 
 and exval =

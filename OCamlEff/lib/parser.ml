@@ -254,10 +254,10 @@ let pwild = token "_" >>| pwild
 let pconst = const >>| pconst
 
 type pdispatch =
-  { effecth : pdispatch -> pat t
-  ; tuple : pdispatch -> pat t
-  ; cons : pdispatch -> pat t
-  ; pat : pdispatch -> pat t
+  { effecth: pdispatch -> pat t
+  ; tuple: pdispatch -> pat t
+  ; cons: pdispatch -> pat t
+  ; pat: pdispatch -> pat t
   }
 
 let pack =
@@ -288,10 +288,10 @@ let pat = pack.pat pack
 (*-------------- Expr parsing --------------*)
 
 type edispatch =
-  { key : edispatch -> exp t
-  ; tuple : edispatch -> exp t
-  ; exp : edispatch -> exp t
-  ; op : edispatch -> exp t
+  { key: edispatch -> exp t
+  ; tuple: edispatch -> exp t
+  ; exp: edispatch -> exp t
+  ; op: edispatch -> exp t
   }
 
 let pack =

@@ -1,0 +1,32 @@
+(lang dune 2.8)
+
+(generate_opam_files true)
+
+(cram enable)
+
+(license LGPL-3.0-only)
+
+(authors "Arthur")
+(maintainers "https://github.com/achains")
+(homepage "https://github.com/achains/mini-Lua")
+(bug_reports "https://github.com/achains/mini-Lua")
+
+(package
+ (name Lua) ; FIXME and regenerate .opam file using 'dune build @install'
+ (synopsis "An interpreter for Lua")
+ (description
+  "Interpreter supports lua tables, high order functions, basic control constructs")
+ (version 0.1)
+ (depends
+  (dune
+   (>= 2.8))
+  opal
+  (ppx_inline_test :with-test)
+  ppx_expect
+  ppx_deriving
+  ppx_show
+  (odoc :with-doc)
+  (ocamlformat :build)
+  base
+  ; After adding dependencies to 'dune' files and the same dependecies here too
+  ))

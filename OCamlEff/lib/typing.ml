@@ -334,7 +334,7 @@ let%test _ =
 ;;
 
 let%test _ =
-  match w (ETuple [ EConst (CInt 5); EConst (CString "kek") ]) with
+  match w (ETuple [ EConst (CInt 5); EConst (CString "kk") ]) with
   | Error x ->
     Printf.printf "%s\n" (error_to_st x);
     Printf.printf "-----\n";

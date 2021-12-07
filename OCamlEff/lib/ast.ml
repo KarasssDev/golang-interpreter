@@ -68,7 +68,6 @@ and pat =
   | PCons of pat * pat (*  hd :: tl  *)
   | PList of pat list (*  [a; b]    *)
   | PTuple of pat list (*  a, b      *)
-  | PEffect of id
   | PEffectH of id * pat * id
 [@@deriving show { with_path = false }]
 

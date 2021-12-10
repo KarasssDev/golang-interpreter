@@ -84,7 +84,7 @@ type binder_set = VarSet.t [@@deriving show { with_path = false }]
 type scheme = S of binder_set * tyexp [@@deriving show { with_path = false }]
 
 module TypeMap = Map.Make (struct
-  type t = id
+  type t = ident
 
   let compare = compare
 end)
@@ -263,16 +263,6 @@ let infer =
     | EVar x ->
       let* subst, tyexp = lookup_context x context in
       return (subst, tyexp)
-    | EList exps ->
-      (match exps with
-      | hd :: tl ->
-        let* s1, t1 = helper context hd in
-        let* s_tl, t_tl = helper context (EList tl) in
-        let* s = unify t1 t_tl in
-        return (Subst.(s1 ++ s_tl ++ s), TList (Subst.apply s t1))
-      | [] ->
-        let* fresh = fresh_var in
-        return (Subst.empty, TList fresh))
     | ETuple exps ->
       (match exps with
       | hd :: tl ->
@@ -309,7 +299,7 @@ let error_to_st = function
     String.concat " " [ "uni fail:"; tyexp_to_st x; tyexp_to_st y ]
 ;;
 
-let%test _ =
+(* let%test _ =
   match w (EList [ EConst (CInt 5); EConst (CInt 6); EConst (CInt 3) ]) with
   | Error x ->
     Printf.printf "%s\n" (error_to_st x);
@@ -343,5 +333,3 @@ let%test _ =
     Printf.printf "%s\n" (tyexp_to_st x);
     Printf.printf "-----\n";
     true
-;;
-

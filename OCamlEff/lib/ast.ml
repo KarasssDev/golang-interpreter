@@ -39,7 +39,6 @@ and const =
 [@@deriving show { with_path = false }]
 
 and binding = bool * pat * exp [@@deriving show { with_path = false }]
-
 and case = pat * exp
 (*  | _ :: [] -> 5  *)
 
@@ -69,6 +68,7 @@ and pat =
   | PList of pat list (*  [a; b]    *)
   | PTuple of pat list (*  a, b      *)
   | PEffectH of id * pat * id
+  | PEffect of id * pat
 [@@deriving show { with_path = false }]
 
 and decl =

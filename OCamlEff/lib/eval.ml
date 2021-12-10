@@ -308,7 +308,7 @@ let%test _ = eval_test [ DLet (false, PVar "x", EConst (CInt 1)) ] "x -> 1 "
   eval_test
     [ DLet
         (false, PTuple [ PVar "x"; PVar "y" ], ETuple [ EConst (CInt 1); EConst (CInt 2) ])
-    ]
+    ]s
     "x -> 1 y -> 2 "
 ;; *)
 

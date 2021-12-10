@@ -58,6 +58,7 @@ and exp =
   | EPerform of exp
   | EEffect of id * exp
   | EContinue of id * exp
+  | ENil
 [@@deriving show { with_path = false }]
 
 and pat =

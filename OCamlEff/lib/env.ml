@@ -1,7 +1,7 @@
 open Ast
 
 module IdMap = Map.Make (struct
-  type t = ident
+  type t = id
 
   let compare = compare
 end)
@@ -9,7 +9,7 @@ end)
 type 'a id_t = 'a IdMap.t
 
 module EffMap = Map.Make (struct
-  type t = ident
+  type t = id
 
   let compare = compare
 end)

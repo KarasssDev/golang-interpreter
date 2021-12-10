@@ -1,7 +1,7 @@
 open Ast
 open Env
 
-type effval = EffectH of pat * id * exp
+type effval = EffectH of pat * ident * exp
 
 type state =
   { env: exval Env.id_t

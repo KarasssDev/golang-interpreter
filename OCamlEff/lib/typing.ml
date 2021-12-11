@@ -194,7 +194,14 @@ let unify l r =
     match l, r with
     | TInt, TInt | TBool, TBool | TString, TString -> return Subst.empty
     | TList tyexp_1, tyexp_2 | tyexp_1, TList tyexp_2 -> helper tyexp_1 tyexp_2
-    | TTuple _, TTuple _ -> failwith "unimpl"
+    | TTuple tyexp_l_1, TTuple tyexp_l_2
+      when List.length tyexp_l_1 = List.length tyexp_l_2 ->
+      (match tyexp_l_1, tyexp_l_2 with
+      | hd1 :: tl1, hd2 :: tl2 ->
+        let* subst_hd = helper hd1 hd2 in
+        let* subst_tl = helper (TTuple tl1) (TTuple tl2) in
+        return (Subst.compose subst_hd subst_tl)
+      | _ -> return Subst.empty)
     | TVar b, t when Type.occurs_in b t -> fail Occurs_check
     | TVar a, TVar b when Int.equal a b -> return Subst.empty
     | TVar b, t | t, TVar b -> return (Subst.singleton b t)
@@ -272,6 +279,21 @@ let infer =
         | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
         | _ -> failwith "error")
       | [] -> return (Subst.empty, TTuple []))
+    | ENil ->
+      let* fresh = fresh_var in
+      return (Subst.empty, TList fresh)
+    | ECons (exp1, exp2) ->
+      let* s1, t1 = helper context exp1 in
+      let* s2, t2 = helper context exp2 in
+      let* s_uni = unify (TList t1) t2 in
+      return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
+    | EIf (exp1, exp2, exp3) ->
+      let* s1, t1 = helper context exp1 in
+      let* s2, t2 = helper context exp2 in
+      let* s3, t3 = helper context exp3 in
+      let* s4 = unify t1 TBool in
+      let* s5 = unify t2 t3 in
+      return (Subst.(s5 ++ s4 ++ s3 ++ s2 ++ s1), Subst.apply s5 t2)
     | _ -> failwith "unimpl"
   in
   helper
@@ -299,17 +321,7 @@ let error_to_st = function
     String.concat " " [ "uni fail:"; tyexp_to_st x; tyexp_to_st y ]
 ;;
 
-(* let%test _ =
-  match w (EList [ EConst (CInt 5); EConst (CInt 6); EConst (CInt 3) ]) with
-  | Error x ->
-    Printf.printf "%s\n" (error_to_st x);
-    Printf.printf "-----\n";
-    false
-  | Ok x ->
-    Printf.printf "%s\n" (tyexp_to_st x);
-    Printf.printf "-----\n";
-    true
-;;
+(* 
 
 let%test _ =
   match w (EOp (Add, EConst (CInt 5), EConst (CInt 6))) with
@@ -325,6 +337,24 @@ let%test _ =
 
 let%test _ =
   match w (ETuple [ EConst (CInt 5); EConst (CString "kk") ]) with
+  | Error x ->
+    Printf.printf "%s\n" (error_to_st x);
+    Printf.printf "-----\n";
+    false
+  | Ok x ->
+    Printf.printf "%s\n" (tyexp_to_st x);
+    Printf.printf "-----\n";
+    true
+;; *)
+
+(* let%test _ = Tester.test_parse "let x = [1;2;3]" [] *)
+
+(* let%test _ =
+  match
+    w
+      (ECons
+         (EConst (CInt 1), ECons (EConst (CInt 2), ECons (EConst (CString "kek"), ENil))))
+  with
   | Error x ->
     Printf.printf "%s\n" (error_to_st x);
     Printf.printf "-----\n";

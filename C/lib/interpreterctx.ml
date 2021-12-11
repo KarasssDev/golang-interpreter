@@ -254,11 +254,17 @@ module Eval (M : MONADERROR) = struct
 
   let declare_struct ctx = function
     | TOP_STRUCT_DECL (name, args) ->
+        let get_pair (CARGS (t, n)) = (t, n) in
         let get_types (args : args list) =
-          let get_pair (CARGS (t, n)) = (t, n) in
           List.fold_right (fun nt ts -> get_pair nt :: ts) args []
         in
-        add_in_struct_tags ctx name (get_types args)
+        List.fold_left
+          (fun _ arg ->
+            match fst @@ get_pair arg with
+            | CT_STRUCT n when n = name -> error "Rec type error"
+            | _ -> return ())
+          (return ()) args
+        >> add_in_struct_tags ctx name (get_types args)
     | _ -> error "not a struct declaration"
 
   let declare_fun ctx = function

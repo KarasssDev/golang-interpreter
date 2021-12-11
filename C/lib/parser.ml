@@ -207,6 +207,15 @@ let struct_decl =
     >>= (fun idd ->
           between (token "[") (token "]") number >>= fun v ->
           get_number v >>= fun n -> return @@ CARGS (CT_ARRAY (n, CT_INT), idd))
+    <|> ( token "char" *> identifier >>= fun idd ->
+          between (token "[") (token "]") number >>= fun v ->
+          get_number v >>= fun n -> return @@ CARGS (CT_ARRAY (n, CT_CHAR), idd)
+        )
+    <|> ( token "struct" *> identifier >>= fun tag ->
+          identifier >>= fun idd ->
+          between (token "[") (token "]") number >>= fun v ->
+          get_number v >>= fun n ->
+          return @@ CARGS (CT_ARRAY (n, CT_STRUCT tag), idd) )
     <|> ( token_datatypes >>= fun tdd ->
           identifier >>= fun idd -> return @@ CARGS (tdd, idd) )
   in

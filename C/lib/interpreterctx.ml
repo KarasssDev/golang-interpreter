@@ -322,7 +322,7 @@ module Eval (M : MONADERROR) = struct
         match get_val @@ Vhval (get_from_heap ctx aa) with
         | Vglob (_, gv) -> conv_to_int ctx gv
         | otherwise -> conv_to_int ctx otherwise)
-    | _ -> error @@ "Integer expected "
+    | a -> error @@ "Integer expected " ^ show_v_value a
 
   let rec conv_to_char ctx = function
     | Vint v | Vaddress (_, v) ->
@@ -543,20 +543,35 @@ module Eval (M : MONADERROR) = struct
                 match convt with
                 | CT_PTR ctt -> malloc ctxs in_fn pal (get_int cnt) ctt
                 | _ -> malloc ctxs in_fn pal (get_int cnt) CT_INT)
-            | _ -> error "")
+            | _ -> error "malloc(): unexpected arguments")
         | "free" -> (
             match vals with
             | [ v ] -> free ctxs from_main in_fn convt cur_t palcs v
-            | _ -> error "")
+            | _ -> error "free(): unexpected arguments")
         | "sizeof" -> (
             match vals with
             | [ v ] -> sizeofn ctxs from_main in_fn convt cur_t palcs v
-            | _ -> error "")
+            | _ -> error "sizeof(): unexpected arguments")
         | "main" -> main ctxs convt cur_t palcs
         | _ ->
+            let old_pcka = ctxs.pack_addr in
             eval_fun
               { ctxs with last_value = Vvoid; pack_addr = ctxs.free_addr }
-              from_main convt cur_t palcs n vals)
+              from_main convt cur_t palcs n vals
+            >>= fun ((cc, vv), aa) ->
+            return
+              ( ( {
+                    cc with
+                    free_addr =
+                      (match List.rev @@ List.sort compare aa with
+                      | _ :: p :: _ -> snd p + 1
+                      | _ -> old_pcka);
+                    pack_addr =
+                      (if old_pcka < cc.pack_addr then old_pcka
+                      else cc.pack_addr);
+                  },
+                  vv ),
+                aa ))
     | ACCESOR (e1, e2) -> (
         let strct_padding tag n bgn i =
           get_from_struct_tags ctxs tag >>= function

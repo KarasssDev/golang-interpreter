@@ -8,6 +8,7 @@ let test =
     {|
       
       #include <a.h>
+
       struct Node {
           int value;
           struct Node *next;
@@ -139,6 +140,13 @@ let test =
       }
 
 
+      int f (int a) {
+        for (int i = 0; i < 2; i++) {
+          return 10;
+        }
+        return 0;
+      }
+
       int main () {
 
         actions();
@@ -150,18 +158,16 @@ let test =
         int ans4 = a4;
         int ans5 = a5;
         int cntBfr = a6;
-
-
+        
+        
         struct Node* it = l->head;
         int cnt = 0;
         while (it) {
           it = it->next;
           cnt++;
         }
-
         int cntAft = cnt;
         
-
         return (0);
       }
 

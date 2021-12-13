@@ -55,6 +55,7 @@
 
 (cram
  (deps
+  ; ./trash.exe
   ./demoList.exe
   ./demoFactorial.exe
   ./demoMemcpy.exe

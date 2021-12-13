@@ -258,13 +258,18 @@ module Eval (M : MONADERROR) = struct
         let get_types (args : args list) =
           List.fold_right (fun nt ts -> get_pair nt :: ts) args []
         in
+        let rec get_nested_t t =
+          match t with
+          | CT_CHAR | CT_INT | CT_STRUCT _ | CT_VOID | CT_PTR _ -> t
+          | CT_ARRAY (_, tt) -> get_nested_t tt
+        in
         List.fold_left
           (fun _ arg ->
-            match fst @@ get_pair arg with
-            | CT_STRUCT n when n = name -> error "Rec type error"
+            match get_nested_t @@ fst @@ get_pair arg with
+            | CT_STRUCT n when n = name -> error "Recursive type error"
             | _ -> return ())
           (return ()) args
-        >> add_in_struct_tags ctx name (get_types args)
+        >> add_in_struct_tags ctx name @@ get_types args
     | _ -> error "not a struct declaration"
 
   let declare_fun ctx = function
@@ -322,7 +327,7 @@ module Eval (M : MONADERROR) = struct
         match get_val @@ Vhval (get_from_heap ctx aa) with
         | Vglob (_, gv) -> conv_to_int ctx gv
         | otherwise -> conv_to_int ctx otherwise)
-    | a -> error @@ "Integer expected " ^ show_v_value a
+    | _ -> error @@ "Integer expected"
 
   let rec conv_to_char ctx = function
     | Vint v | Vaddress (_, v) ->
@@ -676,7 +681,6 @@ module Eval (M : MONADERROR) = struct
       when b_srch a als && (not @@ List.mem_assoc a als) ->
         error "free(): invalid pointer"
     | Vaddress (_, a) | Vstructval (_, Vaddress (_, a)) ->
-        (*was just ctx  *)
         let rmd_als = List.sort compare @@ List.remove_assoc a als in
         return
           ( ( {
@@ -764,7 +768,7 @@ module Eval (M : MONADERROR) = struct
     let adr = ctxs.free_addr in
     s' >>= fun s ->
     sizeof ctxs tt >>= fun sot ->
-    cast_default_init0 ctxs @@ CT_ARRAY (s / sot, tt) >>= function
+    cast_default_init_fstb ctxs @@ CT_ARRAY (s / sot, tt) >>= function
     | Vvalues vs ->
         List.fold_left
           (fun c v ->
@@ -791,7 +795,7 @@ module Eval (M : MONADERROR) = struct
     | CT_STRUCT _ -> (
         match t with
         | CT_INT | CT_CHAR | CT_VOID | CT_PTR _ ->
-            cast_default_init0 ctxs t >>= fun v ->
+            cast_default_init_fstb ctxs t >>= fun v ->
             add_in_heap ctx ctx.free_addr
               (Vdval (ctx.free_addr, Vstructval (n, v)))
               t
@@ -812,7 +816,7 @@ module Eval (M : MONADERROR) = struct
     | _ -> (
         match t with
         | CT_INT | CT_CHAR | CT_VOID ->
-            cast_default_init0 ctxs t >>= fun v ->
+            cast_default_init_fstb ctxs t >>= fun v ->
             add_in_heap ctx ctx.free_addr (Vdval (ctx.free_addr, v)) t
         | CT_PTR tt ->
             add_in_heap ctx ctx.free_addr
@@ -936,6 +940,8 @@ module Eval (M : MONADERROR) = struct
       get_ret_val ctxs' ctxs'.last_value >>= fun lv ->
       to_type ctx lv >>= fun _ ->
       match ctxs'.jump_stmt with
+      | Return rv when is_void r_typ && rv <> Vvoid ->
+          error "Void function can't return nothing"
       | Return _ ->
           return
             ( ( { ctx with free_addr = ctxs'.free_addr; last_value = lv },
@@ -1120,7 +1126,7 @@ module Eval (M : MONADERROR) = struct
         match v with
         | Vvalues _vs ->
             addr_fst >>= fun ad ->
-            cast_default_init0 ctxs @@ CT_ARRAY (l, t) >>= fun dv ->
+            cast_default_init_fstb ctxs @@ CT_ARRAY (l, t) >>= fun dv ->
             return @@ lift_vvs _vs [] >>= fun vs ->
             (match dv with
             | Vvalues dvs when List.length vs = List.length dvs ->
@@ -1193,7 +1199,7 @@ module Eval (M : MONADERROR) = struct
         in
         match v_cst with
         | Vvalues (Vstaddress (tag', _) :: _vs) ->
-            cast_default_init0 ctxs @@ CT_STRUCT tag >>= fun dv ->
+            cast_default_init_fstb ctxs @@ CT_STRUCT tag >>= fun dv ->
             return @@ lift_vvs _vs [] >>= fun vs ->
             (match dv with
             | Vvalues (Vstaddress (_, _) :: dvs)
@@ -1286,7 +1292,7 @@ module Eval (M : MONADERROR) = struct
         cast_default_init _t >>= fun x -> return @@ (x :: vsts)
     | _ -> error "~~"
 
-  and cast_default_init0 ctxs = function
+  and cast_default_init_fstb ctxs = function
     | CT_INT -> return @@ Vint 0
     | CT_CHAR -> return @@ Vchar 'n'
     | CT_STRUCT n ->
@@ -1299,7 +1305,7 @@ module Eval (M : MONADERROR) = struct
   and get_ret_val ctx x =
     match get_val x with
     | Vstaddress (tag, a) -> (
-        cast_default_init0 ctx @@ CT_STRUCT tag >>= function
+        cast_default_init_fstb ctx @@ CT_STRUCT tag >>= function
         | Vvalues (_ :: vs) ->
             List.fold_right
               (fun v ac ->
@@ -1330,7 +1336,7 @@ module Eval (M : MONADERROR) = struct
     let to_list = function Vvalues vs -> vs | otherwise -> [ otherwise ] in
     let rec helper (acc : v_value list) s t =
       if s > 0 then
-        cast_default_init0 ctxs t >>= fun xs ->
+        cast_default_init_fstb ctxs t >>= fun xs ->
         helper (acc @ to_list xs) (s - 1) t
       else return acc
     in
@@ -1340,7 +1346,7 @@ module Eval (M : MONADERROR) = struct
     let rec destruct acc = function
       | CT_PTR tt -> destruct (Vaddress (tt, -1) :: acc) tt
       | otherwise ->
-          cast_default_init0 ctx otherwise >>= fun v ->
+          cast_default_init_fstb ctx otherwise >>= fun v ->
           return @@ List.rev @@ (v :: acc)
     in
     destruct [] t
@@ -1437,7 +1443,7 @@ module Eval (M : MONADERROR) = struct
         | Some r ->
             assign h (VAR_NAME (prfx ^ name)) r from_main in_fn t cur_t palcs)
     | CT_PTR _ -> (
-        cast_default_init0 ctxs t >>= fun v ->
+        cast_default_init_fstb ctxs t >>= fun v ->
         create_var ctxs (prfx ^ name) (Vhval (Vrval (prfx ^ name, v))) t
         >>= fun h ->
         match expr with
@@ -1445,14 +1451,14 @@ module Eval (M : MONADERROR) = struct
         | Some r ->
             assign h (VAR_NAME (prfx ^ name)) r from_main in_fn t cur_t palcs)
     | CT_ARRAY (_, _) -> (
-        cast_default_init0 ctxs t >>= fun v ->
+        cast_default_init_fstb ctxs t >>= fun v ->
         create_arr ctxs (prfx ^ name) v t >>= fun h ->
         match expr with
         | None -> return @@ (h, palcs)
         | Some r ->
             assign h (VAR_NAME (prfx ^ name)) r from_main in_fn t cur_t palcs)
     | CT_STRUCT _ -> (
-        cast_default_init0 ctxs t >>= fun v ->
+        cast_default_init_fstb ctxs t >>= fun v ->
         create_struct ctxs (prfx ^ name) v t >>= fun h ->
         match expr with
         | None -> return @@ (h, palcs)
@@ -1798,11 +1804,6 @@ module Eval (M : MONADERROR) = struct
         xx >>= fun x ->
         acc >>= fun ac -> return @@ ac ^ n ^ " ~ " ^ show_v_value x ^ "\n")
       (return "") vrs vs
-
-  (* return @@ dbg_print ct als *)
-  (*
-     print_string @@ Result.get_ok Interpreterctx.E.test0;;
-  *)
 
   let eval_dd stmts _ =
     add_null (() |> make_exec_ctx) >>= fun ctx ->

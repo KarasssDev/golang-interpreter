@@ -385,18 +385,17 @@ module Eval (M : MONADERROR) = struct
   let is_true ctx cond =
     conv_to_int ctx @@ get_val cond >>= fun x -> return (get_int x > 0)
 
-  let rec eval_stmt (ctx : exec_ctx) (from_main : bool) (in_fn : bool) rwrt
-      (convt : types) (cur_t : types) (palcs : allocated) = function
+  let rec eval_stmt (ctx : exec_ctx) rwrt (convt : types) (cur_t : types)
+      (palcs : allocated) = function
     | VAR_DECL (name, t, expr) ->
-        declare ctx name t expr from_main in_fn rwrt convt cur_t palcs
-        >>= fun (ctx', pls) -> return (ctx', pls)
+        declare ctx name t expr rwrt convt cur_t palcs >>= fun (ctx', pls) ->
+        return (ctx', pls)
     | EXPRESSION (FUNC_CALL (n, vs)) ->
-        eval_expr ctx from_main in_fn convt cur_t palcs @@ FUNC_CALL (n, vs)
+        eval_expr ctx convt cur_t palcs @@ FUNC_CALL (n, vs)
         >>= fun ((ctxs', _), pls) -> return (ctxs', pls)
     | EXPRESSION _ -> error "unexpected exoression"
     | RETURN e ->
-        eval_expr ctx from_main in_fn convt cur_t palcs e
-        >>= fun ((ctxs', v), pls) ->
+        eval_expr ctx convt cur_t palcs e >>= fun ((ctxs', v), pls) ->
         return
           {
             ctx with
@@ -406,16 +405,15 @@ module Eval (M : MONADERROR) = struct
             have_ret = true;
           }
         >>= fun cs -> return (cs, pls)
-    | BLOCK stmts -> eval_fn_blck ctx from_main in_fn convt cur_t palcs stmts
+    | BLOCK stmts -> eval_fn_blck ctx convt cur_t palcs stmts
     | IF_ELSE (e, if_blk, else_blk) ->
-        eval_expr ctx from_main in_fn convt cur_t palcs e
-        >>= fun ((ct, bv), pals) ->
+        eval_expr ctx convt cur_t palcs e >>= fun ((ct, bv), pals) ->
         let stmts blk = match blk with BLOCK stmts -> stmts | _ -> [] in
         let old_pcka = ctx.pack_addr in
         let eval_ifelse blk =
           eval_ifel_blck
             { ct with pack_addr = ctx.free_addr }
-            from_main in_fn rwrt convt cur_t palcs blk
+            rwrt convt cur_t palcs blk
           >>= fun (c, ps) ->
           return ({ c with free_addr = c.pack_addr; pack_addr = old_pcka }, ps)
         in
@@ -427,34 +425,27 @@ module Eval (M : MONADERROR) = struct
           | _ -> eval_ifelse @@ stmts else_blk)
         >>= fun (ct, pals) -> return (ct, pals)
     | IF (e, blk) ->
-        eval_stmt ctx from_main in_fn rwrt convt cur_t palcs
-        @@ IF_ELSE (e, blk, BLOCK [])
-    | ASSIGN (l, r) -> assign ctx l r from_main in_fn convt cur_t palcs
-    | WHILE (e, blk) -> eval_cycle ctx from_main in_fn convt cur_t palcs e blk
+        eval_stmt ctx rwrt convt cur_t palcs @@ IF_ELSE (e, blk, BLOCK [])
+    | ASSIGN (l, r) -> assign ctx l r convt cur_t palcs
+    | WHILE (e, blk) -> eval_cycle ctx convt cur_t palcs e blk
     | BREAK -> return ({ ctx with jump_stmt = Break }, palcs)
     | CONTINUE -> return ({ ctx with jump_stmt = Continue }, palcs)
     | ASSIGN_SUB (le, re) ->
-        eval_stmt ctx from_main in_fn rwrt convt cur_t palcs
-        @@ ASSIGN (le, SUB (le, re))
+        eval_stmt ctx rwrt convt cur_t palcs @@ ASSIGN (le, SUB (le, re))
     | ASSIGN_ADD (le, re) ->
-        eval_stmt ctx from_main in_fn rwrt convt cur_t palcs
-        @@ ASSIGN (le, ADD (le, re))
+        eval_stmt ctx rwrt convt cur_t palcs @@ ASSIGN (le, ADD (le, re))
     | ASSIGN_MUL (le, re) ->
-        eval_stmt ctx from_main in_fn rwrt convt cur_t palcs
-        @@ ASSIGN (le, MUL (le, re))
+        eval_stmt ctx rwrt convt cur_t palcs @@ ASSIGN (le, MUL (le, re))
     | ASSIGN_DIV (le, re) ->
-        eval_stmt ctx from_main in_fn rwrt convt cur_t palcs
-        @@ ASSIGN (le, DIV (le, re))
+        eval_stmt ctx rwrt convt cur_t palcs @@ ASSIGN (le, DIV (le, re))
     | ASSIGN_MOD (le, re) ->
-        eval_stmt ctx from_main in_fn rwrt convt cur_t palcs
-        @@ ASSIGN (le, MOD (le, re))
+        eval_stmt ctx rwrt convt cur_t palcs @@ ASSIGN (le, MOD (le, re))
     | FOR (d, be, e, blk) ->
         let vars' : vars = Hashtbl.create 16 in
         Hashtbl.iter (fun n v -> Hashtbl.add vars' n v) ctx.vars;
         (match d with
         | Some dd ->
-            eval_stmt { ctx with vars = vars' } from_main in_fn true convt cur_t
-              palcs dd
+            eval_stmt { ctx with vars = vars' } true convt cur_t palcs dd
         | None -> return (ctx, palcs))
         >>= fun (c, pals) ->
         (let get_stmts = function BLOCK st -> st | _ -> [] in
@@ -462,18 +453,16 @@ module Eval (M : MONADERROR) = struct
          | Some bbe -> (
              match e with
              | Some ee ->
-                 eval_stmt c from_main in_fn false convt cur_t pals
+                 eval_stmt c false convt cur_t pals
                  @@ WHILE (bbe, BLOCK (get_stmts blk @ [ ee ]))
-             | None ->
-                 eval_stmt c from_main in_fn false convt cur_t pals
-                 @@ WHILE (bbe, blk))
+             | None -> eval_stmt c false convt cur_t pals @@ WHILE (bbe, blk))
          | None -> (
              match e with
              | Some ee ->
-                 eval_stmt c from_main in_fn false convt cur_t pals
+                 eval_stmt c false convt cur_t pals
                  @@ WHILE (LITERAL (CINT 1), BLOCK (get_stmts blk @ [ ee ]))
              | None ->
-                 eval_stmt c from_main in_fn false convt cur_t pals
+                 eval_stmt c false convt cur_t pals
                  @@ WHILE (LITERAL (CINT 1), blk)))
         >>= fun (c, als) ->
         Hashtbl.iter
@@ -482,8 +471,7 @@ module Eval (M : MONADERROR) = struct
           ctx.vars;
         return ({ ctx with free_addr = c.free_addr }, als)
 
-  and eval_expr (ctxs : exec_ctx) from_main (in_fn : bool) convt cur_t
-      (palcs : allocated) = function
+  and eval_expr (ctxs : exec_ctx) convt cur_t (palcs : allocated) = function
     | VAR_NAME name ->
         get_from_vars ctxs name "Var undefined" >>= fun (t, _, v) ->
         return @@ (({ ctxs with cur_t = t }, Vhval v), palcs)
@@ -495,46 +483,47 @@ module Eval (M : MONADERROR) = struct
         List.fold_right
           (fun e acc ->
             acc >>= fun vs ->
-            eval_expr ctxs from_main in_fn convt cur_t palcs e
-            >>= fun ((_, v), _) -> return @@ (get_val v :: vs))
+            eval_expr ctxs convt cur_t palcs e >>= fun ((_, v), _) ->
+            return @@ (get_val v :: vs))
           ls (return [])
         >>= fun vs -> return @@ ((ctxs, Vvalues vs), palcs)
     | INITIALIZER es ->
         List.fold_right
           (fun e acc ->
             acc >>= fun vs ->
-            eval_expr ctxs from_main in_fn convt cur_t palcs e
-            >>= fun ((_, v), _) -> return @@ (get_val v :: vs))
+            eval_expr ctxs convt cur_t palcs e >>= fun ((_, v), _) ->
+            return @@ (get_val v :: vs))
           es (return [])
         >>= fun vs -> return @@ ((ctxs, Vvalues vs), palcs)
-    | ADD (e1, e2) -> op ctxs _add e1 e2 from_main in_fn convt cur_t palcs
-    | SUB (e1, e2) -> op ctxs _sub e1 e2 from_main in_fn convt cur_t palcs
-    | MUL (e1, e2) -> op ctxs _mul e1 e2 from_main in_fn convt cur_t palcs
-    | DIV (e1, e2) -> op ctxs _div e1 e2 from_main in_fn convt cur_t palcs
-    | MOD (e1, e2) -> op ctxs _mod e1 e2 from_main in_fn convt cur_t palcs
-    | AND (e1, e2) -> op ctxs _and e1 e2 from_main in_fn convt cur_t palcs
-    | OR (e1, e2) -> op ctxs _or e1 e2 from_main in_fn convt cur_t palcs
-    | EQUAL (e1, e2) -> op ctxs _eq e1 e2 from_main in_fn convt cur_t palcs
-    | NOT_EQUAL (e1, e2) -> op ctxs _neq e1 e2 from_main in_fn convt cur_t palcs
-    | GTE (e1, e2) -> op ctxs _gte e1 e2 from_main in_fn convt cur_t palcs
-    | GT (e1, e2) -> op ctxs _gt e1 e2 from_main in_fn convt cur_t palcs
-    | LTE (e1, e2) -> op ctxs _lte e1 e2 from_main in_fn convt cur_t palcs
-    | LT (e1, e2) -> op ctxs _lt e1 e2 from_main in_fn convt cur_t palcs
+    | ADD (e1, e2) -> op ctxs _add e1 e2 convt cur_t palcs
+    | SUB (e1, e2) -> op ctxs _sub e1 e2 convt cur_t palcs
+    | MUL (e1, e2) -> op ctxs _mul e1 e2 convt cur_t palcs
+    | DIV (e1, e2) -> op ctxs _div e1 e2 convt cur_t palcs
+    | MOD (e1, e2) -> op ctxs _mod e1 e2 convt cur_t palcs
+    | AND (e1, e2) -> op ctxs _and e1 e2 convt cur_t palcs
+    | OR (e1, e2) -> op ctxs _or e1 e2 convt cur_t palcs
+    | EQUAL (e1, e2) -> op ctxs _eq e1 e2 convt cur_t palcs
+    | NOT_EQUAL (e1, e2) -> op ctxs _neq e1 e2 convt cur_t palcs
+    | GTE (e1, e2) -> op ctxs _gte e1 e2 convt cur_t palcs
+    | GT (e1, e2) -> op ctxs _gt e1 e2 convt cur_t palcs
+    | LTE (e1, e2) -> op ctxs _lte e1 e2 convt cur_t palcs
+    | LT (e1, e2) -> op ctxs _lt e1 e2 convt cur_t palcs
     | NOT e ->
-        eval_expr ctxs from_main in_fn convt cur_t palcs e
-        >>= fun ((cts, v), pls) ->
+        eval_expr ctxs convt cur_t palcs e >>= fun ((cts, v), pls) ->
         _not cts v >>= fun v' -> return ((cts, v'), pls)
     | INDEXER (n, e) ->
         let xable ctxs name i =
           get_from_vars ctxs name "Var undefined" >>= function
           | CT_ARRAY (_, t), _, Vrval (_, Varraddress (_, addr))
           | CT_PTR t, _, Vrval (_, Vaddress (_, addr)) ->
+              let is_sturct = function CT_STRUCT _ -> true | _ -> false in
               sizeof ctxs t >>= fun s ->
-              return @@ (Vhval (get_from_heap ctxs (addr + (i * s))), cur_t)
+              return
+              @@ ( Vhval (get_from_heap ctxs (addr + (i * s))),
+                   if is_sturct t then t else cur_t )
           | _ -> error "Not indexable"
         in
-        eval_expr ctxs from_main in_fn convt cur_t palcs e
-        >>= fun ((cts, i), _) ->
+        eval_expr ctxs convt cur_t palcs e >>= fun ((cts, i), _) ->
         conv_to_int cts i >>= fun i' ->
         xable cts n @@ get_int i' >>= fun (v', cur_t) ->
         return (({ cts with cur_t }, v'), palcs)
@@ -543,26 +532,25 @@ module Eval (M : MONADERROR) = struct
         | "malloc" -> (
             match vals with
             | [ v ] -> (
-                eval_expr ctxs from_main in_fn convt cur_t palcs v
-                >>= fun ((_, cnt), pal) ->
+                eval_expr ctxs convt cur_t palcs v >>= fun ((_, cnt), pal) ->
                 match convt with
-                | CT_PTR ctt -> malloc ctxs in_fn pal (get_int cnt) ctt
-                | _ -> malloc ctxs in_fn pal (get_int cnt) CT_INT)
+                | CT_PTR ctt -> malloc ctxs pal (get_int cnt) ctt
+                | _ -> malloc ctxs pal (get_int cnt) CT_INT)
             | _ -> error "malloc(): unexpected arguments")
         | "free" -> (
             match vals with
-            | [ v ] -> free ctxs from_main in_fn convt cur_t palcs v
+            | [ v ] -> free ctxs convt cur_t palcs v
             | _ -> error "free(): unexpected arguments")
         | "sizeof" -> (
             match vals with
-            | [ v ] -> sizeofn ctxs from_main in_fn convt cur_t palcs v
+            | [ v ] -> sizeofn ctxs convt cur_t palcs v
             | _ -> error "sizeof(): unexpected arguments")
         | "main" -> main ctxs convt cur_t palcs
         | _ ->
             let old_pcka = ctxs.pack_addr in
             eval_fun
               { ctxs with last_value = Vvoid; pack_addr = ctxs.free_addr }
-              from_main convt cur_t palcs n vals
+              convt cur_t palcs n vals
             >>= fun ((cc, vv), aa) ->
             return
               ( ( {
@@ -602,7 +590,7 @@ module Eval (M : MONADERROR) = struct
           | CT_STRUCT _ -> true
           | _ -> false
         in
-        eval_expr ctxs from_main in_fn convt cur_t palcs e1 >>= function
+        eval_expr ctxs convt cur_t palcs e1 >>= function
         | (c, Vhval (Vrval (_, Vstaddress (tag, a)))), pal
         | (c, Vhval (Vdval (_, Vstaddress (tag, a)))), pal
         | (c, Vstructval (_, Vstaddress (tag, a))), pal
@@ -611,15 +599,13 @@ module Eval (M : MONADERROR) = struct
             | VAR_NAME n ->
                 strct_padding tag n a 0 >>= fun v -> return ((ctxs, v), pal)
             | INDEXER (n, e) ->
-                eval_expr ctxs from_main in_fn convt cur_t palcs e
-                >>= fun ((_, i), pal) ->
+                eval_expr ctxs convt cur_t palcs e >>= fun ((_, i), pal) ->
                 strct_padding tag n a @@ get_int i >>= fun v ->
                 return ((ctxs, v), pal)
             | _ -> error "~~")
-        | (_, _), _ -> error @@ "Unaccessorable")
+        | (c, _), _ -> error @@ "Unaccessorable" ^ show_types c.cur_t)
     | DEREFERENCE e -> (
-        eval_expr ctxs from_main in_fn convt cur_t palcs e
-        >>= fun ((cs, v), pals) ->
+        eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
         (match v with
         | Vhval (Vrval (_, Vaddress (CT_VOID, _)))
         | Vhval (Vdval (_, Vaddress (CT_VOID, _)))
@@ -650,8 +636,7 @@ module Eval (M : MONADERROR) = struct
             return (({ cs with cur_t = pt_t }, Vhval v''), pals)
         | _ -> error @@ "Null pointer exception")
     | ADDRESS e -> (
-        eval_expr ctxs from_main in_fn convt cur_t palcs e
-        >>= fun ((cs, v), pals) ->
+        eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
         match v with
         | Vhval (Vrval (n, _)) ->
             get_from_vars ctxs n "Var undefined" >>= fun (_, a, _) ->
@@ -659,16 +644,14 @@ module Eval (M : MONADERROR) = struct
         | _ -> error @@ "~~")
     | TYPE t -> return @@ ((ctxs, Vtype t), palcs)
 
-  and sizeofn ctxs from_main in_fn convt cur_t palcs e =
-    eval_expr ctxs from_main in_fn convt cur_t palcs e
-    >>= fun ((ctx, v), als) ->
+  and sizeofn ctxs convt cur_t palcs e =
+    eval_expr ctxs convt cur_t palcs e >>= fun ((ctx, v), als) ->
     match v with
     | Vtype t -> sizeof ctx t >>= fun s -> return ((ctx, Vint s), als)
     | _ -> error "sizof(): invalid type"
 
-  and free ctxs from_main in_fn convt cur_t palcs e =
-    eval_expr ctxs from_main in_fn convt cur_t palcs e
-    >>= fun ((ctx, v), als) ->
+  and free ctxs convt cur_t palcs e =
+    eval_expr ctxs convt cur_t palcs e >>= fun ((ctx, v), als) ->
     let glb = function
       | Vglob (aa, _) -> (
           match get_val @@ Vhval (get_from_heap ctx aa) with
@@ -694,33 +677,28 @@ module Eval (M : MONADERROR) = struct
             List.sort compare @@ List.remove_assoc a als )
     | _ -> error @@ "free(): invalid pointer"
 
-  and repeat ctx from_main in_fn convt cur_t palcs body tmp_b cond =
-    (* print_string @@ Int.to_string ctx.free_addr ^ "\n\n"; *)
-    eval_expr ctx from_main in_fn convt cur_t palcs cond
-    >>= fun ((c, cnd), pals) ->
+  and repeat ctx convt cur_t palcs body tmp_b cond =
+    eval_expr ctx convt cur_t palcs cond >>= fun ((c, cnd), pals) ->
     is_true c cnd >>= fun x ->
-    if x then eval_cyc_body c from_main in_fn convt cur_t pals cond body tmp_b
+    if x then eval_cyc_body c convt cur_t pals cond body tmp_b
     else return ({ c with free_addr = ctx.free_addr; last_value = Vnull }, pals)
 
-  and eval_cyc_body ctx from_main in_fn convt cur_t palcs cond body tmp_b =
+  and eval_cyc_body ctx convt cur_t palcs cond body tmp_b =
     match tmp_b with
-    | [] -> repeat ctx from_main in_fn convt cur_t palcs body body cond
+    | [] -> repeat ctx convt cur_t palcs body body cond
     | st :: sts -> (
-        eval_stmt ctx from_main in_fn true convt cur_t palcs st
-        >>= fun (ct, pls) ->
+        eval_stmt ctx true convt cur_t palcs st >>= fun (ct, pls) ->
         match ct.jump_stmt with
         | Return _ -> return (ct, pls)
         | Break -> return ({ ct with last_value = Vnull }, pls)
-        | Continue -> repeat ct from_main in_fn convt cur_t pls body body cond
-        | None -> eval_cyc_body ct from_main in_fn convt cur_t pls cond body sts
-        )
+        | Continue -> repeat ct convt cur_t pls body body cond
+        | None -> eval_cyc_body ct convt cur_t pls cond body sts)
 
-  and eval_cycle ctx from_main in_fn convt cur_t palcs cond = function
+  and eval_cycle ctx convt cur_t palcs cond = function
     | BLOCK stmts ->
         (let vars' : vars = Hashtbl.create 16 in
          Hashtbl.iter (fun n v -> Hashtbl.add vars' n v) ctx.vars;
-         repeat { ctx with vars = vars' } from_main in_fn convt cur_t palcs
-           stmts stmts cond)
+         repeat { ctx with vars = vars' } convt cur_t palcs stmts stmts cond)
         >>= fun (c, als) ->
         Hashtbl.iter
           (fun n (t, a, _) ->
@@ -738,8 +716,7 @@ module Eval (M : MONADERROR) = struct
     let rec blk ctxs (in_fn : bool) pls = function
       | [] -> return @@ (ctxs, pls)
       | st :: sts -> (
-          eval_stmt ctxs true in_fn false convt cur_t pls st
-          >>= fun (new_ctx, pls') ->
+          eval_stmt ctxs false convt cur_t pls st >>= fun (new_ctx, pls') ->
           let cur_ctx = new_ctx in
           match cur_ctx.jump_stmt with
           | None -> blk new_ctx in_fn pls' sts
@@ -760,7 +737,7 @@ module Eval (M : MONADERROR) = struct
     | Return _ -> return ((ctxs', ctxs'.last_value), pls)
     | _ -> error "main(): Unexpected jump statement"
 
-  and malloc ctxs _ (palcs : allocated) size tt =
+  and malloc ctxs (palcs : allocated) size tt =
     let s' =
       sizeof ctxs tt >>= fun sot ->
       if size >= sot then return size else return sot
@@ -833,7 +810,7 @@ module Eval (M : MONADERROR) = struct
               (Vdval (ctx.free_addr, Varraddress (t', ctx.free_addr + l)))
               t)
 
-  and eval_fn_blck ctx from_main in_fn convt cur_t palcs =
+  and eval_fn_blck ctx convt cur_t palcs =
     let rec rm ctx i n =
       if i <= n then
         if not @@ b_srch i palcs then (
@@ -858,10 +835,9 @@ module Eval (M : MONADERROR) = struct
             },
             palcs )
     | st :: sts -> (
-        eval_stmt ctx from_main in_fn false convt cur_t palcs st
-        >>= fun (new_ctx, pls) ->
+        eval_stmt ctx false convt cur_t palcs st >>= fun (new_ctx, pls) ->
         match new_ctx.jump_stmt with
-        | None -> eval_fn_blck new_ctx from_main in_fn convt cur_t pls sts
+        | None -> eval_fn_blck new_ctx convt cur_t pls sts
         | Return _ | Break | Continue ->
             get_ret_val new_ctx new_ctx.last_value >>= fun lv ->
             rm ctx ctx.pack_addr ctx.free_addr;
@@ -876,7 +852,7 @@ module Eval (M : MONADERROR) = struct
                 },
                 pls ))
 
-  and eval_ifel_blck ctx from_main in_fn rwrt convt cur_t palcs =
+  and eval_ifel_blck ctx rwrt convt cur_t palcs =
     let rec rm ctx i n =
       if i <= n then
         if not @@ b_srch i palcs then (
@@ -893,11 +869,9 @@ module Eval (M : MONADERROR) = struct
         rm ctx ctx.pack_addr ctx.free_addr;
         return (ctx, palcs)
     | st :: sts -> (
-        eval_stmt ctx from_main in_fn rwrt convt cur_t palcs st
-        >>= fun (new_ctx, pls) ->
+        eval_stmt ctx rwrt convt cur_t palcs st >>= fun (new_ctx, pls) ->
         match new_ctx.jump_stmt with
-        | None ->
-            eval_ifel_blck new_ctx from_main in_fn rwrt convt cur_t pls sts
+        | None -> eval_ifel_blck new_ctx rwrt convt cur_t pls sts
         | Return _ | Break | Continue ->
             rm ctx ctx.pack_addr ctx.free_addr;
             return
@@ -910,7 +884,7 @@ module Eval (M : MONADERROR) = struct
                 },
                 pls ))
 
-  and eval_fun ctx from_main convt cur_t palcs name vals =
+  and eval_fun ctx convt cur_t palcs name vals =
     let ct = { ctx with vars = Hashtbl.create 16; last_value = Vvoid } in
     let is_void = function CT_VOID -> true | _ -> false in
     (get_from_functions ctx name >>= function
@@ -929,14 +903,12 @@ module Eval (M : MONADERROR) = struct
           match a with
           | CARGS (_, n) ->
               ct >>= fun c ->
-              eval_expr ctx from_main false convt cur_t palcs v
-              >>= fun ((_, v'), _) ->
+              eval_expr ctx convt cur_t palcs v >>= fun ((_, v'), _) ->
               to_type ctx @@ get_val v' >>= fun t ->
               create_var c n (Vhval (Vrval (n, get_val v'))) t)
         (return ct) args vals
       >>= fun c ->
-      eval_stmt c false true true convt cur_t palcs @@ BLOCK vs
-      >>= fun (ctxs', pls) ->
+      eval_stmt c true convt cur_t palcs @@ BLOCK vs >>= fun (ctxs', pls) ->
       get_ret_val ctxs' ctxs'.last_value >>= fun lv ->
       to_type ctx lv >>= fun _ ->
       match ctxs'.jump_stmt with
@@ -953,10 +925,9 @@ module Eval (M : MONADERROR) = struct
       | _ -> error "Unexpected jump statement")
     else error "Wrong number of arguments"
 
-  and op (ctxs : exec_ctx) opp e1 e2 from_main in_fn convt cur_t palcs =
-    eval_expr ctxs from_main in_fn convt cur_t palcs e1
-    >>= fun ((cs, v1), pls) ->
-    eval_expr cs from_main in_fn convt cur_t pls e2 >>= fun ((cts, v2), pls') ->
+  and op (ctxs : exec_ctx) opp e1 e2 convt cur_t palcs =
+    eval_expr ctxs convt cur_t palcs e1 >>= fun ((cs, v1), pls) ->
+    eval_expr cs convt cur_t pls e2 >>= fun ((cts, v2), pls') ->
     opp ctxs (get_val @@ v1) (get_val @@ v2) >>= fun v' ->
     return ((cts, v'), pls')
 
@@ -1351,17 +1322,15 @@ module Eval (M : MONADERROR) = struct
     in
     destruct [] t
 
-  and assign (ctxs : exec_ctx) l_expr r_expr from_main (in_fn : bool) convt
-      cur_t palcs =
+  and assign (ctxs : exec_ctx) l_expr r_expr convt cur_t palcs =
     let get_ptr_t = function CT_PTR tt -> tt | _ -> CT_VOID in
-    eval_expr ctxs from_main in_fn convt cur_t palcs l_expr >>= fun (p, _) ->
+    eval_expr ctxs convt cur_t palcs l_expr >>= fun (p, _) ->
     match snd p with
     (* function *)
     | Vhval (Vrval (n, _)) -> (
         let var = get_from_vars ctxs n "Var undefined" >>= fun v -> return v in
         var >>= fun (t, addr, _) ->
-        eval_expr ctxs from_main in_fn t cur_t palcs r_expr
-        >>= fun ((ctxs', r), pls) ->
+        eval_expr ctxs t cur_t palcs r_expr >>= fun ((ctxs', r), pls) ->
         get_ret_val ctxs' ctxs'.last_value >>= fun lv ->
         return
         @@ {
@@ -1393,8 +1362,7 @@ module Eval (M : MONADERROR) = struct
         | _ -> return (cs', pls))
     | Vhval (Vdval (_ad, _v)) ->
         to_type ctxs _v >>= fun _convt ->
-        eval_expr ctxs from_main in_fn _convt cur_t palcs r_expr
-        >>= fun ((ctxs', r), pls) ->
+        eval_expr ctxs _convt cur_t palcs r_expr >>= fun ((ctxs', r), pls) ->
         get_ret_val ctxs' ctxs'.last_value >>= fun lv ->
         return
         @@ {
@@ -1420,8 +1388,7 @@ module Eval (M : MONADERROR) = struct
         >> return (cs, pls)
     | _ -> error "~~"
 
-  and declare (ctxs : exec_ctx) name t (expr : expr option) from_main in_fn rwrt
-      _ cur_t palcs =
+  and declare (ctxs : exec_ctx) name t (expr : expr option) rwrt _ cur_t palcs =
     let prfx = "." in
     (match Hashtbl.find_opt ctxs.vars name with
     | Some (_, _, Vrval (n, Vglob (_, _))) ->
@@ -1440,30 +1407,26 @@ module Eval (M : MONADERROR) = struct
         >>= fun h ->
         match expr with
         | None -> return @@ (h, palcs)
-        | Some r ->
-            assign h (VAR_NAME (prfx ^ name)) r from_main in_fn t cur_t palcs)
+        | Some r -> assign h (VAR_NAME (prfx ^ name)) r t cur_t palcs)
     | CT_PTR _ -> (
         cast_default_init_fstb ctxs t >>= fun v ->
         create_var ctxs (prfx ^ name) (Vhval (Vrval (prfx ^ name, v))) t
         >>= fun h ->
         match expr with
         | None -> return @@ (h, palcs)
-        | Some r ->
-            assign h (VAR_NAME (prfx ^ name)) r from_main in_fn t cur_t palcs)
+        | Some r -> assign h (VAR_NAME (prfx ^ name)) r t cur_t palcs)
     | CT_ARRAY (_, _) -> (
         cast_default_init_fstb ctxs t >>= fun v ->
         create_arr ctxs (prfx ^ name) v t >>= fun h ->
         match expr with
         | None -> return @@ (h, palcs)
-        | Some r ->
-            assign h (VAR_NAME (prfx ^ name)) r from_main in_fn t cur_t palcs)
+        | Some r -> assign h (VAR_NAME (prfx ^ name)) r t cur_t palcs)
     | CT_STRUCT _ -> (
         cast_default_init_fstb ctxs t >>= fun v ->
         create_struct ctxs (prfx ^ name) v t >>= fun h ->
         match expr with
         | None -> return @@ (h, palcs)
-        | Some r ->
-            assign h (VAR_NAME (prfx ^ name)) r from_main in_fn t cur_t palcs)
+        | Some r -> assign h (VAR_NAME (prfx ^ name)) r t cur_t palcs)
     | CT_VOID -> error "void haven't values")
     >>= fun (s_ctx, pls) ->
     let nahv =
@@ -1477,8 +1440,7 @@ module Eval (M : MONADERROR) = struct
 
   and declare_top ctx = function
     | TOP_VAR_DECL (name, t, expr) -> (
-        declare ctx name t expr false false false CT_VOID CT_VOID []
-        >>= fun (ctx', _) ->
+        declare ctx name t expr false CT_VOID CT_VOID [] >>= fun (ctx', _) ->
         get_from_vars ctx name "Var undefined" >>= function
         | t, a, Vrval (n, v) ->
             Hashtbl.replace ctx'.vars name (t, a, Vrval (n, Vglob (a, v)));
@@ -1664,7 +1626,7 @@ module Eval (M : MONADERROR) = struct
     >>=
     fun ctx ->
     let ctx' = { ctx with pack_addr = ctx.free_addr } in
-    eval_stmt ctx' false false false CT_INT CT_VOID [ (max_int, max_int) ]
+    eval_stmt ctx' false CT_INT CT_VOID [ (max_int, max_int) ]
     @@ EXPRESSION (FUNC_CALL ("main", []))
     >>= fun (c, als) -> return @@ dbg_print c als
 
@@ -1768,7 +1730,7 @@ module Eval (M : MONADERROR) = struct
              ] )
     >>= fun ctx ->
     let ctx' = { ctx with pack_addr = ctx.free_addr } in
-    eval_stmt ctx' false false false CT_INT CT_VOID [ (max_int, max_int) ]
+    eval_stmt ctx' false CT_INT CT_VOID [ (max_int, max_int) ]
     @@ EXPRESSION (FUNC_CALL ("main", []))
     >>= fun (c, als) -> return @@ dbg_print c als
 
@@ -1789,7 +1751,7 @@ module Eval (M : MONADERROR) = struct
     add_null (() |> make_exec_ctx) >>= fun ctx ->
     collect ctx stmts >>= fun ct ->
     let ct = { ct with pack_addr = ct.free_addr } in
-    eval_stmt ct false false false CT_INT CT_VOID [ (max_int, max_int) ]
+    eval_stmt ct false CT_INT CT_VOID [ (max_int, max_int) ]
     @@ EXPRESSION (FUNC_CALL ("main", []))
     >>= fun (ct, _) ->
     let vs =
@@ -1809,7 +1771,7 @@ module Eval (M : MONADERROR) = struct
     add_null (() |> make_exec_ctx) >>= fun ctx ->
     collect ctx stmts >>= fun ct ->
     let ct = { ct with pack_addr = ct.free_addr } in
-    eval_stmt ct false false false CT_INT CT_VOID [ (max_int, max_int) ]
+    eval_stmt ct false CT_INT CT_VOID [ (max_int, max_int) ]
     @@ EXPRESSION (FUNC_CALL ("main", []))
     >>= fun (ct, als) -> return @@ dbg_print ct als
   (*

@@ -12,9 +12,6 @@
                     int a;
                   };
 
-                  struct st {
-                     struct st ss;
-                  };
 
                   int main () {
 

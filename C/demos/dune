@@ -46,16 +46,8 @@
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq)))
 
-; (executable
-;  (name trash)
-;  (modules trash)
-;  (libraries C.Lib)
-;  (preprocess
-;   (pps ppx_deriving.show ppx_deriving.eq)))
-
 (cram
  (deps
-  ; ./trash.exe
   ./demoList.exe
   ./demoFactorial.exe
   ./demoMemcpy.exe

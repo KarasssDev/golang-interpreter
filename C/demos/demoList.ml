@@ -105,7 +105,7 @@ let test =
       int a6;
 
       void actions () {
-        int ans[6];
+        int ans[5];
         
         l = createList();
         

@@ -267,9 +267,7 @@ let infer =
         let* s_bool = unify t TInt in
         let app = Subst.apply s_bool t in
         return (Subst.(s_bool ++ s), arrow app TBool))
-    | EVar x ->
-      let* subst, tyexp = lookup_context x context in
-      return (subst, tyexp)
+    | EVar x -> lookup_context x context
     | ETuple exps ->
       (match exps with
       | hd :: tl ->
@@ -350,17 +348,17 @@ let%test _ =
 (* let%test _ = Tester.test_parse "let x = [1;2;3]" [] *)
 
 (* let%test _ =
-  match
+   match
     w
       (ECons
          (EConst (CInt 1), ECons (EConst (CInt 2), ECons (EConst (CString "kek"), ENil))))
-  with
-  | Error x ->
+   with
+   | Error x ->
     Printf.printf "%s\n" (error_to_st x);
     Printf.printf "-----\n";
     false
-  | Ok x ->
+   | Ok x ->
     Printf.printf "%s\n" (tyexp_to_st x);
     Printf.printf "-----\n";
     true
-;; *)
+   ;; *)

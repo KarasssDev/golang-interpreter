@@ -58,8 +58,7 @@ let test =
       
               while (after) {
                   if (after->value == value) {
-                      struct Node *toDelete;
-                      toDelete = after;
+                      struct Node* toDelete = after;
                       if (toDelete->next) {
                           after = toDelete->next;
                           before->next = after;
@@ -71,14 +70,13 @@ let test =
                       }
                   } else {
                       after = after->next;
-                      before= before->next;
+                      before = before->next;
                   }
               }
           } 
 
           if (list->head->value == value) {
-              struct Node *toDelete;
-              toDelete = list->head;
+              struct Node *toDelete = list->head;
               list->head = toDelete->next;
               free(toDelete);
           }
@@ -104,7 +102,6 @@ let test =
       int a2;
       int a3;
       int a4;
-      int a5;
       int a6;
 
       void actions () {
@@ -118,6 +115,8 @@ let test =
         addTail(l, 400);
         addTail(l, 500);
         addHead(l, -100);
+        
+        deleteFstEntry(l, 400);
 
         struct Node* it = l->head;
         int cnt = 0;
@@ -132,23 +131,12 @@ let test =
         a2 = ans[2];
         a3 = ans[3];
         a4 = ans[4];
-        a5 = ans[5];
         a6 = cnt;
 
         eraseList(l);
-
-      }
-
-
-      int f (int a) {
-        for (int i = 0; i < 2; i++) {
-          return 10;
-        }
-        return 0;
       }
 
       int main () {
-
         actions();
 
         int ans0 = a0;
@@ -156,7 +144,6 @@ let test =
         int ans2 = a2;
         int ans3 = a3;
         int ans4 = a4;
-        int ans5 = a5;
         int cntBfr = a6;
         
         
@@ -168,10 +155,9 @@ let test =
         }
         int cntAft = cnt;
         
+        
         return (0);
       }
-
-      
     |}
 
 let () =
@@ -181,16 +167,7 @@ let () =
       | C_PROG prg -> (
           match
             eval_d prg
-              [
-                "cntBfr";
-                "ans0";
-                "ans1";
-                "ans2";
-                "ans3";
-                "ans4";
-                "ans5";
-                "cntAft";
-              ]
+              [ "cntBfr"; "ans0"; "ans1"; "ans2"; "ans3"; "ans4"; "cntAft" ]
           with
           | Ok result -> print_string @@ result
           | Error msg -> print_string @@ msg)

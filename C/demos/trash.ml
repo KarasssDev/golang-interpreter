@@ -8,14 +8,16 @@
        {|
                   #include <a.h>
 
-                  struct s {
-                    int a;
-                  };
+                  int f () {
+                    while (0 < 2) {
+                      return 100;
+                    }
+                  }
 
 
                   int main () {
 
-
+                     int a = f ();
                      return (0);
                   }
 
@@ -164,6 +166,8 @@
                     return (factorial (5));
                   }
                 *)
+
+
 
    let () =
      match test with

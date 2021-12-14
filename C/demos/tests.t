@@ -3,13 +3,12 @@ https://dune.readthedocs.io/en/stable/tests.html#cram-tests
 Use `dune promote` after you change things that should runned
 
   $ (./demoList.exe)
-  cntBfr ~ Vint (6)
+  cntBfr ~ Vint (5)
   ans0 ~ Vint (-100)
   ans1 ~ Vint (100)
   ans2 ~ Vint (200)
   ans3 ~ Vint (200)
-  ans4 ~ Vint (400)
-  ans5 ~ Vint (500)
+  ans4 ~ Vint (500)
   cntAft ~ Vint (0)
 
   $ (./demoFactorial.exe)

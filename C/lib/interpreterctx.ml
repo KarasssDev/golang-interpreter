@@ -32,7 +32,6 @@ type exec_ctx = {
   jump_stmt : jump_stmt;
   last_value : v_value;
   have_ret : bool;
-  strct_bgns : strct_bgns;
   cur_t : types;
 }
 [@@deriving show { with_path = false }]
@@ -69,7 +68,6 @@ let make_exec_ctx () =
     free_addr = 0;
     pack_addr = 0;
     have_ret = false;
-    strct_bgns = Ast.Hashtbl.create 16;
     cur_t = CT_VOID;
   }
 
@@ -85,7 +83,6 @@ let make_dep_ctx ctx () =
     jump_stmt = None;
     last_value = Vvoid;
     have_ret = false;
-    strct_bgns = Ast.Hashtbl.create 16;
     cur_t = CT_VOID;
   }
 
@@ -602,7 +599,7 @@ module Eval (M : MONADERROR) = struct
                 eval_expr ctxs convt cur_t palcs e >>= fun ((_, i), pal) ->
                 strct_padding tag n a @@ get_int i >>= fun v ->
                 return ((ctxs, v), pal)
-            | _ -> error "~~")
+            | _ -> error "sig 1~~")
         | (c, _), _ -> error @@ "Unaccessorable" ^ show_types c.cur_t)
     | DEREFERENCE e -> (
         eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
@@ -634,14 +631,14 @@ module Eval (M : MONADERROR) = struct
         match get_from_heap cs (get_int v') with
         | v'' when get_val @@ Vhval v'' <> Vnull ->
             return (({ cs with cur_t = pt_t }, Vhval v''), pals)
-        | _ -> error @@ "Null pointer exception")
+        | hv -> error @@ "Null pointer exception " ^ show_h_value hv)
     | ADDRESS e -> (
         eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
         match v with
         | Vhval (Vrval (n, _)) ->
             get_from_vars ctxs n "Var undefined" >>= fun (_, a, _) ->
             return ((cs, Vint a), pals)
-        | _ -> error @@ "~~")
+        | _ -> error @@ "sig 2~~")
     | TYPE t -> return @@ ((ctxs, Vtype t), palcs)
 
   and sizeofn ctxs convt cur_t palcs e =
@@ -704,7 +701,14 @@ module Eval (M : MONADERROR) = struct
           (fun n (t, a, _) ->
             Hashtbl.replace ctx.vars n (t, a, get_from_heap c a))
           ctx.vars;
-        return ({ ctx with free_addr = c.free_addr }, als)
+        return
+          ( {
+              ctx with
+              free_addr = c.free_addr;
+              jump_stmt = c.jump_stmt;
+              last_value = c.last_value;
+            },
+            als )
     | _ -> error "block expected "
 
   and main ctxs convt (cur_t : types) palcs =
@@ -922,7 +926,7 @@ module Eval (M : MONADERROR) = struct
       | _ when is_void r_typ ->
           return
             (({ ctx with free_addr = ctxs'.free_addr }, ctx.last_value), pls)
-      | _ -> error "Unexpected jump statement")
+      | _ -> error @@ "Unexpected jump statement ")
     else error "Wrong number of arguments"
 
   and op (ctxs : exec_ctx) opp e1 e2 convt cur_t palcs =
@@ -1134,7 +1138,7 @@ module Eval (M : MONADERROR) = struct
                       a >>= fun a ->
                       (match get_from_heap ctxs a with
                       | Vdval (_ad, vl) -> return (_ad, vl)
-                      | _ -> error "~~")
+                      | _ -> error "sig 3~~")
                       >>= fun (_ad, ov) ->
                       match ov with
                       | Vstaddress _ | Varraddress _
@@ -1147,7 +1151,7 @@ module Eval (M : MONADERROR) = struct
                           return @@ (a + _inc))
                     (return ad) lifted_vs incs
                 else error "Wrong number of elements"
-            | _ -> error "~~")
+            | _ -> error "sig 4~~")
             >> return ctxs
         | Vaddress (_, a)
         | Varraddress (_, a)
@@ -1219,8 +1223,8 @@ module Eval (M : MONADERROR) = struct
                 error "Wrong number of elements"
             | _ -> error "Type error")
             >> return ctxs
-        | _ -> error "~~")
-    | _ -> error "~~"
+        | vv -> error @@ "sig 5~~")
+    | _ -> error "sig 6~~"
 
   and cast_default_struct_init (ctxs : exec_ctx) tag =
     let rec unpack_t (n : string) = function
@@ -1261,7 +1265,7 @@ module Eval (M : MONADERROR) = struct
           tl (return [])
         >>= fun vsts ->
         cast_default_init _t >>= fun x -> return @@ (x :: vsts)
-    | _ -> error "~~"
+    | _ -> error "sig 7~~"
 
   and cast_default_init_fstb ctxs = function
     | CT_INT -> return @@ Vint 0
@@ -1386,7 +1390,7 @@ module Eval (M : MONADERROR) = struct
             Hashtbl.replace cs.heap _ad (Vdval (_ad, get_val r'));
             return ())
         >> return (cs, pls)
-    | _ -> error "~~"
+    | _ -> error "sig 8~~"
 
   and declare (ctxs : exec_ctx) name t (expr : expr option) rwrt _ cur_t palcs =
     let prfx = "." in
@@ -1397,7 +1401,7 @@ module Eval (M : MONADERROR) = struct
     | Some _ when rwrt ->
         Hashtbl.remove ctxs.vars name;
         return ctxs
-    | Some _ -> error @@ "name " ^ name ^ "already using "
+    | Some _ -> error @@ "name " ^ name ^ " already using "
     | None -> return ctxs)
     >>= fun ctxs ->
     (match t with
@@ -1446,7 +1450,7 @@ module Eval (M : MONADERROR) = struct
             Hashtbl.replace ctx'.vars name (t, a, Vrval (n, Vglob (a, v)));
             Hashtbl.replace ctx'.heap a (Vrval (n, Vglob (a, v)));
             return ctx'
-        | _ -> error "~~" (* return ctx' *))
+        | _ -> error "sig 9~~" (* return ctx' *))
     | _ -> return ctx
 
   and create_arr ctxs name vvs = function
@@ -1506,7 +1510,7 @@ module Eval (M : MONADERROR) = struct
                         c >>= fun c ->
                         cast_default_dep_v c t n (CT_STRUCT tag) >>= fun x ->
                         return x
-                    | _ -> error "~~")
+                    | _ -> error "sig 10~~")
                   (return ctxs) tl
                 >>= fun x -> return x
             | _ -> return ctxs)

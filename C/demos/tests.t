@@ -55,3 +55,9 @@ Use `dune promote` after you change things that should runned
   ans10 ~ Vint (0)
   ans11 ~ Vint (2)
   ans12 ~ Vint (4)
+
+  $ (./demoStructConv.exe)
+  ansAaa ~ Vchar (Y)
+  ansBba ~ Vchar (Y)
+  ansBab ~ Vchar (a)
+  ansBbb ~ Vchar (A)

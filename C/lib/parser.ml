@@ -185,18 +185,7 @@ let expr =
       in
       let bterm = chainl1 bfactor (_and <* space) in
       let oldexpr = chainl1 bterm (_or <* space) in
-      (* let inc =
-           accesor <|> arrow <|> indexer_exp <|> var_name <* string "++" >>= fun v ->
-           return @@ ADD (v, LITERAL (CINT 1))
-         in
-         let dec =
-           accesor <|> arrow <|> indexer_exp <|> var_name <* string "--" >>= fun v ->
-           return @@ SUB (v, LITERAL (CINT 1))
-         in *)
-      let newexpr =
-        fix (fun newexpr -> (* inc <|> dec <|>  *)
-                            oldexpr <|> parens newexpr)
-      in
+      let newexpr = fix (fun newexpr -> oldexpr <|> parens newexpr) in
       newexpr)
 
 (** STATEMENTS PARSING FUNCTIONS *)
@@ -253,13 +242,7 @@ let var_decl =
   in
   let rec get_value idd = function
     | CT_INT -> expr >>= fun num -> return @@ VAR_DECL (idd, CT_INT, Some num)
-    | CT_CHAR ->
-        char_value
-        >>= (fun ch -> return @@ VAR_DECL (idd, CT_CHAR, Some (LITERAL ch)))
-        <|> ( expr >>= fun e ->
-              match e with
-              | LITERAL CNULL -> return @@ VAR_DECL (idd, CT_CHAR, Some e)
-              | _ -> fail "char can't be an expression" )
+    | CT_CHAR -> expr >>= fun ch -> return @@ VAR_DECL (idd, CT_CHAR, Some ch)
     | CT_PTR typ -> (
         match typ with
         | CT_VOID | CT_CHAR | CT_STRUCT _ ->

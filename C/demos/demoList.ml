@@ -6,158 +6,158 @@ open C_lib.Interpreterctx
 let test =
   parse prog
     {|
-      
-      #include <a.h>
 
-      struct Node {
-          int value;
-          struct Node *next;
-      };
+    #include <a.h>
 
-      struct List {
-          struct Node *head;
-      };
+    struct Node {
+        int value;
+        struct Node *next;
+    };
 
-      struct List* createList () {
-        struct List *list = malloc(sizeof(struct List));
+    struct List {
+        struct Node *head;
+    };
+
+    struct List* createList () {
+      struct List *list = malloc(sizeof(struct List));
+      list->head = NULL;
+      return list;
+    }
+
+    struct Node* createNode (int value) {
+        struct Node *node = malloc(sizeof(struct Node));
+        node->value = value;
+        node->next = NULL;
+        return node;
+    }
+
+    void addHead (struct List *list, int value) {
+        struct Node *node = malloc(sizeof(struct Node));
+        node->value = value;
+        node->next = list->head;
+        list->head = node;
+    }
+
+    void addTail (struct List *list, int value) {
+        struct Node *node;
+        if (list->head) {
+            node = list->head;
+            while (node->next) {
+                node = node->next;
+            }
+            node->next = createNode(value);
+        } else {
+            list->head = createNode(value);
+        }
+    }
+
+    void deleteFstEntry (struct List *list, int value) {
+        if (list->head->next) {
+            struct Node *before = list->head;
+            struct Node *after = list->head->next;
+    
+            while (after) {
+                if (after->value == value) {
+                    struct Node* toDelete = after;
+                    if (toDelete->next) {
+                        after = toDelete->next;
+                        before->next = after;
+                        free(toDelete);
+                    } else {
+                        after = NULL;
+                        before->next = after;
+                        free(toDelete);
+                    }
+                } else {
+                    after = after->next;
+                    before = before->next;
+                }
+            }
+        } 
+
+        if (list->head->value == value) {
+            struct Node *toDelete = list->head;
+            list->head = toDelete->next;
+            free(toDelete);
+        }
+    }
+
+    void eraseList (struct List *list) {
+        struct Node *node = list->head;
+        struct Node *toDeletee;
+        while (node) {
+            toDeletee = node;
+            node = node->next;
+            free(toDeletee);
+        }
         list->head = NULL;
-        return list;
-      }
+        free(list);
+    }
 
-      struct Node* createNode (int value) {
-          struct Node *node = malloc(sizeof(struct Node));
-          node->value = value;
-          node->next = NULL;
-          return node;
-      }
 
-      void addHead (struct List *list, int value) {
-          struct Node *node = malloc(sizeof(struct Node));
-          node->value = value;
-          node->next = list->head;
-          list->head = node;
-      }
+    struct List* l;
+    
+    int a0;
+    int a1;
+    int a2;
+    int a3;
+    int a4;
+    int a6;
 
-      void addTail (struct List *list, int value) {
-          struct Node *node;
-          if (list->head) {
-              node = list->head;
-              while (node->next) {
-                  node = node->next;
-              }
-              node->next = createNode(value);
-          } else {
-              list->head = createNode(value);
-          }
-      }
-
-      void deleteFstEntry (struct List *list, int value) {
-          if (list->head->next) {
-              struct Node *before = list->head;
-              struct Node *after = list->head->next;
+    void actions () {
+      int ans[5];
       
-              while (after) {
-                  if (after->value == value) {
-                      struct Node* toDelete = after;
-                      if (toDelete->next) {
-                          after = toDelete->next;
-                          before->next = after;
-                          free(toDelete);
-                      } else {
-                          after = NULL;
-                          before->next = after;
-                          free(toDelete);
-                      }
-                  } else {
-                      after = after->next;
-                      before = before->next;
-                  }
-              }
-          } 
-
-          if (list->head->value == value) {
-              struct Node *toDelete = list->head;
-              list->head = toDelete->next;
-              free(toDelete);
-          }
-      }
-
-      void eraseList (struct List *list) {
-          struct Node *node = list->head;
-          struct Node *toDeletee;
-          while (node) {
-              toDeletee = node;
-              node = node->next;
-              free(toDeletee);
-          }
-          list->head = NULL;
-          free(list);
-      }
-
-
-      struct List* l;
+      l = createList();
       
-      int a0;
-      int a1;
-      int a2;
-      int a3;
-      int a4;
-      int a6;
+      addTail(l, 100);
+      addTail(l, 200);
+      addTail(l, 200);
+      addTail(l, 400);
+      addTail(l, 500);
+      addHead(l, -100);
+      
+      deleteFstEntry(l, 400);
 
-      void actions () {
-        int ans[5];
-        
-        l = createList();
-        
-        addTail(l, 100);
-        addTail(l, 200);
-        addTail(l, 200);
-        addTail(l, 400);
-        addTail(l, 500);
-        addHead(l, -100);
-        
-        deleteFstEntry(l, 400);
-
-        struct Node* it = l->head;
-        int cnt = 0;
-        while (it) {
-          ans[cnt] = it->value;
-          it = it->next;
-          cnt++;
-        }
-        
-        a0 = ans[0];
-        a1 = ans[1];
-        a2 = ans[2];
-        a3 = ans[3];
-        a4 = ans[4];
-        a6 = cnt;
-
-        eraseList(l);
+      struct Node* it = l->head;
+      int cnt = 0;
+      while (it) {
+        ans[cnt] = it->value;
+        it = it->next;
+        cnt++;
       }
+      
+      a0 = ans[0];
+      a1 = ans[1];
+      a2 = ans[2];
+      a3 = ans[3];
+      a4 = ans[4];
+      a6 = cnt;
 
-      int main () {
-        actions();
+      eraseList(l);
+    }
 
-        int ans0 = a0;
-        int ans1 = a1;
-        int ans2 = a2;
-        int ans3 = a3;
-        int ans4 = a4;
-        int cntBfr = a6;
-        
-        
-        struct Node* it = l->head;
-        int cnt = 0;
-        while (it) {
-          it = it->next;
-          cnt++;
-        }
-        int cntAft = cnt;
-        
-        
-        return (0);
+    int main () {
+      actions();
+
+      int ans0 = a0;
+      int ans1 = a1;
+      int ans2 = a2;
+      int ans3 = a3;
+      int ans4 = a4;
+      int cntBfr = a6;
+      
+      
+      struct Node* it = l->head;
+      int cnt = 0;
+      while (it) {
+        it = it->next;
+        cnt++;
       }
+      int cntAft = cnt;
+      
+      
+      return (0);
+    }
     |}
 
 let () =

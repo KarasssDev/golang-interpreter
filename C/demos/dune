@@ -46,8 +46,16 @@
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq)))
 
+(executable
+ (name demoStructConv)
+ (modules demoStructConv)
+ (libraries C.Lib)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
 (cram
  (deps
+  ./demoStructConv.exe
   ./demoList.exe
   ./demoFactorial.exe
   ./demoMemcpy.exe

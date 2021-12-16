@@ -21,7 +21,6 @@ let test =
       int main () {
         struct A a = {'a', 'A'};
         
-        
         struct B b = a;
         
         a.aa = 'Y';

@@ -1,5 +1,4 @@
 open Ast
-open BSrch
 
 type h_value = Vrval of string * v_value | Vdval of int * v_value
 [@@deriving show { with_path = false }]
@@ -135,6 +134,11 @@ end
 module Eval (M : MONADERROR) = struct
   open M
 
+  let is_contains v l =
+    List.fold_left
+      (fun acc (l, r) -> if l <= v && v <= r then true else acc)
+      false l
+
   let ht_find_opt_and_process ht key f emsg =
     match Ast.Hashtbl.find_opt ht key with Some v -> f v | None -> error emsg
 
@@ -205,7 +209,7 @@ module Eval (M : MONADERROR) = struct
     | Vhval (Vrval (_n, _v)) ->
         add_in_vars ctx name ctx.free_addr (Vrval (_n, _v)) t >>= fun ctx ->
         add_in_heap ctx ctx.free_addr (Vrval (_n, _v)) t
-    | _ -> error "create_var"
+    | _ -> error "~CREATE_VAR~"
 
   let add_in_struct_tags ctx tag args =
     create_var ctx tag (Vhval (Vrval (tag, Vglob (0, Vstructdec tag)))) CT_VOID
@@ -575,7 +579,7 @@ module Eval (M : MONADERROR) = struct
                 eval_expr ctxs convt cur_t palcs e >>= fun ((_, i), pal) ->
                 strct_padding tag n a @@ get_int i >>= fun v ->
                 return ((ctxs, v), pal)
-            | _ -> error "sig 1~~")
+            | _ -> error "~UNEXPECTED_STUCT_FIELD~")
         | _ -> error "Unaccessorable")
     | DEREFERENCE e -> (
         eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
@@ -614,7 +618,8 @@ module Eval (M : MONADERROR) = struct
         | Vhval (Vrval (n, _)) ->
             get_from_vars ctxs n "Var undefined" >>= fun (_, a, _) ->
             return ((cs, Vint a), pals)
-        | _ -> error "sig 2~~")
+        | Vhval (Vdval (a, _)) -> return ((cs, Vint a), pals)
+        | _ -> error "Value can't have adress")
     | TYPE t -> return ((ctxs, Vtype t), palcs)
 
   and sizeofn ctxs convt cur_t palcs e =
@@ -634,7 +639,7 @@ module Eval (M : MONADERROR) = struct
     in
     match glb @@ get_val v with
     | (Vaddress (_, a) | Vstructval (_, Vaddress (_, a)))
-      when b_srch a als && (not @@ List.mem_assoc a als) ->
+      when is_contains a als && (not @@ List.mem_assoc a als) ->
         error "free(): invalid pointer"
     | Vaddress (_, a) | Vstructval (_, Vaddress (_, a)) ->
         let rmd_als = List.sort compare @@ List.remove_assoc a als in
@@ -791,7 +796,7 @@ module Eval (M : MONADERROR) = struct
   and eval_fn_blck ctx convt cur_t palcs =
     let rec rm ctx i n =
       if i <= n then
-        if not @@ b_srch i palcs then (
+        if not @@ is_contains i palcs then (
           (match get_from_heap ctx i with
           | Vrval (n, _) -> Hashtbl.remove ctx.vars n
           | _ -> ());
@@ -833,7 +838,7 @@ module Eval (M : MONADERROR) = struct
   and eval_ifel_blck ctx rwrt convt cur_t palcs =
     let rec rm ctx i n =
       if i <= n then
-        if not @@ b_srch i palcs then (
+        if not @@ is_contains i palcs then (
           (match get_from_heap ctx i with
           | Vrval (n, _) -> Hashtbl.remove ctx.vars n
           | _ -> ());
@@ -1111,7 +1116,7 @@ module Eval (M : MONADERROR) = struct
                       a >>= fun a ->
                       (match get_from_heap ctxs a with
                       | Vdval (_ad, vl) -> return (_ad, vl)
-                      | _ -> error "sig 3~~")
+                      | _ -> error "~UNEXPECTED_VALUE_IN_THE_HEAP~")
                       >>= fun (_ad, ov) ->
                       match ov with
                       | Vstaddress _ | Varraddress _
@@ -1138,7 +1143,7 @@ module Eval (M : MONADERROR) = struct
             return ctxs
         | _ -> error "Expected set of values")
     | CT_STRUCT tag -> addr_fst >>= fun _ad -> struct_rwrt ctxs addr tag v
-    | _ -> error "sig 6~~"
+    | _ -> error "Void - type can't contain anything"
 
   and cast_default_struct_init (ctxs : exec_ctx) tag =
     let rec unpack_t (n : string) = function
@@ -1178,7 +1183,7 @@ module Eval (M : MONADERROR) = struct
           tl (return [])
         >>= fun vsts ->
         cast_default_init _t >>= fun x -> return (x :: vsts)
-    | _ -> error "sig 7~~"
+    | _ -> error "~STRUCT_WITHOUT_FIELDS~"
 
   and cast_default_init_fstb ctxs = function
     | CT_INT -> return @@ Vint 0
@@ -1373,7 +1378,7 @@ module Eval (M : MONADERROR) = struct
             Hashtbl.replace cs.heap _ad (Vdval (_ad, get_val r'));
             return ())
         >> return (cs, pls)
-    | _ -> error "sig 8~~"
+    | _ -> error "~UNEXPECTED_VALUE_FOR_ASSIGNING~"
 
   and declare (ctxs : exec_ctx) name t (expr : expr option) rwrt _ cur_t palcs =
     let prfx = "." in
@@ -1434,7 +1439,7 @@ module Eval (M : MONADERROR) = struct
             Hashtbl.replace ctx'.vars name (t, a, Vrval (n, Vglob (a, v)));
             Hashtbl.replace ctx'.heap a (Vrval (n, Vglob (a, v)));
             return { ctx' with globs = a :: ctx'.globs }
-        | _ -> error "sig 9~~")
+        | _ -> error "~WRONG_STORAGE~")
     | _ -> return ctx
 
   and create_arr ctxs name vvs = function

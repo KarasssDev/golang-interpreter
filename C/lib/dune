@@ -9,7 +9,7 @@
 (library
  (name c_lib)
  (public_name C.Lib)
- (modules Ast Parser Interpreterctx BSrch)
+ (modules Ast Parser Interpreterctx)
  (libraries base angstrom ppx_show.runtime)
  (preprocess
   (pps ppx_expect ppx_show))

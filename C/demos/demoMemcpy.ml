@@ -23,6 +23,7 @@ let test =
       }
 
       int main () {
+
         int* arr = malloc(sizeof(int) * 5);
 
         for (int i = 1; i <= 5; i++) {
@@ -44,6 +45,24 @@ let test =
         int cans2 = carr[2];
         int cans3 = carr[3];
         int cans4 = carr[4];
+
+        int* arr1 = malloc(sizeof(int) * 10);
+        for (int i = 0; i < 10; i++) {
+          arr1[i] = i * i;
+        }
+
+        memcpy(arr1, arr1 + 5 , sizeof(int) * 5);
+
+        int ansNstd0 = arr1[0];
+        int ansNstd1 = arr1[1];
+        int ansNstd2 = arr1[2];
+        int ansNstd3 = arr1[3];
+        int ansNstd4 = arr1[4];
+        int ansNstd5 = arr1[5];
+        int ansNstd6 = arr1[6];
+        int ansNstd7 = arr1[7];
+        int ansNstd8 = arr1[8];
+        int ansNstd9 = arr1[9];
 
         return (0);
       }
@@ -69,6 +88,16 @@ let () =
                 "cans2";
                 "cans3";
                 "cans4";
+                "ansNstd0";
+                "ansNstd1";
+                "ansNstd2";
+                "ansNstd3";
+                "ansNstd4";
+                "ansNstd5";
+                "ansNstd6";
+                "ansNstd7";
+                "ansNstd8";
+                "ansNstd9";
               ]
           with
           | Ok result -> print_string @@ result

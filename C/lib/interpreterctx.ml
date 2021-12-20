@@ -173,7 +173,12 @@ module Eval (M : MONADERROR) = struct
   let rec sizeof ctx t =
     match t with
     | CT_INT | CT_PTR _ | CT_CHAR | CT_VOID -> get_size t
-    | CT_ARRAY (size, tt) -> sizeof ctx tt >>= fun x -> return (x * size)
+    | CT_ARRAY (size, tt) ->
+        print_string "XYYY\n";
+        print_string @@ Int.to_string size ^ "\n";
+        print_string "XYYY\n";
+
+        sizeof ctx tt >>= fun x -> return (x * size)
     | CT_STRUCT tag -> (
         get_from_struct_tags ctx tag >>= function
         | Some ps ->
@@ -236,9 +241,11 @@ module Eval (M : MONADERROR) = struct
   let declare_struct ctx = function
     | TOP_STRUCT_DECL (name, args) ->
         let get_pair (CARGS (t, n)) = (t, n) in
-        let get_types (args : args list) =
+        let get_types args =
           List.fold_right (fun nt ts -> get_pair nt :: ts) args []
         in
+
+        (* let get_types = List.fold_right (fun nt ts -> get_pair nt :: ts) args [] in *)
         let rec get_nested_t t =
           match t with
           | CT_CHAR | CT_INT | CT_STRUCT _ | CT_VOID | CT_PTR _ -> t
@@ -331,23 +338,32 @@ module Eval (M : MONADERROR) = struct
     | _ -> return v
 
   let rec to_type ctx v =
-    match get_val v with
-    | Vint _ -> return CT_INT
-    | Vchar _ -> return CT_CHAR
-    | Vaddress (tt, _) -> return @@ CT_PTR tt
-    | Vstructval (_, v) -> to_type ctx v
-    | Vstaddress (tag, _) -> return @@ CT_STRUCT tag
-    | Varraddress (tt, _) -> return @@ CT_ARRAY (0, tt)
-    | Vvalues (x :: _) -> (
+    let get_val' v =
+      match v with
+      | Vhval (Vrval (n, _)) -> (
+          get_from_vars ctx n "Var undefined" >>= function
+          | CT_ARRAY (s, _), _, hv -> return (get_val @@ Vhval hv, s)
+          | _ -> return (get_val v, 0))
+      | _ -> return (get_val v, 0)
+    in
+    get_val' v >>= function
+    | Vint _, _ -> return CT_INT
+    | Vchar _, _ -> return CT_CHAR
+    | Vaddress (tt, _), _ -> return @@ CT_PTR tt
+    | Vstructval (_, v), _ -> to_type ctx v
+    | Vstaddress (tag, _), _ -> return @@ CT_STRUCT tag
+    | Varraddress (tt, _), s -> return @@ CT_ARRAY (s, tt)
+    | Vvalues (x :: _), _ -> (
         match x with
         | Vstaddress _ -> to_type ctx x
         | _ -> error "Type conversion error ")
-    | Vnull -> return CT_VOID
-    | Vvoid -> return CT_VOID
-    | Vglob (aa, _) -> (
+    | Vnull, _ -> return CT_VOID
+    | Vvoid, _ -> return CT_VOID
+    | Vglob (aa, _), _ -> (
         match get_val @@ Vhval (get_from_heap ctx aa) with
         | Vglob (_, gv) -> to_type ctx gv
         | otherwise -> to_type ctx otherwise)
+    | Vtype t, _ -> return t
     | _ -> error "Type conversion error"
 
   let rec conv_v ctx v _v =
@@ -624,9 +640,14 @@ module Eval (M : MONADERROR) = struct
 
   and sizeofn ctxs convt cur_t palcs e =
     eval_expr ctxs convt cur_t palcs e >>= fun ((ctx, v), als) ->
-    match v with
-    | Vtype t -> sizeof ctx t >>= fun s -> return ((ctx, Vint s), als)
-    | _ -> error "sizof(): invalid type"
+    to_type ctxs v >>= fun t ->
+    sizeof ctx t >>= fun s ->
+    print_string @@ Int.to_string s ^ "\n" ^ show_v_value v ^ "\n"
+    ^ show_types t;
+    return ((ctx, Vint s), als)
+  (* match v with
+     | Vtype t -> sizeof ctx t >>= fun s -> return ((ctx, Vint s), als)
+     | _ -> error "sizof(): invalid type" *)
 
   and free ctxs convt cur_t palcs e =
     eval_expr ctxs convt cur_t palcs e >>= fun ((ctx, v), als) ->
@@ -1515,215 +1536,215 @@ module Eval (M : MONADERROR) = struct
   let add_null ctx =
     add_in_heap ctx ctx.free_addr (Vdval (ctx.free_addr, Vnull)) CT_INT
 
-  let test1 =
-    add_null (() |> make_exec_ctx) >>= fun ctx ->
-    declare_fun ctx
-    @@ TOP_FUNC_DECL
-         ( CT_VOID,
-           "f",
-           [],
-           BLOCK
-             [
-               VAR_DECL
-                 ( "tst",
-                   CT_PTR CT_INT,
-                   Some (FUNC_CALL ("malloc", [ LITERAL (CINT 16) ])) );
-               VAR_DECL
-                 ( "tst0",
-                   CT_PTR CT_INT,
-                   Some (FUNC_CALL ("malloc", [ LITERAL (CINT 1) ])) );
-               EXPRESSION
-                 (FUNC_CALL ("free", [ ADD (VAR_NAME "tst", LITERAL (CINT 1)) ]));
-               EXPRESSION (FUNC_CALL ("free", [ VAR_NAME "tst0" ]));
-             ] )
-    >>= fun ctx ->
-    declare_fun ctx
-    @@ TOP_FUNC_DECL
-         ( CT_INT,
-           "main",
-           [],
-           BLOCK
-             [
-               (* VAR_DECL ("tst", CT_PTR (CT_STRUCT "node"), Some (LITERAL (CINT 1))); *)
-               VAR_DECL ("a", CT_INT, Some (LITERAL (CINT 0)));
-               VAR_DECL ("i", CT_INT, Some (LITERAL (CINT 0)));
-               VAR_DECL
-                 ( "arr",
-                   CT_PTR (CT_PTR CT_INT),
-                   Some (FUNC_CALL ("malloc", [ LITERAL (CINT 20) ])) );
-               (*WHILE
-                 ( LT (VAR_NAME "i", LITERAL (CINT 3)),
-                   BLOCK
-                     [
-                       VAR_DECL ("a", CT_INT, Some (LITERAL (CINT 10)));
-                       ASSIGN
-                         (VAR_NAME "i", ADD (VAR_NAME "i", LITERAL (CINT 1)));
+  (* let test1 =
+       add_null (() |> make_exec_ctx) >>= fun ctx ->
+       declare_fun ctx
+       @@ TOP_FUNC_DECL
+            ( CT_VOID,
+              "f",
+              [],
+              BLOCK
+                [
+                  VAR_DECL
+                    ( "tst",
+                      CT_PTR CT_INT,
+                      Some (FUNC_CALL ("malloc", [ LITERAL (CINT 16) ])) );
+                  VAR_DECL
+                    ( "tst0",
+                      CT_PTR CT_INT,
+                      Some (FUNC_CALL ("malloc", [ LITERAL (CINT 1) ])) );
+                  EXPRESSION
+                    (FUNC_CALL ("free", [ ADD (VAR_NAME "tst", LITERAL (CINT 1)) ]));
+                  EXPRESSION (FUNC_CALL ("free", [ VAR_NAME "tst0" ]));
+                ] )
+       >>= fun ctx ->
+       declare_fun ctx
+       @@ TOP_FUNC_DECL
+            ( CT_INT,
+              "main",
+              [],
+              BLOCK
+                [
+                  (* VAR_DECL ("tst", CT_PTR (CT_STRUCT "node"), Some (LITERAL (CINT 1))); *)
+                  VAR_DECL ("a", CT_INT, Some (LITERAL (CINT 0)));
+                  VAR_DECL ("i", CT_INT, Some (LITERAL (CINT 0)));
+                  VAR_DECL
+                    ( "arr",
+                      CT_PTR (CT_PTR CT_INT),
+                      Some (FUNC_CALL ("malloc", [ LITERAL (CINT 20) ])) );
+                  (*WHILE
+                    ( LT (VAR_NAME "i", LITERAL (CINT 3)),
+                      BLOCK
+                        [
+                          VAR_DECL ("a", CT_INT, Some (LITERAL (CINT 10)));
+                          ASSIGN
+                            (VAR_NAME "i", ADD (VAR_NAME "i", LITERAL (CINT 1)));
+                        ] ); *)
+                  (* WHILE (LT (VAR_NAME "i", LITERAL (CINT 5)), BLOCK [
+                       ASSIGN (DEREFERENCE (ADD (VAR_NAME "arr", VAR_NAME "i"  ) ),  FUNC_CALL ("malloc", [ LITERAL (CINT 20) ] ) );
+                       ASSIGN (VAR_NAME "i", ADD (VAR_NAME "i", LITERAL (CINT 1)));
                      ] ); *)
-               (* WHILE (LT (VAR_NAME "i", LITERAL (CINT 5)), BLOCK [
-                    ASSIGN (DEREFERENCE (ADD (VAR_NAME "arr", VAR_NAME "i"  ) ),  FUNC_CALL ("malloc", [ LITERAL (CINT 20) ] ) );
-                    ASSIGN (VAR_NAME "i", ADD (VAR_NAME "i", LITERAL (CINT 1)));
-                  ] ); *)
-               FOR
-                 ( Some (VAR_DECL ("i", CT_INT, Some (LITERAL (CINT 0)))),
-                   Some (LT (VAR_NAME "i", LITERAL (CINT 5))),
-                   Some
-                     (ASSIGN (VAR_NAME "i", ADD (VAR_NAME "i", LITERAL (CINT 1)))),
-                   BLOCK
-                     [
-                       ASSIGN
-                         ( DEREFERENCE (ADD (VAR_NAME "arr", VAR_NAME "i")),
-                           FUNC_CALL ("malloc", [ LITERAL (CINT 20) ]) );
-                     ] );
-               (* ASSIGN ( DEREFERENCE (ADD (DEREFERENCE (ADD (VAR_NAME "arr", LITERAL (CINT 0))), LITERAL (CINT 1) ) ) , LITERAL (CINT 145) ); *)
-               FOR
-                 ( Some (VAR_DECL ("i", CT_INT, Some (LITERAL (CINT 0)))),
-                   Some (LT (VAR_NAME "i", LITERAL (CINT 5))),
-                   Some
-                     (ASSIGN (VAR_NAME "i", ADD (VAR_NAME "i", LITERAL (CINT 1)))),
-                   BLOCK
-                     [
-                       FOR
-                         ( Some (VAR_DECL ("j", CT_INT, Some (LITERAL (CINT 0)))),
-                           Some (LT (VAR_NAME "j", LITERAL (CINT 5))),
-                           Some
-                             (ASSIGN
-                                ( VAR_NAME "j",
-                                  ADD (VAR_NAME "j", LITERAL (CINT 1)) )),
-                           BLOCK
-                             [
-                               (* ASSIGN (VAR_NAME "a", VAR_NAME "i"); *)
-                               ASSIGN
-                                 ( DEREFERENCE
-                                     (ADD
-                                        ( DEREFERENCE
-                                            (ADD (VAR_NAME "arr", VAR_NAME "i")),
-                                          VAR_NAME "j" )),
-                                   LITERAL (CINT 145) );
-                             ] );
-                     ] );
-               (*
-                                        ASSIGN (
-                                          DEREFERENCE (
-                                            ADD (
-                                              DEREFERENCE (ADD (VAR_NAME ("arr"), VAR_NAME ("i")))
-                                            , VAR_NAME ("j")))
-                                        , LITERAL (CINT (123))
-                                       ) *)
-               RETURN (LITERAL (CINT 1));
-             ] )
-    (*
-          print_string @@ Result.get_ok Interpreterctx.E.test1;;
-       *)
-    >>=
-    fun ctx ->
-    let ctx' = { ctx with pack_addr = ctx.free_addr } in
-    eval_stmt ctx' false CT_INT CT_VOID [ (max_int, max_int) ]
-    @@ EXPRESSION (FUNC_CALL ("main", []))
-    >>= fun (c, als) -> return @@ dbg_print c als
+                  FOR
+                    ( Some (VAR_DECL ("i", CT_INT, Some (LITERAL (CINT 0)))),
+                      Some (LT (VAR_NAME "i", LITERAL (CINT 5))),
+                      Some
+                        (ASSIGN (VAR_NAME "i", ADD (VAR_NAME "i", LITERAL (CINT 1)))),
+                      BLOCK
+                        [
+                          ASSIGN
+                            ( DEREFERENCE (ADD (VAR_NAME "arr", VAR_NAME "i")),
+                              FUNC_CALL ("malloc", [ LITERAL (CINT 20) ]) );
+                        ] );
+                  (* ASSIGN ( DEREFERENCE (ADD (DEREFERENCE (ADD (VAR_NAME "arr", LITERAL (CINT 0))), LITERAL (CINT 1) ) ) , LITERAL (CINT 145) ); *)
+                  FOR
+                    ( Some (VAR_DECL ("i", CT_INT, Some (LITERAL (CINT 0)))),
+                      Some (LT (VAR_NAME "i", LITERAL (CINT 5))),
+                      Some
+                        (ASSIGN (VAR_NAME "i", ADD (VAR_NAME "i", LITERAL (CINT 1)))),
+                      BLOCK
+                        [
+                          FOR
+                            ( Some (VAR_DECL ("j", CT_INT, Some (LITERAL (CINT 0)))),
+                              Some (LT (VAR_NAME "j", LITERAL (CINT 5))),
+                              Some
+                                (ASSIGN
+                                   ( VAR_NAME "j",
+                                     ADD (VAR_NAME "j", LITERAL (CINT 1)) )),
+                              BLOCK
+                                [
+                                  (* ASSIGN (VAR_NAME "a", VAR_NAME "i"); *)
+                                  ASSIGN
+                                    ( DEREFERENCE
+                                        (ADD
+                                           ( DEREFERENCE
+                                               (ADD (VAR_NAME "arr", VAR_NAME "i")),
+                                             VAR_NAME "j" )),
+                                      LITERAL (CINT 145) );
+                                ] );
+                        ] );
+                  (*
+                                           ASSIGN (
+                                             DEREFERENCE (
+                                               ADD (
+                                                 DEREFERENCE (ADD (VAR_NAME ("arr"), VAR_NAME ("i")))
+                                               , VAR_NAME ("j")))
+                                           , LITERAL (CINT (123))
+                                          ) *)
+                  RETURN (LITERAL (CINT 1));
+                ] )
+       (*
+             print_string @@ Result.get_ok Interpreterctx.E.test1;;
+          *)
+       >>=
+       fun ctx ->
+       let ctx' = { ctx with pack_addr = ctx.free_addr } in
+       eval_stmt ctx' false CT_INT CT_VOID [ (max_int, max_int) ]
+       @@ EXPRESSION (FUNC_CALL ("main", []))
+       >>= fun (c, als) -> return @@ dbg_print c als
 
-  let test0 =
-    add_null (() |> make_exec_ctx) >>= fun ctx ->
-    declare_fun ctx
-    @@ TOP_FUNC_DECL
-         ( CT_VOID,
-           "ff",
-           [ CARGS (CT_INT, "a") ],
-           BLOCK
-             [
-               IF_ELSE
-                 ( EQUAL (VAR_NAME "a", LITERAL (CINT 0)),
-                   BLOCK [ RETURN (LITERAL (CINT 1)) ],
-                   BLOCK
-                     [
-                       RETURN
-                         (MUL
-                            ( VAR_NAME "a",
-                              FUNC_CALL
-                                ("ff", [ SUB (VAR_NAME "a", LITERAL (CINT 1)) ])
-                            ));
-                     ] );
-               VAR_DECL ("aa", CT_INT, None);
-             ] )
-    >>= fun ctx ->
-    declare_struct ctx @@ TOP_STRUCT_DECL ("node1", [ CARGS (CT_INT, "value") ])
-    >>= fun ctx ->
-    declare_struct ctx @@ TOP_STRUCT_DECL ("node", [ CARGS (CT_INT, "value") ])
-    >>= fun ctx ->
-    declare_fun ctx
-    @@ TOP_FUNC_DECL
-         ( CT_STRUCT "node1",
-           "fy",
-           [],
-           BLOCK
-             [ VAR_DECL ("a", CT_STRUCT "node", None); RETURN (VAR_NAME "a") ]
-         )
-    >>= fun ctx ->
-    declare_struct ctx
-    @@ TOP_STRUCT_DECL ("rot", [ CARGS (CT_STRUCT "node", "value") ])
-    >>= fun ctx ->
-    declare_fun ctx
-    @@ TOP_FUNC_DECL
-         ( CT_PTR CT_VOID,
-           "memcpy",
-           [
-             CARGS (CT_PTR CT_VOID, "dst");
-             CARGS (CT_PTR CT_VOID, "src");
-             CARGS (CT_INT, "len");
-           ],
-           BLOCK
-             [
-               VAR_DECL ("char_dst", CT_PTR CT_CHAR, Some (VAR_NAME "dst"));
-               VAR_DECL ("char_src", CT_PTR CT_CHAR, Some (VAR_NAME "src"));
-               VAR_DECL ("a", CT_INT, Some (LITERAL (CINT 0)));
-               WHILE
-                 ( LT (VAR_NAME "a", LITERAL (CINT 5)),
-                   BLOCK
-                     [
-                       ASSIGN
-                         ( DEREFERENCE (ADD (VAR_NAME "char_dst", VAR_NAME "a")),
-                           DEREFERENCE (ADD (VAR_NAME "char_src", VAR_NAME "a"))
-                         );
-                       ASSIGN
-                         (VAR_NAME "a", ADD (VAR_NAME "a", LITERAL (CINT 1)));
-                     ] );
-               RETURN (LITERAL (CINT 1));
-             ] )
-    >>= fun ctx ->
-    (* declare_top ctx
-       @@ TOP_VAR_DECL ("a", CT_INT, None)
-       >>= fun ctx -> *)
-    declare_fun ctx
-    @@ TOP_FUNC_DECL
-         ( CT_STRUCT "node",
-           "fyf",
-           [],
-           BLOCK
-             [ VAR_DECL ("a", CT_STRUCT "node1", None); RETURN (VAR_NAME "a") ]
-         )
-    >>= fun ctx ->
-    declare_struct ctx
-    @@ TOP_STRUCT_DECL ("list", [ CARGS (CT_PTR (CT_STRUCT "node"), "head") ])
-    >>= fun ctx ->
-    declare_fun ctx
-    @@ TOP_FUNC_DECL
-         (CT_VOID, "vf", [], BLOCK [ VAR_DECL ("a", CT_STRUCT "node1", None) ])
-    >>= fun ctx ->
-    declare_fun ctx
-    @@ TOP_FUNC_DECL
-         ( CT_INT,
-           "main",
-           [],
-           BLOCK
-             [
-               VAR_DECL
-                 ("tst", CT_PTR (CT_STRUCT "node"), Some (LITERAL (CINT 1)));
-               RETURN (LITERAL (CINT 1));
-             ] )
-    >>= fun ctx ->
-    let ctx' = { ctx with pack_addr = ctx.free_addr } in
-    eval_stmt ctx' false CT_INT CT_VOID [ (max_int, max_int) ]
-    @@ EXPRESSION (FUNC_CALL ("main", []))
-    >>= fun (c, als) -> return @@ dbg_print c als
+     let test0 =
+       add_null (() |> make_exec_ctx) >>= fun ctx ->
+       declare_fun ctx
+       @@ TOP_FUNC_DECL
+            ( CT_VOID,
+              "ff",
+              [ CARGS (CT_INT, "a") ],
+              BLOCK
+                [
+                  IF_ELSE
+                    ( EQUAL (VAR_NAME "a", LITERAL (CINT 0)),
+                      BLOCK [ RETURN (LITERAL (CINT 1)) ],
+                      BLOCK
+                        [
+                          RETURN
+                            (MUL
+                               ( VAR_NAME "a",
+                                 FUNC_CALL
+                                   ("ff", [ SUB (VAR_NAME "a", LITERAL (CINT 1)) ])
+                               ));
+                        ] );
+                  VAR_DECL ("aa", CT_INT, None);
+                ] )
+       >>= fun ctx ->
+       declare_struct ctx @@ TOP_STRUCT_DECL ("node1", [ CARGS (CT_INT, "value") ])
+       >>= fun ctx ->
+       declare_struct ctx @@ TOP_STRUCT_DECL ("node", [ CARGS (CT_INT, "value") ])
+       >>= fun ctx ->
+       declare_fun ctx
+       @@ TOP_FUNC_DECL
+            ( CT_STRUCT "node1",
+              "fy",
+              [],
+              BLOCK
+                [ VAR_DECL ("a", CT_STRUCT "node", None); RETURN (VAR_NAME "a") ]
+            )
+       >>= fun ctx ->
+       declare_struct ctx
+       @@ TOP_STRUCT_DECL ("rot", [ CARGS (CT_STRUCT "node", "value") ])
+       >>= fun ctx ->
+       declare_fun ctx
+       @@ TOP_FUNC_DECL
+            ( CT_PTR CT_VOID,
+              "memcpy",
+              [
+                CARGS (CT_PTR CT_VOID, "dst");
+                CARGS (CT_PTR CT_VOID, "src");
+                CARGS (CT_INT, "len");
+              ],
+              BLOCK
+                [
+                  VAR_DECL ("char_dst", CT_PTR CT_CHAR, Some (VAR_NAME "dst"));
+                  VAR_DECL ("char_src", CT_PTR CT_CHAR, Some (VAR_NAME "src"));
+                  VAR_DECL ("a", CT_INT, Some (LITERAL (CINT 0)));
+                  WHILE
+                    ( LT (VAR_NAME "a", LITERAL (CINT 5)),
+                      BLOCK
+                        [
+                          ASSIGN
+                            ( DEREFERENCE (ADD (VAR_NAME "char_dst", VAR_NAME "a")),
+                              DEREFERENCE (ADD (VAR_NAME "char_src", VAR_NAME "a"))
+                            );
+                          ASSIGN
+                            (VAR_NAME "a", ADD (VAR_NAME "a", LITERAL (CINT 1)));
+                        ] );
+                  RETURN (LITERAL (CINT 1));
+                ] )
+       >>= fun ctx ->
+       (* declare_top ctx
+          @@ TOP_VAR_DECL ("a", CT_INT, None)
+          >>= fun ctx -> *)
+       declare_fun ctx
+       @@ TOP_FUNC_DECL
+            ( CT_STRUCT "node",
+              "fyf",
+              [],
+              BLOCK
+                [ VAR_DECL ("a", CT_STRUCT "node1", None); RETURN (VAR_NAME "a") ]
+            )
+       >>= fun ctx ->
+       declare_struct ctx
+       @@ TOP_STRUCT_DECL ("list", [ CARGS (CT_PTR (CT_STRUCT "node"), "head") ])
+       >>= fun ctx ->
+       declare_fun ctx
+       @@ TOP_FUNC_DECL
+            (CT_VOID, "vf", [], BLOCK [ VAR_DECL ("a", CT_STRUCT "node1", None) ])
+       >>= fun ctx ->
+       declare_fun ctx
+       @@ TOP_FUNC_DECL
+            ( CT_INT,
+              "main",
+              [],
+              BLOCK
+                [
+                  VAR_DECL
+                    ("tst", CT_PTR (CT_STRUCT "node"), Some (LITERAL (CINT 1)));
+                  RETURN (LITERAL (CINT 1));
+                ] )
+       >>= fun ctx ->
+       let ctx' = { ctx with pack_addr = ctx.free_addr } in
+       eval_stmt ctx' false CT_INT CT_VOID [ (max_int, max_int) ]
+       @@ EXPRESSION (FUNC_CALL ("main", []))
+       >>= fun (c, als) -> return @@ dbg_print c als *)
 
   let rec collect ctx stmts =
     match stmts with

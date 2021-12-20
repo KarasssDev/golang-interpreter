@@ -118,13 +118,7 @@ let expr =
         many @@ (token "->" *> (indexer_exp <|> parens var_name <|> var_name))
         >>= fun a -> return @@ List.fold_left arrow_cast h a
       in
-      let arg_sizeof = token_datatypes >>= fun t -> return @@ TYPE t in
-      let func_call =
-        (* accesor <|> arrow <|> indexer_exp <|> var_name  *)
-        identifier >>= fun idd ->
-        token "(" *> sep_by (token ",") (arg_sizeof <|> expr) <* token ")"
-        >>= fun arg_list -> return @@ FUNC_CALL (idd, arg_list)
-      in
+
       let literal_num = number >>= fun num -> return @@ LITERAL num in
       let literal_char = char_value >>= fun cchar -> return @@ LITERAL cchar in
       let const =
@@ -145,6 +139,32 @@ let expr =
         >>= fun pvar -> return @@ ADDRESS pvar
       in
       let null = token "NULL" *> (return @@ LITERAL CNULL) in
+      let arg_sizeof =
+        let sizeof_expr_subset =
+          choice
+            [
+              null;
+              defr_op;
+              accesor;
+              arrow;
+              indexer_exp;
+              addr_op;
+              var_name;
+              const;
+            ]
+        in
+        token_datatypes >>= (fun t -> return @@ TYPE t) <|> sizeof_expr_subset
+      in
+      let func_call =
+        identifier >>= fun idd ->
+        match idd with
+        | "sizeof" ->
+            token "(" *> arg_sizeof <* token ")" >>= fun arg_list ->
+            return @@ FUNC_CALL (idd, [ arg_list ])
+        | _ ->
+            token "(" *> sep_by (token ",") expr <* token ")"
+            >>= fun arg_list -> return @@ FUNC_CALL (idd, arg_list)
+      in
       let other =
         choice
           [
@@ -399,7 +419,7 @@ let top_decl_c (retype, name, args, blk) =
   TOP_FUNC_DECL (retype, name, args, blk)
 
 let multi_includes =
-  many1 (include_stats <* end_of_line) >>= fun includes_list ->
+  many (include_stats <* del_space_newline) >>= fun includes_list ->
   return @@ C_INCLUDE includes_list
 
 let stmts =

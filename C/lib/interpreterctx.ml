@@ -21,9 +21,9 @@ and v_value =
   | Vnull
   | Vvalues of v_value list  (**For set of values ( \{v1, v2\} )*)
   | Vtype of types
-      (**Need for sizeof(). When argument is name of type like int in sizeof(int)*)
-  | Vfuncdec of string  (**Contain function which was declared*)
-  | Vstructdec of string  (**Contain structure which was declared*)
+      (**Needs for sizeof(). When argument is name of type like int in sizeof(int)*)
+  | Vfuncdec of string  (**Contains function name which was declared*)
+  | Vstructdec of string  (**Contains structure name which was declared*)
   | Vglob of int * v_value  (**Just label for global variables*)
 [@@deriving show { with_path = false }]
 
@@ -298,7 +298,7 @@ module Eval (M : MONADERROR) = struct
         | Vglob (_, gv) -> conv_to_addr ctx tt gv
         | otherwise -> conv_to_addr ctx tt otherwise)
     | Vstructval (_, v) -> conv_to_addr ctx tt v
-    | a -> error @@ "Adress expected" ^ show_v_value a
+    | _ -> error @@ "Adress expected"
 
   let rec conv_to_int ctx v =
     match get_val v with
@@ -592,7 +592,7 @@ module Eval (M : MONADERROR) = struct
                 strct_padding tag n a @@ get_int i >>= fun v ->
                 return ((ctxs, v), pal)
             | _ -> error "~UNEXPECTED_STRUCT_FIELD~")
-        | (_, a), _ -> error @@ "Unaccessorable" ^ show_v_value a)
+        | (_, _), _ -> error @@ "Unaccessorable")
     | DEREFERENCE e ->
         eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
         (match v with

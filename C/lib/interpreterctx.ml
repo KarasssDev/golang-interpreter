@@ -21,7 +21,7 @@ and v_value =
   | Vnull
   | Vvalues of v_value list  (**For set of values ( \{v1, v2\} )*)
   | Vtype of types
-      (**Need for sizeof(). When argument is name-type like int in sizeof(int)*)
+      (**Need for sizeof(). When argument is name of type like int in sizeof(int)*)
   | Vfuncdec of string  (**Contain function which was declared*)
   | Vstructdec of string  (**Contain structure which was declared*)
   | Vglob of int * v_value  (**Just label for global variables*)
@@ -380,8 +380,7 @@ module Eval (M : MONADERROR) = struct
   let is_true ctx cond =
     conv_to_int ctx @@ get_val cond >>= fun x -> return (get_int x > 0)
 
-  let rec eval_stmt (ctx : exec_ctx) rwrt (convt : types) (cur_t : types)
-      (palcs : allocated) = function
+  let rec eval_stmt ctx rwrt convt cur_t palcs = function
     | VAR_DECL (name, t, expr) ->
         declare ctx name t expr rwrt convt cur_t palcs >>= fun (ctx', pls) ->
         return (ctx', pls)
@@ -436,7 +435,7 @@ module Eval (M : MONADERROR) = struct
     | ASSIGN_MOD (le, re) ->
         eval_stmt ctx rwrt convt cur_t palcs @@ ASSIGN (le, MOD (le, re))
     | FOR (d, be, e, blk) ->
-        let vars' : vars = Hashtbl.create 16 in
+        let vars' = Hashtbl.create 16 in
         Hashtbl.iter (fun n v -> Hashtbl.add vars' n v) ctx.vars;
         (match d with
         | Some dd ->
@@ -466,7 +465,7 @@ module Eval (M : MONADERROR) = struct
           ctx.vars;
         return ({ ctx with free_addr = c.free_addr }, als)
 
-  and eval_expr (ctxs : exec_ctx) convt cur_t (palcs : allocated) = function
+  and eval_expr ctxs convt cur_t palcs = function
     | VAR_NAME name ->
         get_from_vars ctxs name "Var undefined" >>= fun (t, _, v) ->
         return (({ ctxs with cur_t = t }, Vhval v), palcs)
@@ -685,7 +684,7 @@ module Eval (M : MONADERROR) = struct
 
   and eval_cycle ctx convt cur_t palcs cond = function
     | BLOCK stmts ->
-        (let vars' : vars = Hashtbl.create 16 in
+        (let vars' = Hashtbl.create 16 in
          Hashtbl.iter (fun n v -> Hashtbl.add vars' n v) ctx.vars;
          repeat { ctx with vars = vars' } convt cur_t palcs stmts stmts cond)
         >>= fun (c, als) ->
@@ -703,13 +702,13 @@ module Eval (M : MONADERROR) = struct
             als )
     | _ -> error "block expected "
 
-  and main ctxs convt (cur_t : types) palcs =
+  and main ctxs convt cur_t palcs =
     let stmts =
       get_from_functions ctxs "main" >>= function
       | Some f -> return f
       | None -> error "Function undeclared"
     in
-    let rec blk ctxs (in_fn : bool) pls = function
+    let rec blk ctxs in_fn pls = function
       | [] -> return (ctxs, pls)
       | st :: sts -> (
           eval_stmt ctxs false convt cur_t pls st >>= fun (new_ctx, pls') ->
@@ -733,7 +732,7 @@ module Eval (M : MONADERROR) = struct
     | Return _ -> return ((ctxs', ctxs'.last_value), pls)
     | _ -> error "main(): Unexpected jump statement"
 
-  and malloc ctxs (palcs : allocated) size tt =
+  and malloc ctxs palcs size tt =
     let s' =
       sizeof ctxs tt >>= fun sot ->
       if size >= sot then return size else return sot
@@ -919,7 +918,7 @@ module Eval (M : MONADERROR) = struct
       | _ -> error "Unexpected jump statement ")
     else error "Wrong number of arguments"
 
-  and op (ctxs : exec_ctx) opp e1 e2 convt cur_t palcs =
+  and op ctxs opp e1 e2 convt cur_t palcs =
     eval_expr ctxs convt cur_t palcs e1 >>= fun ((cs, v1), pls) ->
     eval_expr cs convt cur_t pls e2 >>= fun ((cts, v2), pls') ->
     opp ctxs (get_val v1) (get_val v2) >>= fun v' -> return ((cts, v'), pls')
@@ -1156,8 +1155,8 @@ module Eval (M : MONADERROR) = struct
     | CT_STRUCT tag -> addr_fst >>= fun _ad -> struct_rwrt ctxs addr tag v
     | _ -> error "Void - type can't contain anything"
 
-  and cast_default_struct_init (ctxs : exec_ctx) tag =
-    let rec unpack_t (n : string) = function
+  and cast_default_struct_init ctxs tag =
+    let rec unpack_t n = function
       | CT_INT -> return [ (CT_INT, n) ]
       | CT_CHAR -> return [ (CT_CHAR, n) ]
       | CT_PTR t -> return [ (CT_PTR t, n) ]
@@ -1236,9 +1235,9 @@ module Eval (M : MONADERROR) = struct
         | otherwise -> return otherwise)
     | otherwise -> return otherwise
 
-  and cast_default_arr_init (ctxs : exec_ctx) size tt =
+  and cast_default_arr_init ctxs size tt =
     let to_list = function Vvalues vs -> vs | otherwise -> [ otherwise ] in
-    let rec helper (acc : v_value list) s t =
+    let rec helper acc s t =
       if s > 0 then
         cast_default_init_fstb ctxs t >>= fun xs ->
         helper (acc @ to_list xs) (s - 1) t
@@ -1332,7 +1331,7 @@ module Eval (M : MONADERROR) = struct
         >> return ctxs
     | _ -> error "Type error"
 
-  and assign (ctxs : exec_ctx) l_expr r_expr convt cur_t palcs =
+  and assign ctxs l_expr r_expr convt cur_t palcs =
     let get_ptr_t = function CT_PTR tt -> tt | _ -> CT_VOID in
     eval_expr ctxs convt cur_t palcs l_expr >>= fun (p, _) ->
     match snd p with
@@ -1391,7 +1390,7 @@ module Eval (M : MONADERROR) = struct
         >> return (cs, pls)
     | _ -> error "~UNEXPECTED_VALUE_FOR_ASSIGNING~"
 
-  and declare (ctxs : exec_ctx) name t (expr : expr option) rwrt _ cur_t palcs =
+  and declare ctxs name t expr rwrt _ cur_t palcs =
     let prfx = "." in
     (match Hashtbl.find_opt ctxs.vars name with
     | Some (_, aa, Vrval (n, Vglob (_, _))) when not @@ List.mem aa ctxs.globs

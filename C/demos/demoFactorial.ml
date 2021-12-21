@@ -44,4 +44,4 @@ let () =
           | Ok result -> print_string result
           | Error msg -> print_string msg)
       | other -> print_string @@ show_prog other)
-  | Error _ -> print_string "syntax errorRRR"
+  | Error _ -> print_string "syntax error"

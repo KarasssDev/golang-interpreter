@@ -10,14 +10,10 @@ let test =
 
       int main () {
         
-        int *arr0 = malloc(sizeof(int) * 5);
+        int *arr0 = malloc(sizeof(int) * 10);
         int ans0 = arr0;
         free(arr0);
-        free(arr0);
-        free(arr0);
-        free(arr0);
-        free(arr0);
-        *arr0 = 1;
+
         int *arr1 = malloc(sizeof(int) * 5);
         int ans1 = arr1;
 
@@ -34,4 +30,4 @@ let () =
           | Ok result -> print_string result
           | Error msg -> print_string msg)
       | other -> print_string @@ show_prog other)
-  | Error _ -> print_string "syntax errorRRR"
+  | Error _ -> print_string "syntax error"

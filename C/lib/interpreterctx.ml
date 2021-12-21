@@ -1,24 +1,30 @@
 open Ast
 
-type h_value = Vrval of string * v_value | Vdval of int * v_value
+type h_value =
+  | Vrval of string * v_value
+      (**format for 'heap' & 'vars' for values which have name (variables)*)
+  | Vdval of int * v_value
+      (**format for 'heap' & 'vars' values which haven't name (values of array, of field of structures and etc)*)
 [@@deriving show { with_path = false }]
 
 and v_value =
-  | Vhval of h_value
+  | Vhval of h_value  (**Constructor to ward off v_value of h_value*)
   | Vint of int
   | Vchar of char
-  | Vaddress of (types * int)
+  | Vaddress of (types * int)  (**Value which contain adress*)
   | Vstaddress of (string * int)
+      (**Position in the heap after which a structure values are located*)
   | Varraddress of (types * int)
-  | Vstructval of string * v_value
+      (**Value which contain only array locate adress*)
+  | Vstructval of string * v_value  (**Just lablel for struct-field values*)
   | Vvoid
   | Vnull
-  | Vinitializer of expr list
-  | Vvalues of v_value list
+  | Vvalues of v_value list  (**For set of values ( \{v1, v2\} )*)
   | Vtype of types
-  | Vfuncdec of string
-  | Vstructdec of string
-  | Vglob of int * v_value
+      (**Need for sizeof(). When argument is name-type like int in sizeof(int)*)
+  | Vfuncdec of string  (**Contain function which was declared*)
+  | Vstructdec of string  (**Contain structure which was declared*)
+  | Vglob of int * v_value  (**Just label for global variables*)
 [@@deriving show { with_path = false }]
 
 type exec_ctx = {
@@ -209,7 +215,7 @@ module Eval (M : MONADERROR) = struct
     | Vhval (Vrval (_n, _v)) ->
         add_in_vars ctx name ctx.free_addr (Vrval (_n, _v)) t >>= fun ctx ->
         add_in_heap ctx ctx.free_addr (Vrval (_n, _v)) t
-    | _ -> error "~UNEXPECTED_FORMAT_FOR_VAR_CREATION._INTERPRETER_ERR~"
+    | _ -> error "~UNEXPECTED_FORMAT_OF_VAR_CREATION._INTERPRETER_ERR~"
 
   let add_in_struct_tags ctx tag args =
     create_var ctx tag (Vhval (Vrval (tag, Vglob (0, Vstructdec tag)))) CT_VOID
@@ -236,11 +242,7 @@ module Eval (M : MONADERROR) = struct
   let declare_struct ctx = function
     | TOP_STRUCT_DECL (name, args) ->
         let get_pair (CARGS (t, n)) = (t, n) in
-        let get_types args =
-          List.fold_right (fun nt ts -> get_pair nt :: ts) args []
-        in
-
-        (* let get_types = List.fold_right (fun nt ts -> get_pair nt :: ts) args [] in *)
+        let types = List.fold_right (fun nt ts -> get_pair nt :: ts) args [] in
         let rec get_nested_t t =
           match t with
           | CT_CHAR | CT_INT | CT_STRUCT _ | CT_VOID | CT_PTR _ -> t
@@ -252,7 +254,7 @@ module Eval (M : MONADERROR) = struct
             | CT_STRUCT n when n = name -> error "Recursive type error"
             | _ -> return ())
           (return ()) args
-        >> add_in_struct_tags ctx name @@ get_types args
+        >> add_in_struct_tags ctx name types
     | _ -> error "not a struct declaration"
 
   let declare_fun ctx = function
@@ -590,11 +592,9 @@ module Eval (M : MONADERROR) = struct
                 eval_expr ctxs convt cur_t palcs e >>= fun ((_, i), pal) ->
                 strct_padding tag n a @@ get_int i >>= fun v ->
                 return ((ctxs, v), pal)
-            | _ ->
-                error "~UNEXPECTED_STRUCT_FIELD~"
-            )
+            | _ -> error "~UNEXPECTED_STRUCT_FIELD~")
         | (_, a), _ -> error @@ "Unaccessorable" ^ show_v_value a)
-    | DEREFERENCE e -> (
+    | DEREFERENCE e ->
         eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
         (match v with
         | Vhval (Vrval (_, Vaddress (CT_VOID, _)))
@@ -621,7 +621,9 @@ module Eval (M : MONADERROR) = struct
         | _ -> error "Can't be dereferenced")
         >>= fun (pt_t, v) ->
         conv_to_int cs @@ get_val v >>= fun v' ->
-            return (({ cs with cur_t = pt_t }, Vhval (get_from_heap cs (get_int v'))), pals) )
+        return
+          ( ({ cs with cur_t = pt_t }, Vhval (get_from_heap cs (get_int v'))),
+            pals )
     | ADDRESS e -> (
         eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
         match v with

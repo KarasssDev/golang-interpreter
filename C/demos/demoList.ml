@@ -145,7 +145,16 @@ let () =
       | C_PROG prg -> (
           match
             eval_d prg
-              [ "cntBfr"; "ans0"; "ans1"; "ans2"; "ans3"; "ans4"; "cntAft"; "cntARm" ]
+              [
+                "cntBfr";
+                "ans0";
+                "ans1";
+                "ans2";
+                "ans3";
+                "ans4";
+                "cntAft";
+                "cntARm";
+              ]
           with
           | Ok result -> print_string result
           | Error msg -> print_string msg)

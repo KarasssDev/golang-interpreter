@@ -42,7 +42,7 @@ let () =
       match prog with
       | C_PROG prg -> (
           match eval_d prg [ "ansAaa"; "ansBba"; "ansBab"; "ansBbb" ] with
-          | Ok result -> print_string @@ result
-          | Error msg -> print_string @@ msg)
+          | Ok result -> print_string result
+          | Error msg -> print_string msg)
       | other -> print_string @@ show_prog other)
   | Error _ -> print_string "syntax errorRRR"

@@ -13,6 +13,11 @@ let test =
         int *arr0 = malloc(sizeof(int) * 5);
         int ans0 = arr0;
         free(arr0);
+        free(arr0);
+        free(arr0);
+        free(arr0);
+        free(arr0);
+        *arr0 = 1;
         int *arr1 = malloc(sizeof(int) * 5);
         int ans1 = arr1;
 
@@ -26,7 +31,7 @@ let () =
       match prog with
       | C_PROG prg -> (
           match eval_d prg [ "ans0"; "ans1" ] with
-          | Ok result -> print_string @@ result
-          | Error msg -> print_string @@ msg)
+          | Ok result -> print_string result
+          | Error msg -> print_string msg)
       | other -> print_string @@ show_prog other)
   | Error _ -> print_string "syntax errorRRR"

@@ -24,137 +24,115 @@ let test =
       return list;
     }
 
-    struct Node* createNode (int value) {
-        struct Node *node = malloc(sizeof(struct Node));
-        node->value = value;
-        node->next = NULL;
-        return node;
-    }
-
     void addHead (struct List *list, int value) {
-        struct Node *node = malloc(sizeof(struct Node));
-        node->value = value;
-        node->next = list->head;
-        list->head = node;
+      struct Node *node = malloc(sizeof(struct Node));
+      node->value = value;
+      node->next = list->head;
+      list->head = node;
     }
 
     void addTail (struct List *list, int value) {
-        struct Node *node;
-        if (list->head) {
-            node = list->head;
-            while (node->next) {
-                node = node->next;
-            }
-            node->next = createNode(value);
-        } else {
-            list->head = createNode(value);
-        }
+      struct Node *last = list->head;
+      struct Node *node = malloc(sizeof(struct Node));
+      
+      node->next = NULL;
+      node->value = value;
+
+      if (!list->head) {
+          list->head = node;
+          return;
+      }
+
+      while (last->next) {
+          last = last->next;
+      }
+      last->next = node;
     }
 
-    void deleteFstEntry (struct List *list, int value) {
-        if (list->head->next) {
-            struct Node *before = list->head;
-            struct Node *after = list->head->next;
-    
-            while (after) {
-                if (after->value == value) {
-                    struct Node* toDelete = after;
-                    if (toDelete->next) {
-                        after = toDelete->next;
-                        before->next = after;
-                        free(toDelete);
-                    } else {
-                        after = NULL;
-                        before->next = after;
-                        free(toDelete);
-                    }
-                } else {
-                    after = after->next;
-                    before = before->next;
-                }
-            }
-        } 
 
-        if (list->head->value == value) {
-            struct Node *toDelete = list->head;
-            list->head = toDelete->next;
-            free(toDelete);
-        }
+    void deleteNodeByVal(struct List* list, int key) {
+      struct Node *temp = list->head;
+      struct Node *prev = list->head;
+
+      if (temp && (temp->value == key)) {
+        list->head = temp->next;
+        free(temp);
+        return;
+      }
+
+      while (temp && temp->value != key) {
+        prev = temp;
+        temp = temp->next;
+      }
+
+      if (!temp) {
+        return;
+      }
+
+      prev->next = temp->next;
+
+      free(temp);
     }
 
     void eraseList (struct List *list) {
-        struct Node *node = list->head;
-        struct Node *toDeletee;
-        while (node) {
-            toDeletee = node;
-            node = node->next;
-            free(toDeletee);
-        }
-        list->head = NULL;
-        free(list);
-    }
-
-
-    struct List* l;
-    
-    int a0;
-    int a1;
-    int a2;
-    int a3;
-    int a4;
-    int a6;
-
-    void actions () {
-      int ans[5];
-      
-      l = createList();
-      
-      addTail(l, 100);
-      addTail(l, 200);
-      addTail(l, 200);
-      addTail(l, 400);
-      addTail(l, 500);
-      addHead(l, -100);
-      
-      deleteFstEntry(l, 400);
-
-      struct Node* it = l->head;
-      int cnt = 0;
-      while (it) {
-        ans[cnt] = it->value;
-        it = it->next;
-        cnt++;
+      struct Node *node = list->head;
+      struct Node *toDeletee;
+      while (node) {
+        toDeletee = node;
+        node = node->next;
+        free(toDeletee);
       }
-      
-      a0 = ans[0];
-      a1 = ans[1];
-      a2 = ans[2];
-      a3 = ans[3];
-      a4 = ans[4];
-      a6 = cnt;
-
-      eraseList(l);
+      list->head = NULL;
+      free(list);
     }
 
     int main () {
-      actions();
+      struct List* l = createList();
 
-      int ans0 = a0;
-      int ans1 = a1;
-      int ans2 = a2;
-      int ans3 = a3;
-      int ans4 = a4;
-      int cntBfr = a6;
-      
-      
+      addTail(l, 600);
+      addTail(l, 700);
+      addTail(l, 800);
+      addTail(l, 900);
+      addTail(l, 1000);
+      addHead(l, 500);
+      addHead(l, 400);
+      addHead(l, 300);
+      addHead(l, 200);
+      addHead(l, 100);
+
+      int cntBfr = 0;
       struct Node* it = l->head;
-      int cnt = 0;
-      while (it) {
+      while(it) {
+        if ((cntBfr + 1) % 2 == 0) {
+          deleteNodeByVal(l, it->value);
+        }
         it = it->next;
-        cnt++;
+        cntBfr++;
       }
-      int cntAft = cnt;
-      
+
+      int ans[5];
+
+      int cntAft = 0;
+      it = l->head;
+      while(it) {
+        ans[cntAft] = it->value;
+        it = it->next;
+        cntAft++;
+      }
+
+      int ans0 = ans[0];
+      int ans1 = ans[1];
+      int ans2 = ans[2];
+      int ans3 = ans[3];
+      int ans4 = ans[4];
+
+      int cntARm = 0;
+      eraseList(l);
+      it = l->head;
+      while(it) {
+        it = it->next;
+        cntARm++;
+      }
       
       return (0);
     }
@@ -167,9 +145,9 @@ let () =
       | C_PROG prg -> (
           match
             eval_d prg
-              [ "cntBfr"; "ans0"; "ans1"; "ans2"; "ans3"; "ans4"; "cntAft" ]
+              [ "cntBfr"; "ans0"; "ans1"; "ans2"; "ans3"; "ans4"; "cntAft"; "cntARm" ]
           with
-          | Ok result -> print_string @@ result
-          | Error msg -> print_string @@ msg)
+          | Ok result -> print_string result
+          | Error msg -> print_string msg)
       | other -> print_string @@ show_prog other)
   | Error _ -> print_string "syntax errorRRR"

@@ -760,47 +760,46 @@ module Eval (M : MONADERROR) = struct
     | _ -> return ((ctxs, Vvoid), palcs)
 
   and cast_default_dep_v ctxs t n format =
-    let ctx = ctxs in
     match format with
     | CT_STRUCT _ -> (
         match t with
         | CT_INT | CT_CHAR | CT_VOID | CT_PTR _ ->
             cast_default_init_fstb ctxs t >>= fun v ->
-            add_in_heap ctx ctx.free_addr
-              (Vdval (ctx.free_addr, Vstructval (n, v)))
+            add_in_heap ctxs ctxs.free_addr
+              (Vdval (ctxs.free_addr, Vstructval (n, v)))
               t
         | CT_STRUCT tag' ->
             get_size t >>= fun l ->
-            add_in_heap ctx ctx.free_addr
+            add_in_heap ctxs ctxs.free_addr
               (Vdval
-                 ( ctx.free_addr,
-                   Vstructval (n, Vstaddress (tag', ctx.free_addr + l)) ))
+                 ( ctxs.free_addr,
+                   Vstructval (n, Vstaddress (tag', ctxs.free_addr + l)) ))
               t
         | CT_ARRAY (_, t') ->
             get_size t >>= fun l ->
-            add_in_heap ctx ctx.free_addr
+            add_in_heap ctxs ctxs.free_addr
               (Vdval
-                 ( ctx.free_addr,
-                   Vstructval (n, Varraddress (t', ctx.free_addr + l)) ))
+                 ( ctxs.free_addr,
+                   Vstructval (n, Varraddress (t', ctxs.free_addr + l)) ))
               t)
     | _ -> (
         match t with
         | CT_INT | CT_CHAR | CT_VOID ->
             cast_default_init_fstb ctxs t >>= fun v ->
-            add_in_heap ctx ctx.free_addr (Vdval (ctx.free_addr, v)) t
+            add_in_heap ctxs ctxs.free_addr (Vdval (ctxs.free_addr, v)) t
         | CT_PTR tt ->
-            add_in_heap ctx ctx.free_addr
-              (Vdval (ctx.free_addr, Vaddress (tt, 0)))
+            add_in_heap ctxs ctxs.free_addr
+              (Vdval (ctxs.free_addr, Vaddress (tt, 0)))
               t
         | CT_STRUCT tag ->
             get_size t >>= fun l ->
-            add_in_heap ctx ctx.free_addr
-              (Vdval (ctx.free_addr, Vstaddress (tag, ctx.free_addr + l)))
+            add_in_heap ctxs ctxs.free_addr
+              (Vdval (ctxs.free_addr, Vstaddress (tag, ctxs.free_addr + l)))
               t
         | CT_ARRAY (_, t') ->
             get_size t >>= fun l ->
-            add_in_heap ctx ctx.free_addr
-              (Vdval (ctx.free_addr, Varraddress (t', ctx.free_addr + l)))
+            add_in_heap ctxs ctxs.free_addr
+              (Vdval (ctxs.free_addr, Varraddress (t', ctxs.free_addr + l)))
               t)
 
   and eval_fn_blck ctx convt cur_t palcs =
@@ -1459,13 +1458,12 @@ module Eval (M : MONADERROR) = struct
     | CT_ARRAY (size, tt) -> (
         match vvs with
         | Vvalues vs ->
-            let ctx = ctxs in
             let fst_val_addr =
               get_size @@ CT_ARRAY (size, tt) >>= fun s ->
-              return (ctx.free_addr + s)
+              return (ctxs.free_addr + s)
             in
             fst_val_addr >>= fun ad ->
-            create_var ctx name
+            create_var ctxs name
               (Vhval (Vrval (name, Varraddress (tt, ad))))
               (CT_ARRAY (size, tt))
             >>= fun ctx ->

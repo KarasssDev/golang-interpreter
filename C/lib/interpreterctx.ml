@@ -63,15 +63,8 @@ and allocated = (int * int) list [@@deriving show { with_path = false }]
 and strct_bgns = (int, string) Ast.Hashtbl.t
 [@@deriving show { with_path = false }]
 
-let fmt_list fmt = function
-  | [] -> ()
-  | x :: xs ->
-      Format.fprintf fmt "%a" (fun fmt -> Format.fprintf fmt "%s") x;
-      List.iter
-        (Format.fprintf fmt "%a" (fun fmt -> Format.fprintf fmt "%s"))
-        xs
-
-let concat = Format.asprintf "%a" fmt_list
+let pp ppf (ac, n, v) = Format.fprintf ppf "%s%s ~ %s\n" ac n v
+let concat = Format.asprintf "%a" pp
 
 let make_exec_ctx () =
   {
@@ -1543,8 +1536,7 @@ module Eval (M : MONADERROR) = struct
     List.fold_left2
       (fun acc n xx ->
         xx >>= fun x ->
-        acc >>= fun ac ->
-        return @@ concat [ ac; n; " ~ "; show_v_value x; "\n" ])
+        acc >>= fun ac -> return @@ concat (ac, n, show_v_value x))
       (return "") vrs vs
 end
 

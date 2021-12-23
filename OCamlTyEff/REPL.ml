@@ -5,6 +5,8 @@ open Ocaml_typed_effects_lib.Ast
 open Ocaml_typed_effects_lib.Check
 open Ocaml_typed_effects_lib.Parser
 
+let parse_with p s = parse_string ~consume:Consume.All (p <* pspace) s
+
 (* let () = match parse_with pty "('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e]-> 'c list" with
   | Ok ty -> pp_ty std_formatter ty
   | Error err -> printf "%s" err *)
@@ -121,8 +123,6 @@ let expr_s = {|
 let expr_s = {|
   false || (1 + 3) * 2 + 10 >= 24 / 2 - 1 && 5 + 2 * 2 = 9
 |}
-
-(*  / 2 - 1 && 5 + 2 * 2 = 9 *)
 
 let () =
   match parse_with pexpr expr_s with

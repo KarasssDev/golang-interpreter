@@ -5,6 +5,9 @@ type exc =
   | Exc2
 [@@deriving eq, ord, show { with_path = false }]
 
+let exc1 = Exc1
+let exc2 = Exc2
+
 type eff =
   | EffIO
   | EffAsgmt
@@ -12,6 +15,13 @@ type eff =
   | EffVar of string
   | EffBoundVar of string
 [@@deriving eq, ord]
+
+let eff_io = EffIO
+let eff_asgmt = EffAsgmt
+let eff_exc exc = EffExc exc
+let eff_var name = EffVar name
+let eff_bound_var name = EffBoundVar name
+let all_effs = [ eff_exc exc1; eff_exc exc2; eff_io; eff_asgmt ]
 
 let pp_eff fmt = function
   | EffIO -> fprintf fmt "IO"
@@ -54,6 +64,18 @@ type ty =
   | TFun of ty * eff_set * ty
 [@@deriving eq]
 
+let t_int = TInt
+let t_string = TString
+let t_bool = TBool
+let t_exc exc = TExc exc
+let t_tuple tys = TTuple tys
+let t_unit = t_tuple []
+let t_list ty = TList ty
+let t_ref ty = TRef ty
+let t_var name = TVar name
+let t_bound_var name = TBoundVar name
+let t_fun arg_ty effs ret_ty = TFun (arg_ty, effs, ret_ty)
+
 let rec pp_ty fmt = function
   | TInt -> fprintf fmt "int"
   | TString -> fprintf fmt "string"
@@ -90,6 +112,9 @@ type unop =
   | Deref
 [@@deriving eq]
 
+let neg = Neg
+let deref = Deref
+
 let rec pp_unop fmt = function
   | Neg -> fprintf fmt "-"
   | Deref -> fprintf fmt "!"
@@ -111,6 +136,21 @@ type binop =
   | Asgmt
   | Cons
 [@@deriving eq]
+
+let add = Add
+let sub = Sub
+let mul = Mul
+let div = Div
+let eq = Eq
+let neq = Neq
+let les = Les
+let leq = Leq
+let geq = Geq
+let gre = Gre
+let _and = And
+let _or = Or
+let asgmt = Asgmt
+let cons = Cons
 
 let rec pp_binop fmt = function
   | Add -> fprintf fmt "+"
@@ -136,6 +176,11 @@ type const =
   | CEmptyList
 [@@deriving eq]
 
+let c_int n = CInt n
+let c_string s = CString s
+let c_bool b = CBool b
+let c_empty_list = CEmptyList
+
 let rec pp_const fmt = function
   | CInt d -> fprintf fmt "%d" d
   | CString s -> fprintf fmt "\"%s\"" s
@@ -149,6 +194,12 @@ type ptrn =
   | PTuple of ptrn list
   | PCons of ptrn list * ptrn
 [@@deriving eq, show { with_path = false }]
+
+let p_val name = PVal name
+let p_const const = PConst const
+let p_tuple ptrns = PTuple ptrns
+let p_unit = p_tuple []
+let p_cons ptrns ptrn = PCons (ptrns, ptrn)
 
 let rec pp_ptrn fmt = function
   | PVal s -> fprintf fmt "%s" s
@@ -195,6 +246,18 @@ and expr =
   | ETry of expr * (exc * expr) list
 [@@deriving eq]
 
+let e_const const = EConst const
+let e_val name = EVal name
+let e_unop op expr = EUnop (op, expr)
+let e_binop expr1 op expr2 = EBinop (expr1, op, expr2)
+let e_app fn arg = EApp (fn, arg)
+let e_tuple exprs = ETuple exprs
+let e_unit = e_tuple []
+let e_let decl expr = ELet (decl, expr)
+let e_match scr cases = EMatch (scr, cases)
+let e_fun prm_name prm_ty body = EFun (prm_name, prm_ty, body)
+let e_try scr cases = ETry (scr, cases)
+
 let rec pp_decl fmt decl =
   fprintf fmt "let ";
   if decl.is_rec then fprintf fmt "rec " else ();
@@ -224,7 +287,7 @@ and pp_expr fmt = function
     fprintf fmt " ";
     pp_expr fmt arg;
     fprintf fmt ")"
-  | ETuple l -> 
+  | ETuple l ->
     fprintf fmt "(";
     pp_print_list
       ~pp_sep:(fun fmt () -> fprintf fmt ", ")
@@ -245,8 +308,7 @@ and pp_expr fmt = function
         fprintf fmt "| ";
         pp_ptrn fmt p;
         fprintf fmt " -> ";
-        pp_expr fmt e
-      )
+        pp_expr fmt e)
       fmt
       ptrns
   | EFun (prm, prmty, expr) ->
@@ -255,7 +317,7 @@ and pp_expr fmt = function
     pp_ty fmt prmty;
     fprintf fmt " -> ";
     pp_expr fmt expr;
-    fprintf fmt ")";
+    fprintf fmt ")"
   | ETry (scr, excs) ->
     fprintf fmt "try ";
     pp_expr fmt scr;
@@ -265,8 +327,7 @@ and pp_expr fmt = function
         fprintf fmt "| ";
         pp_exc fmt exc;
         fprintf fmt " -> ";
-        pp_expr fmt exp
-      )
+        pp_expr fmt exp)
       fmt
       excs
 ;;
@@ -275,9 +336,9 @@ type program = decl list [@@deriving eq]
 
 let pp_program fmt program =
   pp_print_list
-      (fun fmt decl ->
-        pp_decl fmt decl;
-        fprintf fmt "\n;;\n"
-      )
-      fmt
-      program
+    (fun fmt decl ->
+      pp_decl fmt decl;
+      fprintf fmt "\n;;\n")
+    fmt
+    program
+;;

@@ -64,14 +64,11 @@ and strct_bgns = (int, string) Ast.Hashtbl.t
 [@@deriving show { with_path = false }]
 
 let fmt_list fa fmt xs =
-  let () =
-    match xs with
-    | [] -> ()
-    | x :: xs ->
-        Format.fprintf fmt "%a" fa x;
-        List.iter (Format.fprintf fmt "%a" fa) xs
-  in
-  Format.fprintf fmt ""
+  match xs with
+  | [] -> ()
+  | x :: xs ->
+      Format.fprintf fmt "%a" fa x;
+      List.iter (Format.fprintf fmt "%a" fa) xs
 
 let concat =
   Format.asprintf "%a" (fmt_list (fun fmt -> Format.fprintf fmt "%s"))

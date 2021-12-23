@@ -244,26 +244,8 @@ module Eval (M : MONADERROR) = struct
     | TOP_FUNC_DECL (ret_t, name, args, blk) -> (
         match blk with
         | BLOCK stmts -> (
-            let rec is_correct_void stmts r =
-              match stmts with
-              | s :: st -> (
-                  match s with
-                  | RETURN ret_e -> (
-                      match ret_e with
-                      | LITERAL CVOID ->
-                          let acc = r && true in
-                          is_correct_void st acc
-                      | _ ->
-                          let acc = r && false in
-                          is_correct_void st acc)
-                  | _ -> is_correct_void st r)
-              | _ -> r
-            in
-            let chck_strt = true in
             match ret_t with
-            | CT_VOID when is_correct_void stmts chck_strt ->
-                add_in_functions ctx name (ret_t, args, stmts)
-            | CT_VOID -> error "void function can't return nothing"
+            | CT_VOID -> add_in_functions ctx name (ret_t, args, stmts)
             | CT_INT | CT_CHAR | CT_STRUCT _ | CT_PTR _ ->
                 add_in_functions ctx name (ret_t, args, stmts)
             | _ -> error "undexpected type for function")

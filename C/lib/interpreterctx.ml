@@ -63,6 +63,11 @@ and allocated = (int * int) list [@@deriving show { with_path = false }]
 and strct_bgns = (int, string) Ast.Hashtbl.t
 [@@deriving show { with_path = false }]
 
+let concat xs =
+  let buf = Buffer.create 16 in
+  List.iter (Buffer.add_string buf) xs;
+  Buffer.contents buf
+
 let make_exec_ctx () =
   {
     allocated = [];
@@ -245,8 +250,12 @@ module Eval (M : MONADERROR) = struct
                   match s with
                   | RETURN ret_e -> (
                       match ret_e with
-                      | LITERAL CVOID -> is_correct_void st (r && true)
-                      | _ -> is_correct_void st (r && false))
+                      | LITERAL CVOID ->
+                          let acc = r && true in
+                          is_correct_void st acc
+                      | _ ->
+                          let acc = r && false in
+                          is_correct_void st acc)
                   | _ -> is_correct_void st r)
               | _ -> r
             in
@@ -865,7 +874,7 @@ module Eval (M : MONADERROR) = struct
      | Some f -> return f
      | None -> error "function undeclared")
     >>= fun (vrrs, r_typ, args, vs) ->
-    if List.length args = List.length vals then (
+    if List.length args - List.length vals = 0 then (
       Hashtbl.iter
         (fun k v ->
           match v with
@@ -1016,8 +1025,7 @@ module Eval (M : MONADERROR) = struct
 
   and _not ctx v =
     let vv1 = conv_to_int ctx v in
-    vv1 >>= fun n ->
-    match n with
+    vv1 >>= function
     | Vint o1 -> return @@ Vint (if not (o1 > 0) then 1 else 0)
     | _ -> error "invalid operands"
 
@@ -1073,7 +1081,7 @@ module Eval (M : MONADERROR) = struct
             cast_default_init_fstb ctxs @@ CT_ARRAY (l, t) >>= fun dv ->
             return @@ lift_vvs _vs [] >>= fun vs ->
             (match dv with
-            | Vvalues dvs when List.length vs = List.length dvs ->
+            | Vvalues dvs when List.length vs - List.length dvs = 0 ->
                 return
                 @@ List.map2
                      (fun v d ->
@@ -1101,7 +1109,7 @@ module Eval (M : MONADERROR) = struct
                         get_size t >>= fun inc -> return (inc :: ac))
                   lifted_vs (return [])
                 >>= fun incs ->
-                if List.length incs = List.length lifted_vs then
+                if List.length incs - List.length lifted_vs = 0 then
                   List.fold_left2
                     (fun a _v _inc ->
                       a >>= fun a ->
@@ -1270,7 +1278,7 @@ module Eval (M : MONADERROR) = struct
         return @@ lift_vvs _vs [] >>= fun vs ->
         (match dv with
         | Vvalues (Vstaddress (_, _) :: dvs)
-          when List.length vs = List.length dvs ->
+          when List.length vs - List.length dvs = 0 ->
             return
             @@ List.map2
                  (fun v d ->
@@ -1291,7 +1299,7 @@ module Eval (M : MONADERROR) = struct
                 | _ -> acc)
               lifted_vs (return [])
             >>= fun incs ->
-            if List.length incs = List.length lifted_vs then
+            if List.length incs - List.length lifted_vs = 0 then
               List.fold_left2
                 (fun a _v _inc ->
                   _inc >>= fun inc ->
@@ -1519,8 +1527,7 @@ module Eval (M : MONADERROR) = struct
   let add_null ctx =
     add_in_heap ctx ctx.free_addr (Vdval (ctx.free_addr, Vnull)) CT_INT
 
-  let rec collect ctx stmts =
-    match stmts with
+  let rec collect ctx = function
     | [] -> return ctx
     | top :: tops -> (
         match top with
@@ -1549,7 +1556,8 @@ module Eval (M : MONADERROR) = struct
     List.fold_left2
       (fun acc n xx ->
         xx >>= fun x ->
-        acc >>= fun ac -> return @@ ac ^ n ^ " ~ " ^ show_v_value x ^ "\n")
+        acc >>= fun ac ->
+        return @@ concat [ ac; n; " ~ "; show_v_value x; "\n" ])
       (return "") vrs vs
 end
 

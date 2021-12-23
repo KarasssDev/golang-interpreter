@@ -72,3 +72,8 @@ Use `dune promote` after you change things that should runned
   ansBba ~ Vchar (Y)
   ansBab ~ Vchar (a)
   ansBbb ~ Vchar (A)
+
+  $ (./demoConvAdvance.exe)
+  ans0 ~ Vint (100)
+  ans1 ~ Vint (300)
+  ans2 ~ Vint (1000)

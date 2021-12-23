@@ -7,8 +7,6 @@ let test =
   parse prog
     {|
 
-    #include <a.h>
-
     struct Node {
         int value;
         struct Node *next;
@@ -134,9 +132,10 @@ let test =
         cntARm++;
       }
       
-      return (0);
+      return 0;
     }
-    |}
+
+  |}
 
 let () =
   match test with

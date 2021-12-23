@@ -7,8 +7,6 @@ let test =
   parse prog
     {|
       
-      #include <a.h>
-      
       int factorial (int n) {  
         if (n == 0) {  
           return 1;
@@ -27,9 +25,8 @@ let test =
         int ans4 = factorial(4);
         int ans5 = factorial(5);
 
-        return (0);
+        return 0;
       }
-
       
     |}
 

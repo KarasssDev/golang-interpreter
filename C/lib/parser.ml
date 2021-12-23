@@ -34,11 +34,8 @@ let identifier =
   space *> peek_char >>= function
   | Some c when is_valid_first_char c ->
       take_while is_valid_id_char >>= fun id ->
-      if is_keyword id then
-        pos >>= fun col ->
-        fail ("ERROR: " ^ Int.to_string col ^ " " ^ id ^ " is a reserved word")
-      else return id
-  | _ -> pos >>= fun num -> fail (Int.to_string num ^ " invalid identifier")
+      if is_keyword id then fail "ERROR: reserved word" else return id
+  | _ -> fail "invalid identifier"
 
 let include_stats =
   space *> string "#include " *> char '<' *> identifier >>= fun id ->
@@ -56,22 +53,22 @@ let add = token "+" *> return (fun e1 e2 -> ADD (e1, e2))
 let sub = token "-" *> return (fun e1 e2 -> SUB (e1, e2))
 let mul = token "*" *> return (fun e1 e2 -> MUL (e1, e2))
 let div = token "/" *> return (fun e1 e2 -> DIV (e1, e2))
-let _mod = token "%" *> return (fun e1 e2 -> MOD (e1, e2))
-let _not = token "!" *> return (fun e1 -> NOT e1)
-let _and = token "&&" *> return (fun e1 e2 -> AND (e1, e2))
-let _or = token "||" *> return (fun e1 e2 -> OR (e1, e2))
-let _eq = token "==" *> return (fun e1 e2 -> EQUAL (e1, e2))
-let _neq = token "!=" *> return (fun e1 e2 -> NOT_EQUAL (e1, e2))
-let _lt = token "<" *> return (fun e1 e2 -> LT (e1, e2))
-let _gt = token ">" *> return (fun e1 e2 -> GT (e1, e2))
-let _lte = token "<=" *> return (fun e1 e2 -> LTE (e1, e2))
-let _gte = token ">=" *> return (fun e1 e2 -> GTE (e1, e2))
-let factop = mul <|> div <|> _mod <?> "'*' or '/' or '%' expected" <* space
+let c_mod = token "%" *> return (fun e1 e2 -> MOD (e1, e2))
+let c_not = token "!" *> return (fun e1 -> NOT e1)
+let c_and = token "&&" *> return (fun e1 e2 -> AND (e1, e2))
+let c_or = token "||" *> return (fun e1 e2 -> OR (e1, e2))
+let c_eq = token "==" *> return (fun e1 e2 -> EQUAL (e1, e2))
+let c_neq = token "!=" *> return (fun e1 e2 -> NOT_EQUAL (e1, e2))
+let c_lt = token "<" *> return (fun e1 e2 -> LT (e1, e2))
+let c_gt = token ">" *> return (fun e1 e2 -> GT (e1, e2))
+let c_lte = token "<=" *> return (fun e1 e2 -> LTE (e1, e2))
+let c_gte = token ">=" *> return (fun e1 e2 -> GTE (e1, e2))
+let factop = mul <|> div <|> c_mod <?> "'*' or '/' or '%' expected" <* space
 let termop = space *> add <|> sub <?> "'+' or '-' expected" <* space
 
 let cmpop =
-  _lte <|> _lt <|> _gte <|> _gt <|> _neq <|> _eq <?> "compare operator expected"
-  <* space
+  c_lte <|> c_lt <|> c_gte <|> c_gt <|> c_neq <|> c_eq
+  <?> "compare operator expected" <* space
 
 let left_of p1 p = p <* space <* p1
 let right_of p1 p = p1 *> space *> p
@@ -200,11 +197,11 @@ let expr =
       let compare = chainl1 arexpr cmpop in
       let bfactor =
         fix (fun bfactor ->
-            let nnot = _not <* space <*> bfactor in
+            let nnot = c_not <* space <*> bfactor in
             choice [ nnot; compare ])
       in
-      let bterm = chainl1 bfactor (_and <* space) in
-      let oldexpr = chainl1 bterm (_or <* space) in
+      let bterm = chainl1 bfactor (c_and <* space) in
+      let oldexpr = chainl1 bterm (c_or <* space) in
       let newexpr = fix (fun newexpr -> oldexpr <|> parens newexpr) in
       newexpr)
 
@@ -408,8 +405,8 @@ let for_statement stmtss =
   *> block stmtss
   >>= fun blk -> return @@ FOR (var, re, step, blk)
 
-let _continue = token "continue" *> token ";" *> return CONTINUE
-let _break = token "break" *> token ";" *> return BREAK
+let c_continue = token "continue" *> token ";" *> return CONTINUE
+let c_break = token "break" *> token ";" *> return BREAK
 
 let while_stmt stmtss =
   token "while" *> token "(" *> expr <* token ")" >>= fun re ->
@@ -426,7 +423,7 @@ let stmts =
   fix (fun stmts ->
       block stmts <|> if_else_stmts stmts <|> if_stmt stmts <|> while_stmt stmts
       <|> for_statement stmts <|> var_assign_proc_call false <|> var_decl
-      <|> _continue <|> _break <|> return_)
+      <|> c_continue <|> c_break <|> return_)
 
 let top_decl_var =
   var_decl >>= function

@@ -6,7 +6,6 @@ open C_lib.Interpreterctx
 let test =
   parse prog
     {|
-      #include <a.h>
 
       int main () {
         
@@ -17,8 +16,9 @@ let test =
         int *arr1 = malloc(sizeof(int) * 5);
         int ans1 = arr1;
 
-        return (0);
+        return 0;
       }
+
     |}
 
 let () =

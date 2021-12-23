@@ -6,7 +6,6 @@ open C_lib.Interpreterctx
 let test =
   parse prog
     {|
-      #include <a.h>
 
       int main () {
         
@@ -34,7 +33,7 @@ let test =
         int ans11 = *(*(arr + 1) + 1);
         int ans12 = *(*(arr + 1) + 2);
 
-        return (0);
+        return 0;
       }
       
     |}

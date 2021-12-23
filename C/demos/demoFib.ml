@@ -7,8 +7,6 @@ let test =
   parse prog
     {|
       
-      #include <a.h>
-
       int fib(int n) {
           if (n <= 1) {
             return n;
@@ -31,7 +29,7 @@ let test =
         int ans9 = fib(9);
         int ans10 = fib(10);
 
-        return (1);
+        return 0;
       }
       
     |}

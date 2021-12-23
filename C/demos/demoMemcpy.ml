@@ -7,8 +7,6 @@ let test =
   parse prog
     {|
       
-      #include <a.h>
-
       void* memcpy (void *dst, void *src, int len) {
         char * cdst = dst;
         char * csrc = src;
@@ -64,7 +62,7 @@ let test =
         int ansNstd8 = arr1[8];
         int ansNstd9 = arr1[9];
 
-        return (0);
+        return 0;
       }
 
       

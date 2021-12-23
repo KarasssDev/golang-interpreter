@@ -81,38 +81,14 @@ let make_exec_ctx () =
 
 let make_dep_ctx ctx () =
   {
-    allocated = ctx.allocated;
-    heap = ctx.heap;
-    struct_tags = ctx.struct_tags;
-    functions = ctx.functions;
-    free_addr = ctx.free_addr;
-    pack_addr = ctx.free_addr;
-    vars = Ast.Hashtbl.create 16;
-    jump_stmt = None;
-    last_value = Vvoid;
-    have_ret = false;
+    ctx with
     cur_t = CT_VOID;
-    globs = ctx.globs;
+    have_ret = false;
+    last_value = Vvoid;
+    jump_stmt = None;
+    pack_addr = ctx.free_addr;
+    vars = Ast.Hashtbl.create ?random:None 16;
   }
-
-let dbg_print ctx palcs =
-  "\n*******************\n" ^ "\nstruct_tags: "
-  ^ show_struct_tags ctx.struct_tags
-  ^ "\nfunctions: "
-  ^ show_functions ctx.functions
-  ^ "\npack_addr: "
-  ^ Int.to_string ctx.pack_addr
-  ^ "\nfree_addr: "
-  ^ Int.to_string ctx.free_addr
-  ^ "\nret: "
-  ^ Bool.to_string ctx.have_ret
-  ^ "\nlast_value: "
-  ^ show_v_value ctx.last_value
-  ^ "\njump_stmt: "
-  ^ show_jump_stmt ctx.jump_stmt
-  ^ "\nallocated: "
-  ^ show_allocated (List.sort compare palcs)
-  ^ "\nheap: \n" ^ show_heap ctx.heap ^ "\nlocal_vars: " ^ show_vars ctx.vars
 
 module type MONAD = sig
   type 'a t
@@ -142,7 +118,9 @@ module Eval (M : MONADERROR) = struct
 
   let is_contains v l =
     List.fold_left
-      (fun acc (l, r) -> if l <= v && v <= r then true else acc)
+      (fun acc (l, r) ->
+        let ch = l <= v && v <= r in
+        if ch then ch else acc)
       false l
 
   let ht_find_opt_and_process ht key f emsg =
@@ -168,12 +146,12 @@ module Eval (M : MONADERROR) = struct
     | Some (t, a, Vrval (_, Vglob (aa, _))) -> (
         match get_from_heap ctx a with
         | Vrval (nn, vv) -> return (t, a, Vrval (nn, Vglob (aa, vv)))
-        | _ -> error "Var undefined")
+        | _ -> error "var undefined")
     | Some v -> return v
     | None -> error emsg
 
   let get_from_struct_tags ctx tag =
-    get_from_vars ctx tag "Struct undefined" >>= fun _ ->
+    get_from_vars ctx tag "struct undefined" >>= fun _ ->
     return @@ Ast.Hashtbl.find_opt ctx.struct_tags tag
 
   let rec sizeof ctx t =
@@ -194,7 +172,7 @@ module Eval (M : MONADERROR) = struct
 
   let add_in_vars ctx name addr v t =
     match Hashtbl.find_opt ctx.vars name with
-    | Some _ -> error @@ "name: " ^ name ^ " already using"
+    | Some _ -> error "name already using"
     | None ->
         Ast.Hashtbl.add ctx.vars name (t, addr, v);
         return ctx
@@ -215,7 +193,7 @@ module Eval (M : MONADERROR) = struct
     | Vhval (Vrval (_n, _v)) ->
         add_in_vars ctx name ctx.free_addr (Vrval (_n, _v)) t >>= fun ctx ->
         add_in_heap ctx ctx.free_addr (Vrval (_n, _v)) t
-    | _ -> error "~UNEXPECTED_FORMAT_OF_VAR_CREATION._INTERPRETER_ERR~"
+    | _ -> error "not reachable: named values have only one representation type"
 
   let add_in_struct_tags ctx tag args =
     create_var ctx tag (Vhval (Vrval (tag, Vglob (0, Vstructdec tag)))) CT_VOID
@@ -251,7 +229,7 @@ module Eval (M : MONADERROR) = struct
         List.fold_left
           (fun _ arg ->
             match get_nested_t @@ fst @@ get_pair arg with
-            | CT_STRUCT n when n = name -> error "Recursive type error"
+            | CT_STRUCT n when n = name -> error "recursive type error"
             | _ -> return ())
           (return ()) args
         >> add_in_struct_tags ctx name types
@@ -272,13 +250,14 @@ module Eval (M : MONADERROR) = struct
                   | _ -> is_correct_void st r)
               | _ -> r
             in
+            let chck_strt = true in
             match ret_t with
-            | CT_VOID when is_correct_void stmts true ->
+            | CT_VOID when is_correct_void stmts chck_strt ->
                 add_in_functions ctx name (ret_t, args, stmts)
-            | CT_VOID -> error "Void function can't return nothing"
+            | CT_VOID -> error "void function can't return nothing"
             | CT_INT | CT_CHAR | CT_STRUCT _ | CT_PTR _ ->
                 add_in_functions ctx name (ret_t, args, stmts)
-            | _ -> error "Undexpected type for function")
+            | _ -> error "undexpected type for function")
         | _ -> error "expected block")
     | _ -> return ctx
 
@@ -298,7 +277,7 @@ module Eval (M : MONADERROR) = struct
         | Vglob (_, gv) -> conv_to_addr ctx tt gv
         | otherwise -> conv_to_addr ctx tt otherwise)
     | Vstructval (_, v) -> conv_to_addr ctx tt v
-    | _ -> error @@ "Adress expected"
+    | _ -> error "adress expected"
 
   let rec conv_to_int ctx v =
     match get_val v with
@@ -308,37 +287,38 @@ module Eval (M : MONADERROR) = struct
     | Varraddress (_, v) -> return @@ Vint v
     | Vnull -> return @@ Vint 0
     | Vstructval (_, v) -> conv_to_int ctx v
-    | Vstaddress (_, _) -> return @@ Vint 0
+    | Vstaddress (_, a) -> conv_to_int ctx @@ Vhval (get_from_heap ctx a)
     | Vglob (aa, _) -> (
         match get_val @@ Vhval (get_from_heap ctx aa) with
         | Vglob (_, gv) -> conv_to_int ctx gv
         | otherwise -> conv_to_int ctx otherwise)
-    | _ -> error "Integer expected"
+    | _ -> error "integer expected"
 
   let rec conv_to_char ctx = function
-    | Vint v | Vaddress (_, v) ->
-        return @@ Vchar (String.get (Int.to_string v) 0)
+    | Vint v | Vaddress (_, v) | Varraddress (_, v) ->
+        return @@ Vchar (Char.chr v)
     | Vchar v -> return @@ Vchar v
     | Vnull -> return @@ Vchar 'n'
     | Vstructval (_, v) -> conv_to_char ctx v
+    (* | Vstaddress (_, a) -> conv_to_int ctx @@ Vhval (get_from_heap ctx a)  *)
     | Vglob (aa, _) -> (
         match get_val @@ Vhval (get_from_heap ctx aa) with
         | Vglob (_, gv) -> conv_to_char ctx gv
         | otherwise -> conv_to_char ctx otherwise)
-    | _ -> error "Char expected"
+    | _ -> error "char expected"
 
   let conv_t ctx v = function
     | CT_INT -> conv_to_int ctx v
     | CT_CHAR -> conv_to_char ctx v
     | CT_PTR tt -> conv_to_addr ctx tt v
-    | CT_VOID -> error "Void doesn't contain value"
+    | CT_VOID -> error "void doesn't contain value"
     | _ -> return v
 
   let rec to_type ctx v =
     let get_val' v =
       match v with
       | Vhval (Vrval (n, _)) -> (
-          get_from_vars ctx n "Var undefined" >>= function
+          get_from_vars ctx n "var undefined" >>= function
           | CT_ARRAY (s, _), _, hv -> return (get_val @@ Vhval hv, s)
           | _ -> return (get_val v, 0))
       | _ -> return (get_val v, 0)
@@ -353,7 +333,7 @@ module Eval (M : MONADERROR) = struct
     | Vvalues (x :: _), _ -> (
         match x with
         | Vstaddress _ -> to_type ctx x
-        | _ -> error "Type conversion error ")
+        | _ -> error "type conversion error ")
     | Vnull, _ -> return CT_VOID
     | Vvoid, _ -> return CT_VOID
     | Vglob (aa, _), _ -> (
@@ -361,19 +341,17 @@ module Eval (M : MONADERROR) = struct
         | Vglob (_, gv) -> to_type ctx gv
         | otherwise -> to_type ctx otherwise)
     | Vtype t, _ -> return t
-    | _ -> error "Type conversion error"
+    | _ -> error "type conversion error"
 
-  let rec conv_v ctx v _v =
-    match _v with
+  let rec conv_v ctx v = function
     | Vint _ -> conv_t ctx v CT_INT
     | Vchar _ -> conv_t ctx v CT_CHAR
     | Vaddress (tt, _) -> conv_t ctx v (CT_PTR tt)
     | Vstructval (n, v') ->
         conv_v ctx v v' >>= fun v'' -> return @@ Vstructval (n, v'')
     | Vnull -> to_type ctx v >>= fun t -> conv_t ctx v t
-    | Vvoid -> error "Void doesn't contain value1 "
-    | Vstaddress (tag, a) -> return @@ Vstaddress (tag, a)
-    | _ -> error "Unexpected expr "
+    | Vvoid -> error "coid doesn't contain value "
+    | _ -> error "unexpected expr "
 
   let get_int = function Vint v -> v | _ -> 0
 
@@ -402,7 +380,7 @@ module Eval (M : MONADERROR) = struct
     | BLOCK stmts -> eval_fn_blck ctx convt cur_t palcs stmts
     | IF_ELSE (e, if_blk, else_blk) ->
         eval_expr ctx convt cur_t palcs e >>= fun ((ct, bv), pals) ->
-        let stmts blk = match blk with BLOCK stmts -> stmts | _ -> [] in
+        let stmts = function BLOCK stmts -> stmts | _ -> [] in
         let old_pcka = ctx.pack_addr in
         let eval_ifelse blk =
           eval_ifel_blck
@@ -507,7 +485,7 @@ module Eval (M : MONADERROR) = struct
         _not cts v >>= fun v' -> return ((cts, v'), pls)
     | INDEXER (n, e) ->
         let xable ctxs name i =
-          get_from_vars ctxs name "Var undefined" >>= function
+          get_from_vars ctxs name "var undefined" >>= function
           | CT_ARRAY (_, t), _, Vrval (_, Varraddress (_, addr))
           | CT_PTR t, _, Vrval (_, Vaddress (_, addr)) ->
               let is_sturct = function CT_STRUCT _ -> true | _ -> false in
@@ -515,7 +493,7 @@ module Eval (M : MONADERROR) = struct
               return
                 ( Vhval (get_from_heap ctxs (addr + (i * s))),
                   if is_sturct t then t else cur_t )
-          | _ -> error "Not indexable"
+          | _ -> error "not indexable"
         in
         eval_expr ctxs convt cur_t palcs e >>= fun ((cts, i), _) ->
         conv_to_int cts i >>= fun i' ->
@@ -565,7 +543,7 @@ module Eval (M : MONADERROR) = struct
                     pdng n tl
                       ( acc >>= fun ac ->
                         sizeof ctxs tt >>= fun x -> return (x + ac) )
-                | [] -> error "Nonexistent struct field"
+                | [] -> error "nonexistent struct field"
               in
               pdng n args (return 0) >>= fun p ->
               match get_from_heap ctxs (bgn + p) with
@@ -573,7 +551,7 @@ module Eval (M : MONADERROR) = struct
                   get_size t' >>= fun inc ->
                   return @@ Vhval (get_from_heap ctxs (a' + (i * inc)))
               | v -> return @@ Vhval v)
-          | None -> error "Struct undefined"
+          | None -> error "struct undefined"
         in
         let is_struct_pt_or_struct_e = function
           | CT_STRUCT _ -> true
@@ -591,15 +569,18 @@ module Eval (M : MONADERROR) = struct
                 eval_expr ctxs convt cur_t palcs e >>= fun ((_, i), pal) ->
                 strct_padding tag n a @@ get_int i >>= fun v ->
                 return ((ctxs, v), pal)
-            | _ -> error "~UNEXPECTED_STRUCT_FIELD~")
-        | (_, _), _ -> error @@ "Unaccessorable")
+            | _ ->
+                error
+                  "not reachable: named struct representation has already been \
+                   checked in in the parser")
+        | (_, _), _ -> error @@ "unaccessorable")
     | DEREFERENCE e ->
         eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
         (match v with
         | Vhval (Vrval (_, Vaddress (CT_VOID, _)))
         | Vhval (Vdval (_, Vaddress (CT_VOID, _)))
         | Vhval (Vrval (_, Vglob (_, Vglob (_, Vaddress (CT_VOID, _))))) ->
-            error "Void pointer dereference"
+            error "void pointer dereference"
         | Vhval (Vrval (_, Vglob (aa, _))) -> (
             let addrr =
               match get_val @@ Vhval (get_from_heap cs aa) with
@@ -608,7 +589,7 @@ module Eval (M : MONADERROR) = struct
             in
             match addrr with
             | Vaddress (pt_t, _) | Varraddress (pt_t, _) -> return (pt_t, v)
-            | _ -> error "Can't be dereferenced")
+            | _ -> error "can't be dereferenced")
         | Vhval (Vrval (_, Vaddress (pt_t, _)))
         | Vhval (Vdval (_, Vaddress (pt_t, _)))
         | Vhval (Vrval (_, Varraddress (pt_t, _)))
@@ -617,7 +598,7 @@ module Eval (M : MONADERROR) = struct
         | Vaddress (pt_t, _)
         | Varraddress (pt_t, _) ->
             return (pt_t, v)
-        | _ -> error "Can't be dereferenced")
+        | _ -> error "can't be dereferenced")
         >>= fun (pt_t, v) ->
         conv_to_int cs @@ get_val v >>= fun v' ->
         return
@@ -627,10 +608,13 @@ module Eval (M : MONADERROR) = struct
         eval_expr ctxs convt cur_t palcs e >>= fun ((cs, v), pals) ->
         match v with
         | Vhval (Vrval (n, _)) ->
-            get_from_vars ctxs n "Var undefined" >>= fun (_, a, _) ->
+            get_from_vars ctxs n "var undefined" >>= fun (_, a, _) ->
             return ((cs, Vint a), pals)
         | Vhval (Vdval (a, _)) -> return ((cs, Vint a), pals)
-        | _ -> error "Value can't have adress")
+        | _ ->
+            error
+              "not reachable: adress have only named and nameless values in \
+               the heap")
     | TYPE t -> return ((ctxs, Vtype t), palcs)
 
   and sizeofn ctxs convt cur_t palcs e =
@@ -671,8 +655,7 @@ module Eval (M : MONADERROR) = struct
     if x then eval_cyc_body c convt cur_t pals cond body tmp_b
     else return ({ c with free_addr = ctx.free_addr; last_value = Vnull }, pals)
 
-  and eval_cyc_body ctx convt cur_t palcs cond body tmp_b =
-    match tmp_b with
+  and eval_cyc_body ctx convt cur_t palcs cond body = function
     | [] -> repeat ctx convt cur_t palcs body body cond
     | st :: sts -> (
         eval_stmt ctx true convt cur_t palcs st >>= fun (ct, pls) ->
@@ -706,7 +689,7 @@ module Eval (M : MONADERROR) = struct
     let stmts =
       get_from_functions ctxs "main" >>= function
       | Some f -> return f
-      | None -> error "Function undeclared"
+      | None -> error "function undeclared"
     in
     let rec blk ctxs in_fn pls = function
       | [] -> return (ctxs, pls)
@@ -759,8 +742,7 @@ module Eval (M : MONADERROR) = struct
         return ((h, Vaddress (tt, adr)), (adr, adr + s - 1) :: palcs)
     | _ -> return ((ctxs, Vvoid), palcs)
 
-  and cast_default_dep_v ctxs t n format =
-    match format with
+  and cast_default_dep_v ctxs t n = function
     | CT_STRUCT _ -> (
         match t with
         | CT_INT | CT_CHAR | CT_VOID | CT_PTR _ ->
@@ -881,15 +863,15 @@ module Eval (M : MONADERROR) = struct
     let is_void = function CT_VOID -> true | _ -> false in
     (get_from_functions ctx name >>= function
      | Some f -> return f
-     | None -> error "Function undeclared")
-    >>= fun (vrrrs, r_typ, args, vs) ->
+     | None -> error "function undeclared")
+    >>= fun (vrrs, r_typ, args, vs) ->
     if List.length args = List.length vals then (
       Hashtbl.iter
         (fun k v ->
           match v with
           | _, _, Vrval (_, Vglob _) -> Hashtbl.add ct.vars k v
           | _ -> ())
-        vrrrs;
+        vrrs;
       List.fold_left2
         (fun ct a v ->
           match a with
@@ -905,7 +887,7 @@ module Eval (M : MONADERROR) = struct
       to_type ctx lv >>= fun _ ->
       match ctxs'.jump_stmt with
       | Return rv when is_void r_typ && rv <> Vvoid ->
-          error "Void function can't return nothing"
+          error "void function can't return nothing"
       | Return _ ->
           return
             ( ( { ctx with free_addr = ctxs'.free_addr; last_value = lv },
@@ -914,8 +896,8 @@ module Eval (M : MONADERROR) = struct
       | _ when is_void r_typ ->
           return
             (({ ctx with free_addr = ctxs'.free_addr }, ctx.last_value), pls)
-      | _ -> error "Unexpected jump statement ")
-    else error "Wrong number of arguments"
+      | _ -> error "unexpected jump statement ")
+    else error "wrong number of arguments"
 
   and op ctxs opp e1 e2 convt cur_t palcs =
     eval_expr ctxs convt cur_t palcs e1 >>= fun ((cs, v1), pls) ->
@@ -942,7 +924,7 @@ module Eval (M : MONADERROR) = struct
     | Vint v1'', Vint v2'' -> return @@ Vint (v1'' + v2'')
     | Vaddress (tt, v1''), Vaddress (_, v2'') ->
         return @@ Vaddress (tt, (k1 * v1'') + (k2 * v2''))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _sub ctx v1 v2 =
     cast_ks ctx v1 v2 >>= fun ((k1, v1'), (k2, v2')) ->
@@ -950,7 +932,7 @@ module Eval (M : MONADERROR) = struct
     | Vint v1'', Vint v2'' -> return @@ Vint (v1'' - v2'')
     | Vaddress (tt, v1''), Vaddress (_, v2'') ->
         return @@ Vaddress (tt, (k1 * v1'') - (k2 * v2''))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _mul ctx v1 v2 =
     cast_ks ctx v1 v2 >>= fun ((k1, v1'), (k2, v2')) ->
@@ -958,7 +940,7 @@ module Eval (M : MONADERROR) = struct
     | Vint v1'', Vint v2'' -> return @@ Vint (v1'' * v2'')
     | Vaddress (tt, v1''), Vaddress (_, v2'') ->
         return @@ Vaddress (tt, k1 * v1'' * k2 * v2'')
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _div ctx v1 v2 =
     cast_ks ctx v1 v2 >>= fun ((k1, v1'), (k2, v2')) ->
@@ -966,7 +948,7 @@ module Eval (M : MONADERROR) = struct
     | Vint v1'', Vint v2'' when v2'' <> 0 -> return @@ Vint (v1'' / v2'')
     | Vaddress (tt, v1''), Vaddress (_, v2'') when v2'' <> 0 ->
         return @@ Vaddress (tt, k1 * v1'' / (k2 * v2''))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _mod ctx v1 v2 =
     cast_ks ctx v1 v2 >>= fun ((k1, v1'), (k2, v2')) ->
@@ -974,7 +956,7 @@ module Eval (M : MONADERROR) = struct
     | Vint v1'', Vint v2'' when v2'' <> 0 -> return @@ Vint (v1'' mod v2'')
     | Vaddress (tt, v1''), Vaddress (_, v2'') when v2'' <> 0 ->
         return @@ Vaddress (tt, k1 * v1'' mod (k2 * v2''))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and bool_to_num e = if e then 1 else 0
 
@@ -985,7 +967,7 @@ module Eval (M : MONADERROR) = struct
     vv2 >>= fun n2 ->
     match (n1, n2) with
     | Vint o1, Vint o2 -> return @@ Vint (bool_to_num (o1 > 0 && o2 > 0))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _or ctx v1 v2 =
     let vv1 = conv_to_int ctx v1 in
@@ -994,7 +976,7 @@ module Eval (M : MONADERROR) = struct
     vv2 >>= fun n2 ->
     match (n1, n2) with
     | Vint o1, Vint o2 -> return @@ Vint (bool_to_num (o1 > 0 || o2 > 0))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _lt ctx v1 v2 =
     let vv1 = conv_to_int ctx v1 in
@@ -1003,7 +985,7 @@ module Eval (M : MONADERROR) = struct
     vv2 >>= fun n2 ->
     match (n1, n2) with
     | Vint o1, Vint o2 -> return @@ Vint (bool_to_num (o1 < o2))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _gt ctx v1 v2 =
     let vv1 = conv_to_int ctx v1 in
@@ -1012,7 +994,7 @@ module Eval (M : MONADERROR) = struct
     vv2 >>= fun n2 ->
     match (n1, n2) with
     | Vint o1, Vint o2 -> return @@ Vint (bool_to_num (o1 > o2))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _lte ctx v1 v2 =
     let vv1 = conv_to_int ctx v1 in
@@ -1021,7 +1003,7 @@ module Eval (M : MONADERROR) = struct
     vv2 >>= fun n2 ->
     match (n1, n2) with
     | Vint o1, Vint o2 -> return @@ Vint (bool_to_num (o1 <= o2))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _gte ctx v1 v2 =
     let vv1 = conv_to_int ctx v1 in
@@ -1030,14 +1012,14 @@ module Eval (M : MONADERROR) = struct
     vv2 >>= fun n2 ->
     match (n1, n2) with
     | Vint o1, Vint o2 -> return @@ Vint (bool_to_num (o1 >= o2))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _not ctx v =
     let vv1 = conv_to_int ctx v in
     vv1 >>= fun n ->
     match n with
     | Vint o1 -> return @@ Vint (if not (o1 > 0) then 1 else 0)
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _eq ctx v1 v2 =
     let vv1 = conv_to_int ctx v1 in
@@ -1046,7 +1028,7 @@ module Eval (M : MONADERROR) = struct
     vv2 >>= fun n2 ->
     match (n1, n2) with
     | Vint o1, Vint o2 -> return @@ Vint (bool_to_num (o1 == o2))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and _neq ctx v1 v2 =
     let vv1 = conv_to_int ctx v1 in
@@ -1055,7 +1037,7 @@ module Eval (M : MONADERROR) = struct
     vv2 >>= fun n2 ->
     match (n1, n2) with
     | Vint o1, Vint o2 -> return @@ Vint (bool_to_num (o1 <> o2))
-    | _ -> error "Invalid operands"
+    | _ -> error "invalid operands"
 
   and rewrite_var ctxs name t v addr =
     let addr_fst =
@@ -1066,7 +1048,7 @@ module Eval (M : MONADERROR) = struct
       | Vdval (_, Vaddress (_, ad)) -> return ad
       | Vdval (_, Vstaddress (_, ad)) -> return ad
       | Vdval (_, Varraddress (_, ad)) -> return ad
-      | _ -> error "Var undefined"
+      | _ -> error "var undefined"
     in
     let rec lift_vvs vs acc =
       match vs with
@@ -1125,7 +1107,10 @@ module Eval (M : MONADERROR) = struct
                       a >>= fun a ->
                       (match get_from_heap ctxs a with
                       | Vdval (_ad, vl) -> return (_ad, vl)
-                      | _ -> error "~ANONIM_VALUE_IN_THE_HEAP_EXPECTED~")
+                      | _ ->
+                          error
+                            "not reachable: nameless values have only one \
+                             representation type")
                       >>= fun (_ad, ov) ->
                       match ov with
                       | Vstaddress _ | Varraddress _
@@ -1137,7 +1122,7 @@ module Eval (M : MONADERROR) = struct
                           Hashtbl.replace ctxs.heap _ad (Vdval (_ad, v'));
                           return (a + _inc))
                     (return ad) lifted_vs incs
-                else error "Wrong number of elements"
+                else error "wrong number of elements"
             | _ -> return 0)
             >> return ctxs
         | Vaddress (_, a)
@@ -1150,9 +1135,10 @@ module Eval (M : MONADERROR) = struct
               (CT_ARRAY (l, t), addr, Vrval (name, Varraddress (t, a)));
             Hashtbl.replace ctxs.heap addr (Vrval (name, Varraddress (t, a)));
             return ctxs
-        | _ -> error "Expected set of values")
-    | CT_STRUCT tag -> addr_fst >>= fun _ad -> struct_rwrt ctxs addr tag v
-    | _ -> error "Void - type can't contain anything"
+        | _ -> error "expected set of values")
+    | CT_STRUCT tag ->
+        addr_fst >>= fun _ad -> struct_rwrt conv_v ctxs addr tag v
+    | _ -> error "void - type can't contain anything"
 
   and cast_default_struct_init ctxs tag =
     let rec unpack_t n = function
@@ -1180,7 +1166,7 @@ module Eval (M : MONADERROR) = struct
                   tn (return [])
               in
               g >>= fun x -> return ((CT_STRUCT tag, n) :: x)
-          | None -> error "Struct undeclared")
+          | None -> error "struct undeclared")
       | CT_VOID -> return [ (CT_VOID, n) ]
     in
     unpack_t tag @@ CT_STRUCT tag >>= function
@@ -1192,7 +1178,7 @@ module Eval (M : MONADERROR) = struct
           tl (return [])
         >>= fun vsts ->
         cast_default_init _t >>= fun x -> return (x :: vsts)
-    | _ -> error "~STRUCT_WITHOUT_FIELDS~"
+    | _ -> error "not reachable: struct without fields couldn't be parsed"
 
   and cast_default_init_fstb ctxs = function
     | CT_INT -> return @@ Vint 0
@@ -1253,7 +1239,7 @@ module Eval (M : MONADERROR) = struct
     in
     destruct [] t
 
-  and struct_rwrt ctxs _ad tag r =
+  and struct_rwrt conv_v ctxs _ad tag r =
     let addr_fst =
       match get_from_heap ctxs _ad with
       | Vrval (_, Vaddress (_, ad)) -> return ad
@@ -1262,7 +1248,7 @@ module Eval (M : MONADERROR) = struct
       | Vdval (_, Vaddress (_, ad)) -> return ad
       | Vdval (_, Vstaddress (_, ad)) -> return ad
       | Vdval (_, Varraddress (_, ad)) -> return ad
-      | _ -> error "Var undefined"
+      | _ -> error "incompatible type"
     in
     let rec lift_vvs vs acc =
       match vs with
@@ -1312,7 +1298,7 @@ module Eval (M : MONADERROR) = struct
                   a >>= fun a ->
                   (match get_from_heap ctxs a with
                   | Vdval (_ad, Vstructval (nm, vl)) -> return (_ad, nm, vl)
-                  | _ -> return (0, "", Vint 0))
+                  | _ -> return (a, "", Vint 0))
                   >>= fun (_ad, nm, ov) ->
                   match ov with
                   | Vstaddress _ | Varraddress _ -> return (a + inc)
@@ -1322,13 +1308,13 @@ module Eval (M : MONADERROR) = struct
                         (Vdval (_ad, Vstructval (nm, v')));
                       return (a + inc))
                 (return ad) lifted_vs incs
-            else error "Wrong number of elements"
+            else error "wrong number of elements"
         | Vvalues (Vstaddress (_, _) :: dvs)
           when List.length vs <> List.length dvs ->
-            error "Wrong number of elements"
-        | _ -> error "Type error")
+            error "wrong number of elements"
+        | _ -> error "type error")
         >> return ctxs
-    | _ -> error "Type error"
+    | _ -> error "type error"
 
   and assign ctxs l_expr r_expr convt cur_t palcs =
     let get_ptr_t = function CT_PTR tt -> tt | _ -> CT_VOID in
@@ -1379,15 +1365,22 @@ module Eval (M : MONADERROR) = struct
             pack_addr = ctxs'.pack_addr;
           }
         in
+        let conv_v' ctx v _v =
+          match _v with
+          | Vstaddress (tag, a) ->
+              Hashtbl.replace ctx.heap a @@ Vdval (a, v);
+              return @@ Vstaddress (tag, a)
+          | _ -> conv_v ctx v _v
+        in
         (match (fst p).cur_t with
-        | CT_STRUCT tag -> struct_rwrt cs _ad tag r >> return ()
-        | CT_ARRAY _ -> error "Multiple array wasn't implemented"
+        | CT_STRUCT tag -> struct_rwrt conv_v' cs _ad tag r >> return ()
+        | CT_ARRAY _ -> error "multiple array wasn't implemented"
         | _ ->
-            conv_v cs (get_val r) _v >>= fun r' ->
+            conv_v' cs (get_val r) _v >>= fun r' ->
             Hashtbl.replace cs.heap _ad (Vdval (_ad, get_val r'));
             return ())
         >> return (cs, pls)
-    | _ -> error "~UNEXPECTED_VALUE_FOR_ASSIGNING~"
+    | _ -> error "not reachable: assigning has already checked in parser"
 
   and declare ctxs name t expr rwrt _ cur_t palcs =
     let prfx = "." in
@@ -1402,7 +1395,7 @@ module Eval (M : MONADERROR) = struct
     | Some _ when rwrt ->
         Hashtbl.remove ctxs.vars name;
         return ctxs
-    | Some _ -> error @@ "name " ^ name ^ " already using "
+    | Some _ -> error @@ "name already using "
     | None -> return ctxs)
     >>= fun ctxs ->
     (match t with
@@ -1451,7 +1444,9 @@ module Eval (M : MONADERROR) = struct
             Hashtbl.replace ctx'.vars name (t, a, Vrval (n, Vglob (a, v)));
             Hashtbl.replace ctx'.heap a (Vrval (n, Vglob (a, v)));
             return { ctx' with globs = a :: ctx'.globs }
-        | _ -> error "~UNEXPECTED_ANONIM_VALUE_IN_THE_VARS!!!~")
+        | _ ->
+            error
+              "not reachable: named values have only one representation type")
     | _ -> return ctx
 
   and create_arr ctxs name vvs = function
@@ -1547,7 +1542,7 @@ module Eval (M : MONADERROR) = struct
     let vs =
       List.map
         (fun x ->
-          get_from_vars ct x "can't find var" >>= function
+          get_from_vars ct x @@ "demo: can't find var: " ^ x >>= function
           | _, _, hv -> return @@ get_val @@ Vhval hv)
         vrs
     in
@@ -1556,17 +1551,8 @@ module Eval (M : MONADERROR) = struct
         xx >>= fun x ->
         acc >>= fun ac -> return @@ ac ^ n ^ " ~ " ^ show_v_value x ^ "\n")
       (return "") vrs vs
-
-  let eval_dd stmts _ =
-    add_null (() |> make_exec_ctx) >>= fun ctx ->
-    collect ctx stmts >>= fun ct ->
-    let ct = { ct with pack_addr = ct.free_addr } in
-    eval_stmt ct false CT_INT CT_VOID [ (max_int, max_int) ]
-    @@ EXPRESSION (FUNC_CALL ("main", []))
-    >>= fun (ct, als) -> return @@ dbg_print ct als
 end
 
 module E = Eval (Result)
 
 let eval_d prg = E.eval_d prg
-let eval_dd prg = E.eval_dd prg

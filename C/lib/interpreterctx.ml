@@ -63,10 +63,18 @@ and allocated = (int * int) list [@@deriving show { with_path = false }]
 and strct_bgns = (int, string) Ast.Hashtbl.t
 [@@deriving show { with_path = false }]
 
-let concat xs =
-  let buf = Buffer.create 16 in
-  List.iter (Buffer.add_string buf) xs;
-  Buffer.contents buf
+let fmt_list fa fmt xs =
+  let () =
+    match xs with
+    | [] -> ()
+    | x :: xs ->
+        Format.fprintf fmt "%a" fa x;
+        List.iter (Format.fprintf fmt "%a" fa) xs
+  in
+  Format.fprintf fmt ""
+
+let concat =
+  Format.asprintf "%a" (fmt_list (fun fmt -> Format.fprintf fmt "%s"))
 
 let make_exec_ctx () =
   {

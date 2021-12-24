@@ -63,8 +63,11 @@ and allocated = (int * int) list [@@deriving show { with_path = false }]
 and strct_bgns = (int, string) Ast.Hashtbl.t
 [@@deriving show { with_path = false }]
 
-let pp ppf (ac, n, v) = Format.fprintf ppf "%s%s ~ %s\n" ac n v
-let concat = Format.asprintf "%a" pp
+let pp_spair ppf (n, v) = Format.fprintf ppf "%s ~ %s\n" n v
+let pp_mpt ppf () = Format.fprintf ppf ""
+
+let pp_int_list ppf ps =
+  Format.fprintf ppf "%a" Format.(pp_print_list ~pp_sep:pp_mpt pp_spair) ps
 
 let make_exec_ctx () =
   {
@@ -1536,8 +1539,9 @@ module Eval (M : MONADERROR) = struct
     List.fold_left2
       (fun acc n xx ->
         xx >>= fun x ->
-        acc >>= fun ac -> return @@ concat (ac, n, show_v_value x))
-      (return "") vrs vs
+        acc >>= fun ac -> return @@ ((n, show_v_value x) :: ac))
+      (return []) vrs vs
+    >>= fun x -> return @@ Format.asprintf "%a" pp_int_list @@ List.rev x
 end
 
 module E = Eval (Result)

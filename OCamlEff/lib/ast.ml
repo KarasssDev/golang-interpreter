@@ -14,6 +14,8 @@ type tyexp =
   | TTuple of tyexp list (**  int list * string   *)
   | TVar of binder (**  1 (polymorphic type)   *)
   | TArrow of tyexp * tyexp (**   string -> int   *)
+  | TEffect1 of tyexp (**  (int -> int)  *)
+  | TEffect2 of tyexp * tyexp (**  (int -> int) -> string  *)
 [@@deriving show { with_path = false }]
 
 type infix_op =

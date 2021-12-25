@@ -126,8 +126,6 @@ let eapp = return (fun e1 e2 -> EApp (e1, e2))
 let ematch e cases = EMatch (e, cases)
 let efun args rhs = List.fold_right args ~f:efun ~init:rhs
 let eop o e1 e2 = EOp (o, e1, e2)
-let eperform id exp = EPerform (id, exp)
-let econtinue id exp = EContinue (id, exp)
 let elist = List.fold_right ~f:econs ~init:ENil
 
 (*-------------- Case ctors --------------*)
@@ -143,7 +141,6 @@ let pwild _ = PWild
 let pvar id = PVar id
 let pconst c = PConst c
 let ptuple l = PTuple l
-let peffecth eff_id pat k_id = PEffectH (eff_id, pat, k_id)
 let popcons = token "::" *> return (fun p1 p2 -> PCons (p1, p2))
 let pcons = return @@ fun p1 p2 -> PCons (p1, p2)
 let plist = List.fold_right ~f:(fun p1 p2 -> PCons (p1, p2)) ~init:PNil
@@ -151,7 +148,6 @@ let plist = List.fold_right ~f:(fun p1 p2 -> PCons (p1, p2)) ~init:PNil
 (*-------------- Decl ctors --------------*)
 
 let dlet isrec p e = DLet (isrec, p, e)
-let deff p te = DEffect (p, te)
 
 (*-------------- Concinutation ctors --------------*)
 
@@ -254,19 +250,13 @@ let pwild = token "_" >>| pwild
 let pconst = const >>| pconst
 
 type pdispatch =
-  { effecth: pdispatch -> pat t
-  ; tuple: pdispatch -> pat t
+  { tuple: pdispatch -> pat t
   ; cons: pdispatch -> pat t
   ; pat: pdispatch -> pat t
   }
 
 let pack =
-  let pat d = fix @@ fun _self -> trim @@ choice [ d.effecth d; d.tuple d; d.cons d ] in
-  let effecth d =
-    fix
-    @@ fun _self ->
-    kwd "effect" *> lift3 peffecth (lp *> trim effect) (d.pat d <* rp) (trim continuation)
-  in
+  let pat d = fix @@ fun _self -> trim @@ choice [ d.tuple d; d.cons d ] in
   let tuple d =
     fix
     @@ fun _self ->
@@ -280,7 +270,7 @@ let pack =
     let prim = trim @@ choice [ pconst; pvar; pwild; plist; parens @@ d.pat d ] in
     trim @@ chainr1 prim popcons
   in
-  { effecth; tuple; cons; pat }
+  { tuple; cons; pat }
 ;;
 
 let pat = pack.pat pack
@@ -323,11 +313,7 @@ let pack =
       let pfunction = kwd "function" *> cases >>| efunction in
       trim @@ pfunction <|> pmatch
     in
-    let eperform =
-      trim @@ (kwd "perform" *> (parens @@ lift2 eperform effect (d.exp d)))
-    in
-    let econtinue = trim @@ (kwd "continue" *> lift2 econtinue continuation (d.exp d)) in
-    choice [ elet; eif; eperform; econtinue; ematch; efun ]
+    choice [ elet; eif; ematch; efun ]
   in
   let tuple d =
     lift2 ( @ ) (many1 (d.op d <* comma)) (d.op d <|> d.key d >>| fun rhs -> [ rhs ])
@@ -399,8 +385,7 @@ let decl =
       pat
       (lift2 efun (empty *> many pat <* token "=") exp)
   in
-  let deff = lift2 deff (kwd "effect" *> capitalized_ident <* colon) tyexp in
-  trim @@ deff <|> dlet
+  trim @@ dlet
 ;;
 
 (*-------------- Prog parsing --------------*)

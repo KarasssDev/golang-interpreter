@@ -1,4 +1,4 @@
-open Ast
+(* open Ast
 open Env
 
 type effval = EffectH of pat * ident * exp
@@ -51,7 +51,7 @@ let rec vars_pat = function
   | PVar name -> [ name ]
   | PCons (pat1, pat2) -> vars_pat pat1 @ vars_pat pat2
   (* | PTuple pats | PList pats ->
-    List.fold_left (fun binds pat -> binds @ vars_pat pat) [] pats TODO: FIX *)
+     List.fold_left (fun binds pat -> binds @ vars_pat pat) [] pats TODO: FIX *)
   | _ -> raise Match_fail
 ;;
 
@@ -61,8 +61,8 @@ let rec match_pat pat var =
   | PVar name, v -> [ name, v ]
   | PCons (pat1, pat2), ListV (hd :: tl) -> match_pat pat1 hd @ match_pat pat2 (ListV tl)
   (* | (PTuple pats, TupleV vars | PList pats, ListV vars)
-    when List.length pats = List.length vars ->
-    List.fold_left2 (fun binds pat var -> binds @ match_pat pat var) [] pats vars TODO: FIX *)
+     when List.length pats = List.length vars ->
+     List.fold_left2 (fun binds pat var -> binds @ match_pat pat var) [] pats vars TODO: FIX *)
   | PConst x, v ->
     (match x, v with
     | CInt a, IntV b when a = b -> []
@@ -305,12 +305,12 @@ let%test _ = eval_test [ DLet (false, PVar "x", EConst (CInt 1)) ] "x -> 1 "
    let (x, y) = (1, 2)
 *)
 (* let%test _ =
-  eval_test
+   eval_test
     [ DLet
         (false, PTuple [ PVar "x"; PVar "y" ], ETuple [ EConst (CInt 1); EConst (CInt 2) ])
     ]s
     "x -> 1 y -> 2 "
-;; *)
+   ;; *)
 
 (* Eval test 3 *)
 
@@ -474,7 +474,7 @@ let%test _ =
    let x = fact 3
 *)
 (* let%test _ =
-  eval_test
+   eval_test
     [ DLet
         ( true
         , PVar "fact"
@@ -494,7 +494,7 @@ let%test _ =
     ; DLet (false, PVar "x", EApp (EVar "fact", EConst (CInt 3)))
     ]
     "fact -> n x -> 6 "
-;; *)
+   ;; *)
 
 (* Eval test 13 *)
 
@@ -585,3 +585,21 @@ let%test _ =
     ]
     "Failure -> eff helper -> x matcher -> x y -> 0 "
 ;;
+
+let%test _ =
+  test
+    {|
+
+let rec fold init f = function 
+  | [] -> init 
+  | x :: xs -> fold (f init x) f xs
+
+let list  = 5 :: [1; 2; 3; 4; 5];;
+
+let l = fold 0 (fun x y -> x + y) [1; 2; 3];;
+
+|}
+    ""
+;;
+
+TODO: FIX PATTERN MATCHING *)

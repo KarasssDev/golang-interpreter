@@ -43,7 +43,6 @@ and const =
 [@@deriving show { with_path = false }]
 
 and binding = bool * pat * exp [@@deriving show { with_path = false }]
-
 and case = pat * exp [@@deriving show { with_path = false }]
 
 and exp =
@@ -59,12 +58,13 @@ and exp =
   | EFun of pat * exp (**    fun x,y,z -> x + y * z    *)
   | EApp of exp * exp (**    fold f list init    *)
   | EMatch of exp * case list (**    match lst with [] -> 0 | hd :: tl -> hd    *)
-  | EPerform of effect * exp (**    perform (Choice x)   *)
-  | EContinue of continuation * exp (**    continue k (x - 1)    *)
+  | Effect1 of capitalized_ident (** E *)
+  | Effect2 of capitalized_ident * exp (** E 1 *)
+  | EPerform of exp (** perform (E 1) *)
+  | EContinue of ident * exp (** continue k (2 + 5) *)
 [@@deriving show { with_path = false }]
 
 and continuation = Continuation of ident [@@deriving show { with_path = false }]
-
 and effect = Effect of capitalized_ident [@@deriving show { with_path = false }]
 
 and pat =
@@ -74,12 +74,15 @@ and pat =
   | PCons of pat * pat (**  hd :: tl  *)
   | PNil
   | PTuple of pat list (**  a, b   *)
-  | PEffectH of effect * pat * continuation (**  effect (Choice x) k *)
+  | PEffect1 of capitalized_ident (** E *)
+  | PEffect2 of capitalized_ident * pat (** E (a :: b) *)
+  | PEffectH of pat * ident (** effect x k *)
 [@@deriving show { with_path = false }]
 
 and decl =
   | DLet of binding (**  let x = 10   *)
-  | DEffect of ident * tyexp (**  effect E : int -> int  *)
+  | DEffect1 of tyexp (** effect E: int *)
+  | DEffect2 of tyexp * tyexp (** effect E: int -> string *)
 [@@deriving show { with_path = false }]
 
 and prog = decl list [@@deriving show { with_path = false }]

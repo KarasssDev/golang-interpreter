@@ -17,6 +17,8 @@ and exval =
   | FunV of pat * exp * state
   | Eff1V of capitalized_ident
   | Eff2V of capitalized_ident * exval
+  | EffDec1V of capitalized_ident * tyexp
+  | EffDec2V of capitalized_ident * tyexp * tyexp
   | ContV of ident
 
 let str_converter = function
@@ -40,6 +42,8 @@ let rec exval_to_str = function
   | Eff2V (name, exval) ->
     Printf.sprintf "%s eff with %s inside" name (exval_to_str exval)
   | ContV name -> Printf.sprintf "%s cont" name
+  | EffDec1V (name, _) -> Printf.sprintf "%s eff dec, 1 arg" name
+  | EffDec2V (name, _, _) -> Printf.sprintf "%s eff dec, 2 arg" name
 ;;
 
 let lookup_in_env id state = lookup_id_map id state.env
@@ -266,7 +270,12 @@ let eval_dec state = function
         List.fold_left (fun state (id, v) -> extend_env id v state) state binds
       in
       state)
-  | _ -> failwith "unimpl"
+  | DEffect1 (name, tyexp) ->
+    let state = extend_env name (EffDec1V (name, tyexp)) state in
+    state
+  | DEffect2 (name, tyexp1, tyexp2) ->
+    let state = extend_env name (EffDec2V (name, tyexp1, tyexp2)) state in
+    state
 ;;
 
 (* | DEffect (name, tp) -> extend_env name (EffV tp) state *)
@@ -571,15 +580,15 @@ let%test _ =
    let y = matcher 1 <- must be 3 upon success
 *)
 (* TODO: fix this test *)
-(* let%test _ =
+let%test _ =
   eval_test
-    [ DEffect ("Failure", TArrow (TInt, TInt))
+    [ DEffect2 ("Failure", TInt, TInt)
     ; DLet
         ( false
         , PVar "helper"
         , EFun
-            (PVar "x", EOp (Add, EConst (CInt 1), EPerform (Effect "Failure", EVar "x")))
-        )
+            ( PVar "x"
+            , EOp (Add, EConst (CInt 1), EPerform (Effect2 ("Failure", EVar "x"))) ) )
     ; DLet
         ( false
         , PVar "matcher"
@@ -587,15 +596,15 @@ let%test _ =
             ( PVar "x"
             , EMatch
                 ( EApp (EVar "helper", EVar "x")
-                , [ ( PEffectH (Effect "Failure", PVar "s", Continuation "k")
-                    , EContinue (Continuation "k", EOp (Add, EConst (CInt 1), EVar "s")) )
+                , [ ( PEffectH (PEffect2 ("Failure", PVar "s"), "k")
+                    , EContinue ("k", EOp (Add, EConst (CInt 1), EVar "s")) )
                   ; PConst (CInt 3), EConst (CInt 0)
                   ; PWild, EConst (CInt 100)
                   ] ) ) )
     ; DLet (false, PVar "y", EApp (EVar "matcher", EConst (CInt 1)))
     ]
-    "Failure -> eff helper -> x matcher -> x y -> 0 "
-;; *)
+    "Failure -> Failure eff dec, 2 arg helper -> x matcher -> x y -> 0 "
+;;
 
 (* let%test _ =
   test

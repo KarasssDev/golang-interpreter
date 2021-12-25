@@ -129,6 +129,7 @@ module Type = struct
     | TInt | TBool | TString -> false
     | TList tyexp -> occurs_in v tyexp
     | TTuple tyexp_l -> List.exists (fun tyexp -> occurs_in v tyexp) tyexp_l
+    | _ -> failwith "unimpl"
   ;;
 
   let free_vars =
@@ -138,6 +139,7 @@ module Type = struct
       | TArrow (l, r) -> helper (helper acc l) r
       | TList tyexp -> helper acc tyexp
       | TTuple tyexp_l -> List.fold_left (fun acc tyexp -> helper acc tyexp) acc tyexp_l
+      | _ -> failwith "unimpl"
     in
     helper VarSet.empty
   ;;
@@ -238,6 +240,7 @@ let rec tyexp_to_st = function
   | TTuple l ->
     let line = List.fold_left (fun ln tyexp -> ln ^ ";" ^ tyexp_to_st tyexp) "" l in
     String.concat "" [ "("; line; ")" ]
+  | _ -> failwith "unimpl"
 ;;
 
 let print_subst s =
@@ -379,28 +382,24 @@ let infer_exp =
   helper
 ;;
 
-let infer_decl =
-  let rec (helper : TypeContext.t -> decl -> TypeContext.t R.t) =
-   fun context -> function
-    | DLet binding ->
-      (match binding with
-      | false, PVar x, exp ->
-        let* s1, t1 = infer_exp context exp in
-        let context2 = TypeContext.apply s1 context in
-        let t2 = generalize context2 t1 in
-        return (TypeContext.extend context2 x t2)
-      | true, PVar x, exp ->
-        let* fresh = fresh_var in
-        let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
-        let* s1, t1 = infer_exp context exp in
-        let* _ = unify fresh t1 in
-        let context2 = TypeContext.apply s1 context in
-        let t2 = generalize context2 t1 in
-        return (TypeContext.extend context2 x t2)
-      | _ -> failwith "typing error")
-    | _ -> failwith "unimpl"
-  in
-  helper
+let infer_decl context = function
+  | DLet binding ->
+    (match binding with
+    | false, PVar x, exp ->
+      let* s1, t1 = infer_exp context exp in
+      let context2 = TypeContext.apply s1 context in
+      let t2 = generalize context2 t1 in
+      return (TypeContext.extend context2 x t2)
+    | true, PVar x, exp ->
+      let* fresh = fresh_var in
+      let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
+      let* s1, t1 = infer_exp context exp in
+      let* _ = unify fresh t1 in
+      let context2 = TypeContext.apply s1 context in
+      let t2 = generalize context2 t1 in
+      return (TypeContext.extend context2 x t2)
+    | _ -> failwith "typing error")
+  | _ -> failwith "unimpl"
 ;;
 
 let error_to_st = function
@@ -442,7 +441,7 @@ let test_infer prog =
   | Failure _ -> false
 ;;
 
-let%test _ =
+(* let%test _ =
   test_infer [ DLet (false, PVar "x", ETuple [ EConst (CInt 5); EConst (CInt 6) ]) ]
 ;;
 
@@ -461,4 +460,4 @@ let%test _ =
     [ DLet
         (false, PVar "x", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
     ]
-;;
+;; *)

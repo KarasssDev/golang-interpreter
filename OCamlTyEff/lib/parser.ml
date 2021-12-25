@@ -233,8 +233,15 @@ let pematch pexpr =
     (many1 @@ pcase ppatrn pexpr)
 ;;
 
+let pparm =
+  fix
+  @@ fun pparam ->
+  pparens pparam <|> lift2 (fun s t -> s, t) (ptoken pid <* pstoken ":") pty
+;;
+
 let pefun pexpr =
-  pstoken "fun" *> lift3 e_fun (ptoken1 pid <* pstoken ":") (pty <* pstoken "->") pexpr
+  pstoken "fun"
+  *> lift2 (fun (s, t) e -> e_fun s t e) (ptoken1 pparm <* pstoken "->") pexpr
 ;;
 
 let peapp pexpr = lift2 e_app pexpr (ptoken1 pexpr)
@@ -382,7 +389,7 @@ let%test _ =
   test_parse
     {|
 let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 'c list = 
-  fun f: ('a --> 'b -['e]-> 'c) ->
+  fun (f: ('a --> 'b -['e]-> 'c)) ->
     fun l1: 'a list -> fun l2: 'b list ->
   match (l1, l2) with
   | ([], []) -> []

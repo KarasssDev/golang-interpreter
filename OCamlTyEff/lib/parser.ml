@@ -196,12 +196,13 @@ let ppatrn =
   @@ fun ppatrn ->
   let term = choice [ pparens ppatrn; ppconst; ppval ] in
   let term =
-    (fun l ->
-      match List.rev l with
-      | [ p ] -> p
-      | hd :: tl -> p_cons (List.rev tl) hd
-      | _ -> failwith "Can't happen because of sep_by1")
-    <$> sep_by1 (pstoken "::") term
+    lift2
+      (fun ptrn ptrns ->
+        match List.rev ptrns with
+        | [] -> ptrn
+        | hd :: tl -> p_cons (ptrn :: List.rev tl) hd)
+      term
+      (many (pstoken "::" *> term))
   in
   (fun l ->
     match l with
@@ -329,7 +330,7 @@ let test_parse str expected =
       printf "Expected: ";
       pp_program std_formatter expected;
       printf "\nActual: ";
-      pp_program std_formatter expected;
+      pp_program std_formatter actual;
       printf "\n");
     is_eq
 ;;
@@ -616,6 +617,30 @@ let x: int = a1, a2 || a3 && a4 != a5 = a6 >= a7 > a8 <= a9 < a10 :: a11 - a12 *
                                                         , EVal "a17" ) ) ) ) ) ) ) ) ) )
                 )
             ]
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    {|
+let x: int = match l with | 1 :: 2 :: 3 :: 4 :: [] -> 5
+|}
+    [ { is_rec = false
+      ; name = "x"
+      ; ty = TInt
+      ; expr =
+          EMatch
+            ( EVal "l"
+            , [ ( PCons
+                    ( [ PConst (CInt 1)
+                      ; PConst (CInt 2)
+                      ; PConst (CInt 3)
+                      ; PConst (CInt 4)
+                      ]
+                    , PConst CEmptyList )
+                , EConst (CInt 5) )
+              ] )
       }
     ]
 ;;

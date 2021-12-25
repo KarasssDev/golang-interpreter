@@ -117,7 +117,7 @@ and mrg_subst subst1 subst2 =
     BindMap.fold
       (fun name ty subst ->
         match BindMap.find_opt name subst.ty with
-        | None -> { ty = BindMap.add name ty subst.ty; effs = subst.effs }
+        | None -> { subst with ty = BindMap.add name ty subst.ty }
         | Some ty2 -> deduce_subst ty ty2 subst)
       subst2.ty
       subst1
@@ -125,7 +125,7 @@ and mrg_subst subst1 subst2 =
   BindMap.fold
     (fun name effs subst ->
       match BindMap.find_opt name subst.effs with
-      | None -> { ty = subst.ty; effs = BindMap.add name effs subst.effs }
+      | None -> { subst with effs = BindMap.add name effs subst.effs }
       | Some effs2 -> deduce_effs_subst effs effs2 subst)
     subst2.effs
     subst
@@ -251,7 +251,8 @@ let rec bind_ty_eff_vars env ty =
   | TTuple l -> TTuple (List.map (fun t -> bind_ty_eff_vars env t) l)
   | TList t -> TList (bind_ty_eff_vars env t)
   | TRef t -> TRef (bind_ty_eff_vars env t)
-  | TVar name -> if is_bound name env.ty_bvars then TBoundVar name else ty
+  | TVar name when is_bound name env.ty_bvars -> TBoundVar name
+  | TVar _ -> ty
   | TFun (ty1, effs, ty2) ->
     TFun (bind_ty_eff_vars env ty1, bind_eff_vars env effs, bind_ty_eff_vars env ty2)
 ;;
@@ -268,7 +269,8 @@ let rec unbind_ty_eff_vars env ty =
   | TTuple l -> TTuple (List.map (fun t -> unbind_ty_eff_vars env t) l)
   | TList t -> TList (unbind_ty_eff_vars env t)
   | TRef t -> TRef (unbind_ty_eff_vars env t)
-  | TBoundVar name -> if is_bound name env.ty_bvars then TVar name else ty
+  | TBoundVar name when is_bound name env.ty_bvars -> TVar name
+  | TBoundVar _ -> ty
   | TFun (ty1, effs, ty2) ->
     TFun (unbind_ty_eff_vars env ty1, unbind_eff_vars env effs, unbind_ty_eff_vars env ty2)
 ;;
@@ -306,18 +308,15 @@ let rec case_decls ty ptrn =
 ;;
 
 let case_env ty ptrn env =
-  { decls = BindMap.add_seq (BindMap.to_seq (case_decls ty ptrn)) env.decls
-  ; ty_bvars = env.ty_bvars
-  ; eff_bvars = env.eff_bvars
-  }
+  { env with decls = BindMap.add_seq (BindMap.to_seq (case_decls ty ptrn)) env.decls }
 ;;
 
 let check_assignable decl_ty val_ty env =
   let new_ty_bvars, new_eff_bvars = all_ty_eff_vars decl_ty in
   let bind_env =
-    { decls = env.decls
+    { env with
+      eff_bvars = BindSet.add_seq (BindSet.to_seq new_eff_bvars) env.eff_bvars
     ; ty_bvars = BindSet.add_seq (BindSet.to_seq new_ty_bvars) env.ty_bvars
-    ; eff_bvars = BindSet.add_seq (BindSet.to_seq new_eff_bvars) env.eff_bvars
     }
   in
   let _ = deduce_subst (bind_ty_eff_vars bind_env decl_ty) val_ty in
@@ -379,12 +378,7 @@ let rec infer_ty_effs env expr =
       TTuple tys, List.fold_left (fun e1 e2 -> EffSet.union e1 e2) EffSet.empty effss
     | ELet (decl, expr) ->
       let decl_ty = safe_ty (bind_ty_eff_vars env decl.ty) in
-      let new_env =
-        { decls = BindMap.add decl.name decl_ty env.decls
-        ; ty_bvars = env.ty_bvars
-        ; eff_bvars = env.eff_bvars
-        }
-      in
+      let new_env = { env with decls = BindMap.add decl.name decl_ty env.decls } in
       let val_ty, val_effs =
         infer_ty_effs (if decl.is_rec then new_env else env) decl.expr
       in
@@ -407,18 +401,13 @@ let rec infer_ty_effs env expr =
       let arg_ty = bind_ty_eff_vars env arg_ty in
       let new_ty_bvars, new_eff_bvars = all_ty_eff_vars arg_ty in
       let env =
-        { decls = env.decls
+        { env with
+          eff_bvars = BindSet.add_seq (BindSet.to_seq new_eff_bvars) env.eff_bvars
         ; ty_bvars = BindSet.add_seq (BindSet.to_seq new_ty_bvars) env.ty_bvars
-        ; eff_bvars = BindSet.add_seq (BindSet.to_seq new_eff_bvars) env.eff_bvars
         }
       in
       let arg_ty = bind_ty_eff_vars env arg_ty in
-      let env =
-        { decls = BindMap.add arg arg_ty env.decls
-        ; ty_bvars = env.ty_bvars
-        ; eff_bvars = env.eff_bvars
-        }
-      in
+      let env = { env with decls = BindMap.add arg arg_ty env.decls } in
       let ret_ty, effs = infer_ty_effs env expr in
       let unbind_env =
         { decls = BindMap.empty; ty_bvars = new_ty_bvars; eff_bvars = new_eff_bvars }
@@ -468,12 +457,7 @@ let check_program =
   List.fold_left
     (fun env (decl : decl) ->
       let decl_ty = safe_ty (bind_ty_eff_vars env decl.ty) in
-      let new_env =
-        { decls = BindMap.add decl.name decl_ty env.decls
-        ; ty_bvars = env.ty_bvars
-        ; eff_bvars = env.eff_bvars
-        }
-      in
+      let new_env = { env with decls = BindMap.add decl.name decl_ty env.decls } in
       let val_ty, _ = infer_ty_effs (if decl.is_rec then new_env else env) decl.expr in
       check_assignable decl_ty val_ty env;
       new_env)

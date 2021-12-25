@@ -509,9 +509,8 @@ let s: string = try f true with
       ; expr =
           ETry
             ( EApp (EVal "f", EConst (CBool true))
-            , [ Exc1, EApp (EVal "raise2", ETuple [])
-              ; Exc2, EConst (CString "literal")
-              ] )
+            , [ Exc1, EApp (EVal "raise2", ETuple []); Exc2, EConst (CString "literal") ]
+            )
       }
     ]
 ;;

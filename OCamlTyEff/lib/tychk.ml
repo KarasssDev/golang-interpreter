@@ -1,50 +1,18 @@
 open Ast
 open Format
 open Printexc
-module BindMap = Map.Make (String)
-module BindSet = Set.Make (String)
+open Bind
+
+exception Incorrect_ty
+exception Occurs_fail
+exception Empty_macth
+exception Matching_rebound (* inside pattern *)
 
 type ty_map = ty BindMap.t
 type effs_map = eff_set BindMap.t
 
-exception Incorrect_ty
-exception Occurs_fail
-exception Not_bound of string
-exception Empty_macth
-exception Matching_rebound
-
-let find_bind map name =
-  try BindMap.find name map with
-  | Not_found -> raise (Not_bound name)
-;;
-
-let is_bound set name =
-  try
-    let _ = BindSet.find set name in
-    true
-  with
-  | Not_found -> false
-;;
-
-let pp_ty_map fmt map =
-  BindMap.fold
-    (fun k v _ ->
-      Format.fprintf fmt "%s=" k;
-      pp_ty fmt v;
-      Format.fprintf fmt "\n")
-    map
-    ()
-;;
-
-let pp_effs_map fmt map =
-  BindMap.fold
-    (fun k v _ ->
-      Format.fprintf fmt "%s=" k;
-      pp_eff_set fmt v;
-      Format.fprintf fmt "\n")
-    map
-    ()
-;;
+let pp_ty_map = pp_bind_map pp_ty
+let pp_effs_map = pp_bind_map pp_eff_set
 
 let concrete_effs =
   EffSet.filter (function
@@ -52,7 +20,7 @@ let concrete_effs =
       | _ -> true)
 ;;
 
-let eff_vars effs =
+let var_effs effs =
   List.of_seq
     (Seq.filter_map
        (function
@@ -61,7 +29,7 @@ let eff_vars effs =
        (EffSet.to_seq effs))
 ;;
 
-let split_effs effs = concrete_effs effs, eff_vars effs
+let split_effs effs = concrete_effs effs, var_effs effs
 
 type subst =
   { ty : ty_map
@@ -79,139 +47,79 @@ let double_ty_subst name1 name2 ty =
 
 let effs_subst effs = { ty = BindMap.empty; effs }
 let single_effs_subst name ty = effs_subst (BindMap.singleton name ty)
-
-let double_effs_subst name1 name2 ty =
-  effs_subst (BindMap.add name2 ty (BindMap.singleton name1 ty))
-;;
-
 let next_id = ref 0
 
-let safe_tvar_name name =
+let safe_name () =
   next_id := !next_id + 1;
   string_of_int !next_id
 ;;
 
-(* ^ string_of_int (Random.bits ())
-  ^ string_of_int (Random.bits ())
-  ^ string_of_int (Random.bits ())
-  ^ string_of_int (Random.bits ()) *)
+let safe_tvar () = TVar (safe_name ())
+let safe_eff_var () = EffVar (safe_name ())
 
-let rec deduce_subst prmty argty subst =
-  (* Format.fprintf std_formatter "\nprmty=";
-  pp_ty std_formatter prmty;
-  Format.fprintf std_formatter "\nargty=";
-  pp_ty std_formatter argty;
-  Format.fprintf std_formatter "\nsubst=";
-  pp_subst std_formatter subst;
-  Format.fprintf std_formatter "\n"; *)
-  match prmty, argty with
+let rec deduce_subst prm_ty arg_ty subst =
+  match prm_ty, arg_ty with
   | TInt, TInt | TString, TString | TBool, TBool | TTuple [], TTuple [] -> subst
-  | TExc prmexc, TExc argexc when equal_exc prmexc argexc -> subst
-  | TBoundVar prmbvar, TBoundVar argbvar when prmbvar = argbvar -> subst
-  | TTuple prmtys, TTuple argtys ->
+  | TExc prm_exc, TExc arg_exc when equal_exc prm_exc arg_exc -> subst
+  | TBoundVar prm_bvar, TBoundVar arg_bvar when prm_bvar = arg_bvar -> subst
+  | TTuple prm_tys, TTuple arg_tys ->
     mrg_substs
-      (List.map2 (fun prmty argty -> deduce_subst prmty argty subst) prmtys argtys)
-  | TList argty, TList prmty | TRef argty, TRef prmty -> deduce_subst argty prmty subst
-  | TFun (aaty, aeffs, apty), TFun (paty, peffs, ppty) ->
+      (List.map2 (fun prm_ty arg_ty -> deduce_subst prm_ty arg_ty subst) prm_tys arg_tys)
+  | TList arg_ty, TList prm_ty | TRef arg_ty, TRef prm_ty ->
+    deduce_subst prm_ty arg_ty subst
+  | TFun (aa_ty, a_effs, ap_ty), TFun (pa_ty, p_effs, pp_ty) ->
     mrg_substs
-      [ deduce_subst aaty paty subst
-      ; deduce_subst ppty apty subst
-      ; deduce_effs_subst peffs aeffs subst
+      [ deduce_subst aa_ty pa_ty subst
+      ; deduce_subst pp_ty ap_ty subst
+      ; deduce_effs_subst p_effs a_effs subst
       ]
-  | TVar pname, TVar aname when pname = aname -> subst
-  | TBoundVar pname, TBoundVar aname when pname = aname -> subst
-  | TVar pname, TVar aname ->
-    (match BindMap.find_opt pname subst.ty, BindMap.find_opt aname subst.ty with
-    | None, None ->
-      mrg_subst
-        subst
-        (double_ty_subst pname aname (TVar (safe_tvar_name (pname ^ " " ^ aname))))
-    | Some ty, _ -> mrg_subst subst (single_ty_subst aname ty)
-    | None, Some ty -> mrg_subst subst (single_ty_subst pname ty))
-  | TVar name, ty | ty, TVar name -> mrg_subst subst (single_ty_subst name ty)
-  | _ ->
-    printf "\nargty=";
-    pp_ty std_formatter argty;
-    printf "\nprmty=";
-    pp_ty std_formatter prmty;
-    raise Incorrect_ty
+  | TVar prm_var, TVar arg_var when prm_var = arg_var -> subst
+  | TVar prm_var, TVar arg_var ->
+    (match BindMap.find_opt prm_var subst.ty, BindMap.find_opt arg_var subst.ty with
+    | None, None -> mrg_subst subst (double_ty_subst prm_var arg_var (safe_tvar ()))
+    | Some ty, _ -> mrg_subst subst (single_ty_subst arg_var ty)
+    | None, Some ty -> mrg_subst subst (single_ty_subst prm_var ty))
+  | TVar tvar, ty | ty, TVar tvar -> mrg_subst subst (single_ty_subst tvar ty)
+  | _ -> raise Incorrect_ty
 
-and deduce_effs_subst peffs aeffs subst =
-  let peffs, aeffs = EffSet.diff peffs aeffs, EffSet.diff aeffs peffs in
-  let cpeffs, vpeffs = split_effs peffs in
-  let caeffs, vaeffs = split_effs aeffs in
-  match vpeffs, vaeffs with
+and deduce_effs_subst prm_effs arg_effs subst =
+  let prm_effs, arg_effs = EffSet.diff prm_effs arg_effs, EffSet.diff arg_effs prm_effs in
+  let cp_effs, vp_effs = split_effs prm_effs in
+  let ca_effs, va_effs = split_effs arg_effs in
+  match vp_effs, va_effs with
   | _ :: _, _ :: _ ->
     let effs =
       Option.value
-        ~default:
-          (EffSet.singleton
-             (EffVar (safe_tvar_name (String.concat " " (vpeffs @ vaeffs)))))
-        (List.find_map (fun name -> BindMap.find_opt name subst.effs) (vpeffs @ vaeffs))
+        ~default:(EffSet.singleton (safe_eff_var ()))
+        (List.find_map (fun name -> BindMap.find_opt name subst.effs) (vp_effs @ va_effs))
     in
-    let effs = EffSet.union effs (EffSet.union cpeffs caeffs) in
+    let effs = EffSet.union effs (EffSet.union cp_effs ca_effs) in
     mrg_substs
       [ subst
       ; effs_subst
-          (BindMap.of_seq (List.to_seq (List.map (fun k -> k, effs) (vpeffs @ vaeffs))))
+          (BindMap.of_seq (List.to_seq (List.map (fun k -> k, effs) (vp_effs @ va_effs))))
       ]
-  | [], _ when not (EffSet.is_empty caeffs) -> raise Incorrect_ty
-  | _, [] when not (EffSet.is_empty cpeffs) -> raise Incorrect_ty
+  | [], _ when not (EffSet.is_empty ca_effs) -> raise Incorrect_ty
+  | _, [] when not (EffSet.is_empty cp_effs) -> raise Incorrect_ty
   | _ ->
     mrg_substs
       [ subst
       ; effs_subst
           (BindMap.of_seq
              (List.to_seq
-                (List.map (fun vpeff -> vpeff, caeffs) vpeffs
-                @ List.map (fun vaeff -> vaeff, cpeffs) vaeffs)))
+                (List.map (fun vp_eff -> vp_eff, ca_effs) vp_effs
+                @ List.map (fun va_eff -> va_eff, cp_effs) va_effs)))
       ]
-(* match peffs, aeffs with
-  | Effs peffs, Effs aeffs when effs_eq aeffs peffs -> subst
-  | EffBoundVar pname, EffBoundVar aname when pname = aname -> subst
-  | EffVar pname, EffVar aname when pname = aname -> subst
-  | EffVar pname, EffVar aname ->
-    (match BindMap.find_opt pname subst.effs, BindMap.find_opt aname subst.effs with
-    | None, None ->
-      mrg_subst
-        subst
-        (double_effs_subst pname aname (EffVar (safe_tvar_name (pname ^ " " ^ aname))))
-    | Some effs, _ -> mrg_subst subst (single_effs_subst aname effs)
-    | None, Some effs -> mrg_subst subst (single_effs_subst pname effs))
-  | EffVar name, effs | effs, EffVar name -> mrg_subst subst (single_effs_subst name effs)
-  | _ -> raise Incorrect_ty *)
 
-and mrg_substs
-  =
-  (* Format.fprintf
-    std_formatter
-    "\n%s"
-    (Printexc.get_callstack 15 |> Printexc.raw_backtrace_to_string); *)
-  function
-  | [] -> empty_subst
-  | hd :: tl -> mrg_subst (mrg_substs tl) hd
+and mrg_substs substs = List.fold_left mrg_subst empty_subst substs
 
 and mrg_subst subst1 subst2 =
-  (* Format.fprintf std_formatter "\nsubst1=";
-  pp_subst std_formatter subst1;
-  Format.fprintf std_formatter "\n";
-  Format.fprintf std_formatter "\nsubst2=";
-  pp_subst std_formatter subst2;
-  Format.fprintf std_formatter "\n"; *)
   let subst =
     BindMap.fold
       (fun name ty subst ->
         match BindMap.find_opt name subst.ty with
         | None -> { ty = BindMap.add name ty subst.ty; effs = subst.effs }
-        | Some ty2 ->
-          (* Format.fprintf std_formatter "\nty=";
-          pp_ty std_formatter ty;
-          Format.fprintf std_formatter "\nty2=";
-          pp_ty std_formatter ty2;
-          Format.fprintf std_formatter "\nsubst=";
-          pp_subst std_formatter subst;
-          Format.fprintf std_formatter "\n"; *)
-          deduce_subst ty ty2 subst)
+        | Some ty2 -> deduce_subst ty ty2 subst)
       subst2.ty
       subst1
   in
@@ -239,8 +147,8 @@ let rec occurs_check name ty subst =
     occurs_check name t2 subst
 ;;
 
-let deduce_subst argty effty =
-  let subst = deduce_subst argty effty empty_subst in
+let deduce_subst prm_ty arg_ty =
+  let subst = deduce_subst prm_ty arg_ty empty_subst in
   BindMap.iter (fun name ty -> occurs_check name ty subst) subst.ty;
   subst
 ;;
@@ -264,7 +172,7 @@ let rec get_ty_subst name subst =
   match BindMap.find_opt name subst.ty with
   | None -> TVar name
   | Some (TVar name) -> get_ty_subst name subst
-  | Some effs -> effs
+  | Some ty -> ty
 ;;
 
 let rec induce_subst ty subst =
@@ -278,7 +186,7 @@ let rec induce_subst ty subst =
     TFun (induce_subst ty1 subst, induce_effs_subst effs subst, induce_subst ty2 subst)
 ;;
 
-let all_effvars effs =
+let all_eff_vars effs =
   BindSet.of_list
     (List.filter_map
        (function
@@ -287,34 +195,30 @@ let all_effvars effs =
        (List.of_seq (EffSet.to_seq effs)))
 ;;
 
-let rec all_teffvars = function
+let rec all_ty_eff_vars = function
   | TInt | TString | TBool | TExc _ | TBoundVar _ -> BindSet.empty, BindSet.empty
   | TTuple l ->
     List.fold_left
       (fun (tys1, effs1) t ->
-        let tys2, effs2 = all_teffvars t in
+        let tys2, effs2 = all_ty_eff_vars t in
         BindSet.union tys1 tys2, BindSet.union effs1 effs2)
       (BindSet.empty, BindSet.empty)
       l
-  | TList t | TRef t -> all_teffvars t
+  | TList t | TRef t -> all_ty_eff_vars t
   | TVar name -> BindSet.singleton name, BindSet.empty
   | TFun (ty1, effs, ty2) ->
-    let tys1, effs1 = all_teffvars ty1 in
-    let tys2, effs2 = all_teffvars ty2 in
-    BindSet.union tys1 tys2, BindSet.union (all_effvars effs) (BindSet.union effs1 effs2)
+    let tys1, effs1 = all_ty_eff_vars ty1 in
+    let tys2, effs2 = all_ty_eff_vars ty2 in
+    BindSet.union tys1 tys2, BindSet.union (all_eff_vars effs) (BindSet.union effs1 effs2)
 ;;
 
 let safe_subst ty =
-  let tys, effs = all_teffvars ty in
+  let tys, effs = all_ty_eff_vars ty in
   { ty =
-      BindSet.fold
-        (fun name map -> BindMap.add name (TVar (safe_tvar_name name)) map)
-        tys
-        BindMap.empty
+      BindSet.fold (fun name map -> BindMap.add name (safe_tvar ()) map) tys BindMap.empty
   ; effs =
       BindSet.fold
-        (fun name map ->
-          BindMap.add name (EffSet.singleton (EffVar (safe_tvar_name name))) map)
+        (fun name map -> BindMap.add name (EffSet.singleton (safe_eff_var ())) map)
         effs
         BindMap.empty
   }
@@ -324,71 +228,55 @@ let safe_ty ty = induce_subst ty (safe_subst ty)
 
 let safe_effs =
   EffSet.map (function
-      | EffVar name -> EffVar (safe_tvar_name name)
-      | effs -> effs)
+      | EffVar (_ : string) -> safe_eff_var ()
+      | eff -> eff)
 ;;
 
-let safe_tyeffs (ty, effs) = safe_ty ty, safe_effs effs
+let safe_ty_effs (ty, effs) = safe_ty ty, safe_effs effs
 
-type chenv =
+type ty_chk_env =
   { decls : ty_map
-  ; btvars : BindSet.t
-  ; beffvars : BindSet.t
+  ; ty_bvars : BindSet.t
+  ; eff_bvars : BindSet.t
   }
 
-let bind_effvars env =
+let bind_eff_vars env =
   EffSet.map (function
-      | EffVar name when is_bound name env.beffvars -> EffBoundVar name
-      | effs -> effs)
+      | EffVar name when is_bound name env.eff_bvars -> EffBoundVar name
+      | eff -> eff)
 ;;
 
-let rec bind_teffvars env ty =
+let rec bind_ty_eff_vars env ty =
   match ty with
   | TInt | TString | TBool | TExc _ | TBoundVar _ -> ty
-  | TTuple l -> TTuple (List.map (fun t -> bind_teffvars env t) l)
-  | TList t -> TList (bind_teffvars env t)
-  | TRef t -> TRef (bind_teffvars env t)
-  | TVar name -> if is_bound name env.btvars then TBoundVar name else ty
+  | TTuple l -> TTuple (List.map (fun t -> bind_ty_eff_vars env t) l)
+  | TList t -> TList (bind_ty_eff_vars env t)
+  | TRef t -> TRef (bind_ty_eff_vars env t)
+  | TVar name -> if is_bound name env.ty_bvars then TBoundVar name else ty
   | TFun (ty1, effs, ty2) ->
-    TFun (bind_teffvars env ty1, bind_effvars env effs, bind_teffvars env ty2)
+    TFun (bind_ty_eff_vars env ty1, bind_eff_vars env effs, bind_ty_eff_vars env ty2)
 ;;
 
-let unbind_effvars env =
+let unbind_eff_vars env =
   EffSet.map (function
-      | EffBoundVar name when is_bound name env.beffvars -> EffVar name
-      | effs -> effs)
+      | EffBoundVar name when is_bound name env.eff_bvars -> EffVar name
+      | eff -> eff)
 ;;
 
-let rec unbind_teffvars env ty =
+let rec unbind_ty_eff_vars env ty =
   match ty with
   | TInt | TString | TBool | TExc _ | TVar _ -> ty
-  | TTuple l -> TTuple (List.map (fun t -> unbind_teffvars env t) l)
-  | TList t -> TList (unbind_teffvars env t)
-  | TRef t -> TRef (unbind_teffvars env t)
-  | TBoundVar name -> if is_bound name env.btvars then TVar name else ty
+  | TTuple l -> TTuple (List.map (fun t -> unbind_ty_eff_vars env t) l)
+  | TList t -> TList (unbind_ty_eff_vars env t)
+  | TRef t -> TRef (unbind_ty_eff_vars env t)
+  | TBoundVar name -> if is_bound name env.ty_bvars then TVar name else ty
   | TFun (ty1, effs, ty2) ->
-    TFun (unbind_teffvars env ty1, unbind_effvars env effs, unbind_teffvars env ty2)
-;;
-
-let simple_subst ty1 ty2 =
-  let subst = deduce_subst ty1 ty2 in
-  let tvars1, effvars1 = all_teffvars ty1 in
-  let tvars2, effvars2 = all_teffvars ty2 in
-  let tvars, effvars = BindSet.union tvars1 tvars2, BindSet.union effvars1 effvars2 in
-  { ty =
-      BindMap.of_seq
-        (Seq.map (fun tvar -> tvar, get_ty_subst tvar subst) (BindSet.to_seq tvars))
-  ; effs =
-      BindMap.of_seq
-        (Seq.map
-           (fun effvar -> effvar, get_effs_subst effvar subst)
-           (BindSet.to_seq effvars))
-  }
+    TFun (unbind_ty_eff_vars env ty1, unbind_eff_vars env effs, unbind_ty_eff_vars env ty2)
 ;;
 
 let mrg_decls decls1 decls2 =
   BindMap.merge
-    (fun name ty1 ty2 ->
+    (fun (_ : string) ty1 ty2 ->
       match ty1, ty2 with
       | Some _, Some _ -> raise Matching_rebound
       | None, None -> None
@@ -411,64 +299,52 @@ let rec case_decls ty ptrn =
       tys
       ptrns
   | PCons (ptrns, ptrn), TList ty ->
-    mrg_decls
+    List.fold_left
+      (fun decls p -> mrg_decls decls (case_decls ty p))
       (case_decls (TList ty) ptrn)
-      (List.fold_left
-         (fun decls p -> mrg_decls decls (case_decls ty p))
-         BindMap.empty
-         ptrns)
+      ptrns
   | _ -> raise Incorrect_ty
 ;;
 
 let case_env ty ptrn env =
   { decls = BindMap.add_seq (BindMap.to_seq (case_decls ty ptrn)) env.decls
-  ; btvars = env.btvars
-  ; beffvars = env.beffvars
+  ; ty_bvars = env.ty_bvars
+  ; eff_bvars = env.eff_bvars
   }
 ;;
 
-let check_assignable dty vty env =
-  let new_tvars, new_effvars = all_teffvars dty in
-  let benv =
+let check_assignable decl_ty val_ty env =
+  let new_ty_bvars, new_eff_bvars = all_ty_eff_vars decl_ty in
+  let bind_env =
     { decls = env.decls
-    ; btvars =
-        BindSet.of_seq (Seq.append (BindSet.to_seq env.btvars) (BindSet.to_seq new_tvars))
-    ; beffvars =
-        BindSet.of_seq
-          (Seq.append (BindSet.to_seq env.beffvars) (BindSet.to_seq new_effvars))
+    ; ty_bvars = BindSet.add_seq (BindSet.to_seq new_ty_bvars) env.ty_bvars
+    ; eff_bvars = BindSet.add_seq (BindSet.to_seq new_eff_bvars) env.eff_bvars
     }
   in
-  (* printf "\nvty=";
-  pp_ty std_formatter vty;
-  printf "\ndty=";
-  pp_ty std_formatter (bind_teffvars benv dty);
-  printf "\n";
-  pp_ty_map std_formatter env.decls;
-  printf "\n\n"; *)
-  let _ = deduce_subst vty (bind_teffvars benv dty) in
+  let _ = deduce_subst (bind_ty_eff_vars bind_env decl_ty) val_ty in
   ()
 ;;
 
-let rec infer_tyeffs env expr =
-  safe_tyeffs
+let rec infer_ty_effs env expr =
+  safe_ty_effs
     (match expr with
     | EConst const ->
       ( (match const with
         | CInt _ -> TInt
         | CString _ -> TString
         | CBool _ -> TBool
-        | CEmptyList -> TList (TVar (safe_tvar_name "[]")))
+        | CEmptyList -> TList (safe_tvar ()))
       , EffSet.empty )
     | EVal name -> find_bind env.decls name, EffSet.empty
     | EUnop (op, expr) ->
-      let ty, effs = infer_tyeffs env expr in
+      let ty, effs = infer_ty_effs env expr in
       (match op, ty with
       | Neg, TInt -> TInt, effs
       | Deref, TRef t -> t, effs
       | _ -> raise Incorrect_ty)
     | EBinop (expr1, op, expr2) ->
-      let ty1, effs1 = infer_tyeffs env expr1 in
-      let ty2, effs2 = infer_tyeffs env expr2 in
+      let ty1, effs1 = infer_ty_effs env expr1 in
+      let ty2, effs2 = infer_ty_effs env expr2 in
       let effs = EffSet.union effs1 effs2 in
       (match ty1, op, ty2 with
       | TInt, Add, TInt | TInt, Sub, TInt | TInt, Mul, TInt | TInt, Div, TInt ->
@@ -485,108 +361,92 @@ let rec infer_tyeffs env expr =
       | TBool, Neq, TBool
       | TBool, And, TBool
       | TBool, Or, TBool -> TBool, effs
-      | TRef rty, Asgmt, vty ->
-        check_assignable rty vty env;
+      | TRef ref_ty, Asgmt, val_ty ->
+        check_assignable ref_ty val_ty env;
         TTuple [], EffSet.add EffAsgmt effs
-      | ty, Cons, TList lty -> induce_subst (TList lty) (deduce_subst ty lty), effs
+      | ty, Cons, TList lty -> induce_subst (TList lty) (deduce_subst lty ty), effs
       | _ -> raise Incorrect_ty)
     | EApp (f, arg) ->
-      let fty, feffs = infer_tyeffs env f in
-      let argty, argeffs = infer_tyeffs env arg in
-      (match fty with
-      | TFun (prmty, effty, retty) ->
-        (* printf "\nargty=";
-        pp_ty std_formatter argty;
-        printf "\nprmty=";
-        pp_ty std_formatter prmty;
-        printf "\n";
-        pp_ty_map std_formatter env.decls;
-        printf "\n\n"; *)
-        let subst = deduce_subst prmty argty in
-        ( induce_subst retty subst
-        , EffSet.union (EffSet.union feffs argeffs) (induce_effs_subst effty subst) )
+      let f_ty, f_effs = infer_ty_effs env f in
+      let arg_ty, arg_effs = infer_ty_effs env arg in
+      (match f_ty with
+      | TFun (prm_ty, effs, ret_ty) ->
+        let subst = deduce_subst prm_ty arg_ty in
+        ( induce_subst ret_ty subst
+        , EffSet.union (EffSet.union f_effs arg_effs) (induce_effs_subst effs subst) )
       | _ -> raise Incorrect_ty)
     | ETuple exprs ->
-      let tys, effss = List.split (List.map (fun e -> infer_tyeffs env e) exprs) in
+      let tys, effss = List.split (List.map (fun e -> infer_ty_effs env e) exprs) in
       TTuple tys, List.fold_left (fun e1 e2 -> EffSet.union e1 e2) EffSet.empty effss
     | ELet (decl, expr) ->
-      let dty = safe_ty (bind_teffvars env decl.ty) in
+      let decl_ty = safe_ty (bind_ty_eff_vars env decl.ty) in
       let new_env =
-        { decls = BindMap.add decl.name dty env.decls
-        ; btvars = env.btvars
-        ; beffvars = env.beffvars
+        { decls = BindMap.add decl.name decl_ty env.decls
+        ; ty_bvars = env.ty_bvars
+        ; eff_bvars = env.eff_bvars
         }
       in
-      let vty, veff = infer_tyeffs (if decl.is_rec then new_env else env) decl.expr in
-      (* printf "dty="; pp_ty std_formatter dty; printf "\n";
-      printf "vty="; pp_ty std_formatter vty; printf "\n";
-      printf "subst="; pp_subst std_formatter (simple_subst vty dty); printf "\n\n"; *)
-      check_assignable dty vty env;
-      let ty, eff = infer_tyeffs new_env expr in
-      ty, EffSet.union veff eff
-    (* TODO check pattern type, add decls inside patterns *)
+      let val_ty, val_effs =
+        infer_ty_effs (if decl.is_rec then new_env else env) decl.expr
+      in
+      check_assignable decl_ty val_ty env;
+      let ty, effs = infer_ty_effs new_env expr in
+      ty, EffSet.union val_effs effs
     | EMatch (scr, ptrns) ->
-      let scrty, screffs = infer_tyeffs env scr in
+      let scr_ty, scr_effs = infer_ty_effs env scr in
       (match ptrns with
       | [] -> raise Empty_macth
       | (ptrn1, case1) :: cases ->
-        let ty, effs = infer_tyeffs (case_env scrty ptrn1 env) case1 in
-        let ty, effs =
-          List.fold_left
-            (fun (ty, effs) (ptrn, case) ->
-              let ty2, effs2 = infer_tyeffs (case_env scrty ptrn env) case in
-              induce_subst ty (deduce_subst ty ty2), EffSet.union effs effs2)
-            (ty, EffSet.union screffs effs)
-            cases
-        in
-        ty, effs)
-    | EFun (arg, argty, expr) ->
-      let argty = bind_teffvars env argty in
-      let new_tvars, new_effvars = all_teffvars argty in
+        let ty, effs = infer_ty_effs (case_env scr_ty ptrn1 env) case1 in
+        List.fold_left
+          (fun (ty, effs) (ptrn, case) ->
+            let ty2, effs2 = infer_ty_effs (case_env scr_ty ptrn env) case in
+            induce_subst ty (deduce_subst ty ty2), EffSet.union effs effs2)
+          (ty, EffSet.union scr_effs effs)
+          cases)
+    | EFun (arg, arg_ty, expr) ->
+      let arg_ty = bind_ty_eff_vars env arg_ty in
+      let new_ty_bvars, new_eff_bvars = all_ty_eff_vars arg_ty in
       let env =
         { decls = env.decls
-        ; btvars =
-            BindSet.of_seq
-              (Seq.append (BindSet.to_seq env.btvars) (BindSet.to_seq new_tvars))
-        ; beffvars =
-            BindSet.of_seq
-              (Seq.append (BindSet.to_seq env.beffvars) (BindSet.to_seq new_effvars))
+        ; ty_bvars = BindSet.add_seq (BindSet.to_seq new_ty_bvars) env.ty_bvars
+        ; eff_bvars = BindSet.add_seq (BindSet.to_seq new_eff_bvars) env.eff_bvars
         }
       in
-      let argty = bind_teffvars env argty in
+      let arg_ty = bind_ty_eff_vars env arg_ty in
       let env =
-        { decls = BindMap.add arg argty env.decls
-        ; btvars = env.btvars
-        ; beffvars = env.beffvars
+        { decls = BindMap.add arg arg_ty env.decls
+        ; ty_bvars = env.ty_bvars
+        ; eff_bvars = env.eff_bvars
         }
       in
-      let resty, effs = infer_tyeffs env expr in
+      let ret_ty, effs = infer_ty_effs env expr in
       let unbind_env =
-        { decls = BindMap.empty; btvars = new_tvars; beffvars = new_effvars }
+        { decls = BindMap.empty; ty_bvars = new_ty_bvars; eff_bvars = new_eff_bvars }
       in
-      let argty = unbind_teffvars unbind_env argty in
-      let resty = unbind_teffvars unbind_env resty in
-      let effs = unbind_effvars unbind_env effs in
-      TFun (argty, effs, resty), EffSet.empty
+      let arg_ty = unbind_ty_eff_vars unbind_env arg_ty in
+      let ret_ty = unbind_ty_eff_vars unbind_env ret_ty in
+      let effs = unbind_eff_vars unbind_env effs in
+      TFun (arg_ty, effs, ret_ty), EffSet.empty
     | ETry (scr, excs) ->
-      let scrty, screffs = infer_tyeffs env scr in
+      let scr_ty, scr_effs = infer_ty_effs env scr in
       let ty, effs =
         List.fold_left
           (fun (ty, effs) (_, case) ->
-            let ty2, effs2 = infer_tyeffs env case in
-            induce_subst ty (deduce_subst scrty ty2), EffSet.union effs effs2)
-          (scrty, EffSet.empty)
+            let ty2, effs2 = infer_ty_effs env case in
+            induce_subst ty (deduce_subst ty ty2), EffSet.union effs effs2)
+          (scr_ty, EffSet.empty)
           excs
       in
       ( ty
       , EffSet.union
           (EffSet.diff
-             screffs
+             scr_effs
              (EffSet.of_list (List.map (fun (exc, _) -> EffExc exc) excs)))
           effs ))
 ;;
 
-let stdlib_chenv =
+let stdlib_ty_chk_env =
   { decls =
       BindMap.of_seq
         (List.to_seq
@@ -600,31 +460,31 @@ let stdlib_chenv =
                  , EffSet.empty
                  , TFun (TVar "a", EffSet.singleton (EffVar "e2"), TVar "b") ) )
            ])
-  ; btvars = BindSet.empty
-  ; beffvars = BindSet.empty
+  ; ty_bvars = BindSet.empty
+  ; eff_bvars = BindSet.empty
   }
 ;;
 
 let check_program =
   List.fold_left
     (fun env (decl : decl) ->
-      let dty = safe_ty (bind_teffvars env decl.ty) in
+      let decl_ty = safe_ty (bind_ty_eff_vars env decl.ty) in
       let new_env =
-        { decls = BindMap.add decl.name dty env.decls
-        ; btvars = env.btvars
-        ; beffvars = env.beffvars
+        { decls = BindMap.add decl.name decl_ty env.decls
+        ; ty_bvars = env.ty_bvars
+        ; eff_bvars = env.eff_bvars
         }
       in
-      let vty, _ = infer_tyeffs (if decl.is_rec then new_env else env) decl.expr in
-      check_assignable dty vty env;
+      let val_ty, _ = infer_ty_effs (if decl.is_rec then new_env else env) decl.expr in
+      check_assignable decl_ty val_ty env;
       new_env)
-    stdlib_chenv
+    stdlib_ty_chk_env
 ;;
 
 (* Tests *)
 
 let test_infer_tyeffs expr matcher =
-  let ty, effs = infer_tyeffs stdlib_chenv expr in
+  let ty, effs = infer_ty_effs stdlib_ty_chk_env expr in
   let result = matcher (ty, effs) in
   if result
   then ()

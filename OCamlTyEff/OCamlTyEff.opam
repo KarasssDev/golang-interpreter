@@ -3,7 +3,7 @@ opam-version: "2.0"
 version: "0.1"
 synopsis: "OCaml with typed effects"
 description:
-  "FIXME. A longer description, for example, which are the most interesing features being supported, etc."
+  "OCaml implementation with type checker forcing explicit side effect specification for function types (e.g. -[IO]->, -[Asgmt]->, -[exc Exc1]->, -['e]->)"
 maintainer: ["Ilya Muravjov"]
 authors: ["Ilya Muravjov"]
 license: "LGPL-3.0-only"

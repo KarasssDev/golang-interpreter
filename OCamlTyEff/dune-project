@@ -15,10 +15,10 @@
 (homepage "https://github.com/IlyaMuravjov/fp2021")
 
 (package
- (name OCamlTyEff) ; FIXME and regenerate .opam file using 'dune build @install'
+ (name OCamlTyEff) ;
  (synopsis "OCaml with typed effects")
  (description
-  "FIXME. A longer description, for example, which are the most interesing features being supported, etc.")
+  "OCaml implementation with type checker forcing explicit side effect specification for function types (e.g. -[IO]->, -[Asgmt]->, -[exc Exc1]->, -['e]->)")
  (version 0.1)
  (depends
   dune

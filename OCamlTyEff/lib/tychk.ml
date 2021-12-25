@@ -1,6 +1,5 @@
 open Ast
 open Format
-open Printexc
 open Bind
 
 exception Incorrect_ty

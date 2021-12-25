@@ -403,3 +403,35 @@ let%test _ =
                 , EApp (EVar "list_to_n", EVar "n") ) ) )
     ]
 ;;
+
+let%test _ =
+  Tester.test_parse
+    {| 
+
+    let x = 
+        let y = 2*(2*(2*(1 + 3)))::[] in 
+    5 :: y
+
+    |}
+    [ DLet
+        ( false
+        , PVar "x"
+        , ELet
+            ( [ ( false
+                , PVar "y"
+                , ECons
+                    ( EOp
+                        ( Mul
+                        , EConst (CInt 2)
+                        , EOp
+                            ( Mul
+                            , EConst (CInt 2)
+                            , EOp
+                                ( Mul
+                                , EConst (CInt 2)
+                                , EOp (Add, EConst (CInt 1), EConst (CInt 3)) ) ) )
+                    , ENil ) )
+              ]
+            , ECons (EConst (CInt 5), EVar "y") ) )
+    ]
+;;

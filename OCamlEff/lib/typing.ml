@@ -95,18 +95,7 @@ module SubstMap = Map.Make (struct
   let compare = compare
 end)
 
-module Subst : sig
-  type t
-
-  val empty : t
-  val singleton : fresh -> tyexp -> t
-  val find : fresh -> t -> tyexp
-  val remove : fresh -> t -> t
-  val apply : t -> tyexp -> tyexp
-  val union : t -> t -> t
-  val compose : t -> t -> t
-  val ( ++ ) : t -> t -> t
-end = struct
+module Subst = struct
   type t = tyexp SubstMap.t
 
   let empty = SubstMap.empty
@@ -176,7 +165,7 @@ end
 module TypeContext = struct
   type t = scheme TypeMap.t
 
-  let extend id scheme = TypeMap.add id scheme
+  let extend context id scheme = TypeMap.add id scheme context
   let empty = TypeMap.empty
 
   let free_vars t =
@@ -238,69 +227,6 @@ let lookup_context e xs =
 
 let fresh_var = fresh >>| fun n -> TVar n
 
-let infer =
-  let rec (helper : TypeContext.t -> exp -> (Subst.t * tyexp) R.t) =
-   fun context -> function
-    | EConst x ->
-      (match x with
-      | CInt _ -> return (Subst.empty, TInt)
-      | CBool _ -> return (Subst.empty, TBool)
-      | CString _ -> return (Subst.empty, TString))
-    | EOp (op, exp1, exp2) ->
-      let* s1, t1 = helper context exp1 in
-      let* s2, t2 = helper context exp2 in
-      let* s = unify t1 t2 in
-      (match op, exp1, exp2 with
-      | Add, _, _ | Sub, _, _ | Mul, _, _ | Div, _, _ ->
-        let* s_int = unify t1 TInt in
-        let app = Subst.apply Subst.(s ++ s_int) t1 in
-        return (Subst.(s ++ s1 ++ s2 ++ s_int), arrow app (arrow app TInt))
-      | _, _, _ -> return (Subst.(s1 ++ s2 ++ s), arrow t1 (arrow t1 TBool)))
-    | EUnOp (op, exp) ->
-      let* s, t = helper context exp in
-      (match op with
-      | Minus ->
-        let* s_int = unify t TInt in
-        let app = Subst.apply s_int t in
-        return (Subst.(s_int ++ s), arrow app TInt)
-      | Not ->
-        let* s_bool = unify t TInt in
-        let app = Subst.apply s_bool t in
-        return (Subst.(s_bool ++ s), arrow app TBool))
-    | EVar x ->
-      let* subst, tyexp = lookup_context x context in
-      return (subst, tyexp)
-    | ETuple exps ->
-      (match exps with
-      | hd :: tl ->
-        let* s1, t1 = helper context hd in
-        let* s_tl, t_tl = helper context (ETuple tl) in
-        (match t_tl with
-        | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
-        | _ -> failwith "error")
-      | [] -> return (Subst.empty, TTuple []))
-    | ENil ->
-      let* fresh = fresh_var in
-      return (Subst.empty, TList fresh)
-    | ECons (exp1, exp2) ->
-      let* s1, t1 = helper context exp1 in
-      let* s2, t2 = helper context exp2 in
-      let* s_uni = unify (TList t1) t2 in
-      return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
-    | EIf (exp1, exp2, exp3) ->
-      let* s1, t1 = helper context exp1 in
-      let* s2, t2 = helper context exp2 in
-      let* s3, t3 = helper context exp3 in
-      let* s4 = unify t1 TBool in
-      let* s5 = unify t2 t3 in
-      return (Subst.(s5 ++ s4 ++ s3 ++ s2 ++ s1), Subst.apply s5 t2)
-    | _ -> failwith "unimpl"
-  in
-  helper
-;;
-
-let w e = Result.map (fun (_, t) -> t) (run (infer TypeContext.empty e))
-
 let rec tyexp_to_st = function
   | TInt -> "int"
   | TString -> "string"
@@ -314,53 +240,225 @@ let rec tyexp_to_st = function
     String.concat "" [ "("; line; ")" ]
 ;;
 
+let print_subst s =
+  let res =
+    SubstMap.fold
+      (fun k v ln ->
+        let new_res =
+          ln ^ Printf.sprintf "%s -> %s\n" (string_of_int k) (tyexp_to_st v)
+        in
+        new_res)
+      s
+      ""
+  in
+  Printf.printf "%s" res;
+  Printf.printf "%s\n" (string_of_int (SubstMap.cardinal s))
+;;
+
+let infer_pat =
+  let rec (helper : TypeContext.t -> pat -> (Subst.t * tyexp * TypeContext.t) R.t) =
+   fun context -> function
+    | PConst x ->
+      return
+        (match x with
+        | CInt _ -> Subst.empty, TInt, TypeContext.empty
+        | CBool _ -> Subst.empty, TBool, TypeContext.empty
+        | CString _ -> Subst.empty, TString, TypeContext.empty)
+    | PCons (pat1, pat2) ->
+      let* s1, t1, _ = helper context pat1 in
+      let* s2, t2, _ = helper context pat2 in
+      (match t2 with
+      | TList _ ->
+        let* s_uni = unify (TList t1) t2 in
+        return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1), TypeContext.empty)
+      | _ -> failwith "typing failure")
+    | PNil ->
+      let* fresh = fresh_var in
+      return (Subst.empty, TList fresh, TypeContext.empty)
+    | PVar x ->
+      let* fresh = fresh_var in
+      let context2 = TypeContext.extend context x (S (VarSet.empty, fresh)) in
+      return (Subst.empty, fresh, context2)
+    | _ -> failwith "unimpl"
+  in
+  helper
+;;
+
+let infer_exp =
+  let rec (helper : TypeContext.t -> exp -> (Subst.t * tyexp) R.t) =
+   fun context -> function
+    | EConst x ->
+      return
+        (match x with
+        | CInt _ -> Subst.empty, TInt
+        | CBool _ -> Subst.empty, TBool
+        | CString _ -> Subst.empty, TString)
+    | EOp (op, exp1, exp2) ->
+      let* _, t1 = helper context exp1 in
+      let* _, t2 = helper context exp2 in
+      let* s = unify t1 t2 in
+      (match op, exp1, exp2 with
+      | Add, _, _ | Sub, _, _ | Mul, _, _ | Div, _, _ ->
+        let* s1_int = unify t1 TInt in
+        let* s2_int = unify t2 TInt in
+        return (Subst.union s1_int s2_int, TInt)
+      | _, _, _ -> return (s, TBool))
+    | EUnOp (op, exp) ->
+      let* s, t = helper context exp in
+      (match op with
+      | Minus ->
+        let* s_int = unify t TInt in
+        return (Subst.(s_int ++ s), TInt)
+      | Not ->
+        let* s_bool = unify t TBool in
+        return (Subst.(s_bool ++ s), TBool))
+    | EVar x -> lookup_context x context
+    | ETuple exps ->
+      (match exps with
+      | hd :: tl ->
+        let* s1, t1 = helper context hd in
+        let* s_tl, t_tl = helper context (ETuple tl) in
+        (match t_tl with
+        | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
+        | _ -> failwith "typing failure")
+      | [] -> return (Subst.empty, TTuple []))
+    | ENil ->
+      let* fresh = fresh_var in
+      return (Subst.empty, TList fresh)
+    | ECons (exp1, exp2) ->
+      let* s1, t1 = helper context exp1 in
+      let* s2, t2 = helper context exp2 in
+      (match t2 with
+      | TList _ ->
+        let* s_uni = unify (TList t1) t2 in
+        return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
+      | _ -> failwith "typing failure")
+    | EIf (exp1, exp2, exp3) ->
+      let* s1, t1 = helper context exp1 in
+      let* s2, t2 = helper context exp2 in
+      let* s3, t3 = helper context exp3 in
+      let* s4 = unify t1 TBool in
+      let* s5 = unify t2 t3 in
+      return (Subst.(s5 ++ s4 ++ s3 ++ s2 ++ s1), Subst.apply s5 t2)
+    | ELet (bindings, in_exp) ->
+      (match bindings with
+      | hd :: tl ->
+        (match hd with
+        | false, PVar x, exp ->
+          let* s1, t1 = helper context exp in
+          let context2 = TypeContext.apply s1 context in
+          let t2 = generalize context2 t1 in
+          let* s2, t3 = helper (TypeContext.extend context2 x t2) (ELet (tl, in_exp)) in
+          return (Subst.(s1 ++ s2), t3)
+        | true, PVar x, exp ->
+          let* fresh = fresh_var in
+          let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
+          let* s1, t1 = helper context exp in
+          let* _ = unify fresh t1 in
+          let context2 = TypeContext.apply s1 context in
+          let t2 = generalize context2 t1 in
+          let* s2, t3 = helper (TypeContext.extend context2 x t2) (ELet (tl, in_exp)) in
+          return (Subst.(s1 ++ s2), t3)
+        | _ -> failwith "typing error")
+      | [] ->
+        let* s, t = helper context in_exp in
+        return (s, t))
+    | EFun (pat, exp) ->
+      let* s1, t1, context1 = infer_pat context pat in
+      let new_context = TypeMap.union (fun _ v1 _ -> Some v1) context1 context in
+      let* s2, t2 = helper new_context exp in
+      let s_comp = Subst.(s1 ++ s2) in
+      return (s_comp, arrow (Subst.apply s_comp t1) t2)
+    | EApp (exp1, exp2) ->
+      let* s1, t1 = helper context exp1 in
+      let* s2, t2 = helper context exp2 in
+      let* s_uni = unify t1 t2 in
+      return (Subst.(s1 ++ s2 ++ s_uni), Subst.apply s_uni t2)
+    | _ -> failwith "unimpl"
+  in
+  helper
+;;
+
+let infer_decl =
+  let rec (helper : TypeContext.t -> decl -> TypeContext.t R.t) =
+   fun context -> function
+    | DLet binding ->
+      (match binding with
+      | false, PVar x, exp ->
+        let* s1, t1 = infer_exp context exp in
+        let context2 = TypeContext.apply s1 context in
+        let t2 = generalize context2 t1 in
+        return (TypeContext.extend context2 x t2)
+      | true, PVar x, exp ->
+        let* fresh = fresh_var in
+        let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
+        let* s1, t1 = infer_exp context exp in
+        let* _ = unify fresh t1 in
+        let context2 = TypeContext.apply s1 context in
+        let t2 = generalize context2 t1 in
+        return (TypeContext.extend context2 x t2)
+      | _ -> failwith "typing error")
+    | _ -> failwith "unimpl"
+  in
+  helper
+;;
+
 let error_to_st = function
   | Occurs_check -> "oc check"
-  | NoVariable _ -> "no var"
+  | NoVariable x -> String.concat " " [ "no var"; x ]
   | UnificationFailed (x, y) ->
     String.concat " " [ "uni fail:"; tyexp_to_st x; tyexp_to_st y ]
 ;;
 
-(* 
+let infer_prog prog =
+  let context1 =
+    List.fold_left
+      (fun context decl ->
+        match Result.map (fun t -> t) (run (infer_decl context decl)) with
+        | Error x ->
+          Printf.printf "%s\n" (error_to_st x);
+          failwith "error"
+        | Ok x -> x)
+      TypeContext.empty
+      prog
+  in
+  context1
+;;
 
-let%test _ =
-  match w (EOp (Add, EConst (CInt 5), EConst (CInt 6))) with
-  | Error x ->
-    Printf.printf "%s\n" (error_to_st x);
-    Printf.printf "-----\n";
-    false
-  | Ok x ->
-    Printf.printf "%s\n" (tyexp_to_st x);
+let w e = Result.map (fun (_, t) -> t) (run (infer_exp TypeContext.empty e))
+
+let test_infer prog =
+  try
+    let context = infer_prog prog in
+    TypeMap.iter
+      (fun k v ->
+        match Result.map (fun t -> t) (run (instantiate v)) with
+        | Ok x -> Printf.printf "%s -> %s\n" k (tyexp_to_st x)
+        | Error x -> Printf.printf "Some error???: %s\n" (error_to_st x))
+      context;
     Printf.printf "-----\n";
     true
+  with
+  | Failure _ -> false
 ;;
 
 let%test _ =
-  match w (ETuple [ EConst (CInt 5); EConst (CString "kk") ]) with
-  | Error x ->
-    Printf.printf "%s\n" (error_to_st x);
-    Printf.printf "-----\n";
-    false
-  | Ok x ->
-    Printf.printf "%s\n" (tyexp_to_st x);
-    Printf.printf "-----\n";
-    true
-;; *)
+  test_infer [ DLet (false, PVar "x", ETuple [ EConst (CInt 5); EConst (CInt 6) ]) ]
+;;
 
-(* let%test _ = Tester.test_parse "let x = [1;2;3]" [] *)
+let%test _ =
+  test_infer
+    [ DLet
+        ( false
+        , PVar "x"
+        , ECons (EConst (CInt 1), ECons (EConst (CInt 2), ECons (EConst (CInt 5), ENil)))
+        )
+    ]
+;;
 
-(* let%test _ =
-  match
-    w
-      (ECons
-         (EConst (CInt 1), ECons (EConst (CInt 2), ECons (EConst (CString "kek"), ENil))))
-  with
-  | Error x ->
-    Printf.printf "%s\n" (error_to_st x);
-    Printf.printf "-----\n";
-    false
-  | Ok x ->
-    Printf.printf "%s\n" (tyexp_to_st x);
-    Printf.printf "-----\n";
-    true
-;; *)
+let%test _ =
+  test_infer
+    [ DLet
+        (false, PVar "x", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
+    ]
+;;

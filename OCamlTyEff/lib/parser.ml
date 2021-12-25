@@ -394,7 +394,7 @@ let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 
   match (l1, l2) with
   | ([], []) -> []
   | (a1::l1, a2::l2) -> let r: 'c = f a1 a2 in r :: map2 f l1 l2
-  | (o1, o2) -> raiseExc1 ()
+  | (o1, o2) -> raise1 ()
 ;;
 |}
     [ { is_rec = true
@@ -447,7 +447,7 @@ let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 
                                         ( EApp (EApp (EVal "map2", EVal "f"), EVal "l1")
                                         , EVal "l2" ) ) ) )
                           ; ( PTuple [ PVal "o1"; PVal "o2" ]
-                            , EApp (EVal "raiseExc1", ETuple []) )
+                            , EApp (EVal "raise1", ETuple []) )
                           ] ) ) ) )
       }
     ]
@@ -483,11 +483,11 @@ let%test _ =
     {|
 let f: bool -[exc Exc1, exc Exc2]-> string = fun flag: bool ->
   match flag with
-  | true -> raiseExc1 ()
-  | false -> raiseExc2 ()
+  | true -> raise1 ()
+  | false -> raise2 ()
 ;;
 let s: string = try f true with
-| Exc1 -> raiseExc2 ()
+| Exc1 -> raise2 ()
 | Exc2 -> "literal"
 |}
     [ { is_rec = false
@@ -499,8 +499,8 @@ let s: string = try f true with
             , TBool
             , EMatch
                 ( EVal "flag"
-                , [ PConst (CBool true), EApp (EVal "raiseExc1", ETuple [])
-                  ; PConst (CBool false), EApp (EVal "raiseExc2", ETuple [])
+                , [ PConst (CBool true), EApp (EVal "raise1", ETuple [])
+                  ; PConst (CBool false), EApp (EVal "raise2", ETuple [])
                   ] ) )
       }
     ; { is_rec = false
@@ -509,7 +509,7 @@ let s: string = try f true with
       ; expr =
           ETry
             ( EApp (EVal "f", EConst (CBool true))
-            , [ Exc1, EApp (EVal "raiseExc2", ETuple [])
+            , [ Exc1, EApp (EVal "raise2", ETuple [])
               ; Exc2, EConst (CString "literal")
               ] )
       }

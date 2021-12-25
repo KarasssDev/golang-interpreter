@@ -151,11 +151,7 @@ let dlet isrec p e = DLet (isrec, p, e)
 
 (*-------------- Concinutation ctors --------------*)
 
-let continuation ident = Continuation ident
-
 (*-------------- Effect ctors --------------*)
-
-let effect ident = Effect ident
 
 (*-------------- Plain parsers --------------*)
 
@@ -239,9 +235,6 @@ let pure_or_parens p =
   let helper = fix @@ fun helper -> parens helper <|> p in
   helper
 ;;
-
-let continuation = pure_or_parens ident >>| continuation
-let effect = pure_or_parens capitalized_ident >>| effect
 
 (*-------------- Pattern parsing --------------*)
 

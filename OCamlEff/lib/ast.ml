@@ -64,9 +64,6 @@ and exp =
   | EContinue of ident * exp (** continue k (2 + 5) *)
 [@@deriving show { with_path = false }]
 
-and continuation = Continuation of ident [@@deriving show { with_path = false }]
-and effect = Effect of capitalized_ident [@@deriving show { with_path = false }]
-
 and pat =
   | PWild (**  _  *)
   | PVar of ident (**  abc   *)

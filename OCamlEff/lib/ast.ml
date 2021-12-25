@@ -43,6 +43,7 @@ and const =
 [@@deriving show { with_path = false }]
 
 and binding = bool * pat * exp [@@deriving show { with_path = false }]
+
 and case = pat * exp [@@deriving show { with_path = false }]
 
 and exp =
@@ -78,8 +79,8 @@ and pat =
 
 and decl =
   | DLet of binding (**  let x = 10   *)
-  | DEffect1 of tyexp (** effect E: int *)
-  | DEffect2 of tyexp * tyexp (** effect E: int -> string *)
+  | DEffect1 of capitalized_ident * tyexp (** effect E: int *)
+  | DEffect2 of capitalized_ident * tyexp * tyexp (** effect E: int -> string *)
 [@@deriving show { with_path = false }]
 
 and prog = decl list [@@deriving show { with_path = false }]

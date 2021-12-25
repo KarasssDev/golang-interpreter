@@ -8,7 +8,7 @@ type ty_map = ty BindMap.t
 type effs_map = eff_set BindMap.t
 
 exception Incorrect_ty
-exception Rec_subst
+exception Occurs_fail
 exception Not_bound of string
 exception Empty_macth
 exception Matching_rebound
@@ -105,7 +105,7 @@ let rec deduce_subst prmty argty subst =
   pp_subst std_formatter subst;
   Format.fprintf std_formatter "\n"; *)
   match prmty, argty with
-  | TInt, TInt | TString, TString | TBool, TBool -> subst
+  | TInt, TInt | TString, TString | TBool, TBool | TTuple [], TTuple [] -> subst
   | TExc prmexc, TExc argexc when equal_exc prmexc argexc -> subst
   | TBoundVar prmbvar, TBoundVar argbvar when prmbvar = argbvar -> subst
   | TTuple prmtys, TTuple argtys ->
@@ -224,24 +224,24 @@ and mrg_subst subst1 subst2 =
     subst
 ;;
 
-let rec check_non_rec name ty subst =
+let rec occurs_check name ty subst =
   match ty with
   | TInt | TString | TBool | TExc _ | TBoundVar _ -> ()
-  | TTuple l -> List.iter (fun t -> check_non_rec name t subst) l
-  | TList t | TRef t -> check_non_rec name t subst
-  | TVar s when s = name -> raise Rec_subst
+  | TTuple l -> List.iter (fun t -> occurs_check name t subst) l
+  | TList t | TRef t -> occurs_check name t subst
+  | TVar s when s = name -> raise Occurs_fail
   | TVar s ->
     (match BindMap.find_opt s subst.ty with
     | None -> ()
-    | Some t -> check_non_rec name t subst)
+    | Some t -> occurs_check name t subst)
   | TFun (t1, _, t2) ->
-    check_non_rec name t1 subst;
-    check_non_rec name t2 subst
+    occurs_check name t1 subst;
+    occurs_check name t2 subst
 ;;
 
 let deduce_subst argty effty =
   let subst = deduce_subst argty effty empty_subst in
-  BindMap.iter (fun name ty -> check_non_rec name ty subst) subst.ty;
+  BindMap.iter (fun name ty -> occurs_check name ty subst) subst.ty;
   subst
 ;;
 
@@ -438,13 +438,13 @@ let check_assignable dty vty env =
           (Seq.append (BindSet.to_seq env.beffvars) (BindSet.to_seq new_effvars))
     }
   in
-  printf "\nvty=";
+  (* printf "\nvty=";
   pp_ty std_formatter vty;
   printf "\ndty=";
   pp_ty std_formatter (bind_teffvars benv dty);
   printf "\n";
   pp_ty_map std_formatter env.decls;
-  printf "\n\n";
+  printf "\n\n"; *)
   let _ = deduce_subst vty (bind_teffvars benv dty) in
   ()
 ;;
@@ -478,10 +478,13 @@ let rec infer_tyeffs env expr =
       | TInt, Les, TInt
       | TInt, Leq, TInt
       | TInt, Gre, TInt
-      | TInt, Geq, TInt -> TBool, effs
-      | TString, Eq, TString | TString, Neq, TString -> TBool, effs
-      | TBool, Eq, TBool | TBool, Neq, TBool | TBool, And, TBool | TBool, Or, TBool ->
-        TBool, effs
+      | TInt, Geq, TInt
+      | TString, Eq, TString
+      | TString, Neq, TString
+      | TBool, Eq, TBool
+      | TBool, Neq, TBool
+      | TBool, And, TBool
+      | TBool, Or, TBool -> TBool, effs
       | TRef rty, Asgmt, vty ->
         check_assignable rty vty env;
         TTuple [], EffSet.add EffAsgmt effs
@@ -492,13 +495,13 @@ let rec infer_tyeffs env expr =
       let argty, argeffs = infer_tyeffs env arg in
       (match fty with
       | TFun (prmty, effty, retty) ->
-        printf "\nargty=";
+        (* printf "\nargty=";
         pp_ty std_formatter argty;
         printf "\nprmty=";
         pp_ty std_formatter prmty;
         printf "\n";
         pp_ty_map std_formatter env.decls;
-        printf "\n\n";
+        printf "\n\n"; *)
         let subst = deduce_subst prmty argty in
         ( induce_subst retty subst
         , EffSet.union (EffSet.union feffs argeffs) (induce_effs_subst effty subst) )
@@ -583,10 +586,29 @@ let rec infer_tyeffs env expr =
           effs ))
 ;;
 
+let stdlib_chenv =
+  { decls =
+      BindMap.of_seq
+        (List.to_seq
+           [ "println", TFun (TString, EffSet.singleton EffIO, TTuple [])
+           ; "raise1", TFun (TTuple [], EffSet.singleton (EffExc Exc1), TVar "a")
+           ; "raise2", TFun (TTuple [], EffSet.singleton (EffExc Exc2), TVar "a")
+           ; "ref", TFun (TVar "a", EffSet.empty, TRef (TVar "a"))
+           ; ( "sneaky_eff"
+             , TFun
+                 ( TFun (TVar "a", EffSet.singleton (EffVar "e"), TVar "b")
+                 , EffSet.empty
+                 , TFun (TVar "a", EffSet.singleton (EffVar "e2"), TVar "b") ) )
+           ])
+  ; btvars = BindSet.empty
+  ; beffvars = BindSet.empty
+  }
+;;
+
 let check_program =
   List.fold_left
-  (fun env (decl : decl) ->
-    let dty = safe_ty (bind_teffvars env decl.ty) in
+    (fun env (decl : decl) ->
+      let dty = safe_ty (bind_teffvars env decl.ty) in
       let new_env =
         { decls = BindMap.add decl.name dty env.decls
         ; btvars = env.btvars
@@ -595,439 +617,619 @@ let check_program =
       in
       let vty, _ = infer_tyeffs (if decl.is_rec then new_env else env) decl.expr in
       check_assignable dty vty env;
-      new_env
-  )
-  {
-    decls = BindMap.empty;
-    btvars = BindSet.empty;
-    beffvars = BindSet.empty
-  }
-
-(* open Ast
-module BindMap = Map.Make (String)
-module BindSet = Set.Make (String)
-
-let eff_subset effs1 effs2 =
-  List.for_all
-    (fun eff1 ->
-      match List.find_opt (fun eff2 -> equal_eff eff1 eff2) effs2 with
-      | Some _ -> true
-      | None -> false)
-    effs1
+      new_env)
+    stdlib_chenv
 ;;
 
-(* TODO *)
-let is_subty subty superty = true
+(* Tests *)
 
-exception Incorrect_ty
-
-let check_subty subty superty = if is_subty subty superty then () else raise Incorrect_ty
-
-exception Not_bound
-
-let find_bind map name =
-  try BindMap.find name map with
-  | Not_found -> raise Not_bound
+let test_infer_tyeffs expr matcher =
+  let ty, effs = infer_tyeffs stdlib_chenv expr in
+  let result = matcher (ty, effs) in
+  if result
+  then ()
+  else (
+    printf "Actual:\nty=";
+    pp_ty std_formatter ty;
+    printf "\neffs=";
+    pp_eff_set std_formatter effs;
+    printf "\n");
+  result
 ;;
 
-let is_bound set name =
-  try
-    let _ = BindSet.find set name in
-    true
-  with
-  | Not_found -> false
+let test_infer_tyeffs_eq expr ty effs =
+  test_infer_tyeffs expr
+  @@ fun (ty2, effs2) -> equal_ty ty ty2 && equal_eff_set effs effs2
 ;;
 
-type bind_set = BindSet.t
-type ty_map = ty BindMap.t
-type eff_map = eff list BindMap.t
-
-type chenv =
-  { decls : ty_map
-  ; btvars : BindSet.t
-  ; beffvars : BindSet.t
-  }
-
-let safe_tvar_name name = name ^ ":" ^ string_of_int (Random.bits ())
-(* ^ string_of_int (Random.bits ())
-  ^ string_of_int (Random.bits ())
-  ^ string_of_int (Random.bits ())
-  ^ string_of_int (Random.bits ()) *)
-
-type tvar_grp =
-  { names : bind_set
-  ; ty : ty
-  }
-
-let tvar_grp_singleton name ty = { names = BindSet.singleton name; ty }
-
-let x = BindMap.fold
-
-type tvar_grp_map = tvar_grp BindMap.t
-
-let mrg_tvar_grps g1 g2 =
-  { names = BindSet.union g1.names g2.names
-  ; ty =
-      (match g2.ty with
-      | TVar _ -> g1.ty
-      | ty2 ->
-        (match g1.ty with
-        | TVar _ -> g2.ty
-        (* TODO smart recursive ty merge instead of eff_eq (return multiple resulting groups) and use context so that ('a, int) and (int, int) can be merged if 'a isn't yet bound *)
-        | ty1 when equal_ty ty1 ty2 -> ty1
-        | _ -> raise Incorrect_ty))
-  }
+(*
+let rec map : ('a -['e]-> 'b) --> 'a list -['e]-> 'b list = fun f: ('a -['e]-> 'b) -> fun xs : 'a list ->
+  match xs with
+  | [] -> []
+  | x::xs -> (f x) :: (map f xs) in
+let id: 'a --> 'a = fun x: 'a -> x in
+map id
+*)
+let%test _ =
+  test_infer_tyeffs
+    (ELet
+       ( { is_rec = true
+         ; name = "map"
+         ; ty =
+             TFun
+               ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+               , EffSet.of_list []
+               , TFun (TList (TVar "a"), EffSet.of_list [ EffVar "e" ], TList (TVar "b"))
+               )
+         ; expr =
+             EFun
+               ( "f"
+               , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+               , EFun
+                   ( "xs"
+                   , TList (TVar "a")
+                   , EMatch
+                       ( EVal "xs"
+                       , [ PConst CEmptyList, EConst CEmptyList
+                         ; ( PCons ([ PVal "x" ], PVal "xs")
+                           , EBinop
+                               ( EApp (EVal "f", EVal "x")
+                               , Cons
+                               , EApp (EApp (EVal "map", EVal "f"), EVal "xs") ) )
+                         ] ) ) )
+         }
+       , ELet
+           ( { is_rec = false
+             ; name = "id"
+             ; ty = TFun (TVar "a", EffSet.of_list [], TVar "a")
+             ; expr = EFun ("x", TVar "a", EVal "x")
+             }
+           , EApp (EVal "map", EVal "id") ) ))
+  @@ function
+  | TFun (TList (TVar v1), effs1, TList (TVar v2)), effs2 ->
+    v1 = v2 && EffSet.is_empty effs1 && EffSet.is_empty effs2
+  | _ -> false
 ;;
 
-let pp_tvar_grp_map fmt map =
-  BindMap.fold
-    (fun k v _ ->
-      Format.fprintf fmt "%s=" k;
-      pp_ty fmt v.ty;
-      Format.fprintf fmt "\n")
-    map
-    ()
+(*
+let rec map : ('a -['e]-> 'b) --> 'a list -['e]-> 'b list = fun (f: 'a -['e]-> 'b) -> fun xs : 'a list ->
+  match xs with
+  | [] -> []
+  | x::xs -> (f x) :: (map f xs) in
+map (fun n: int -> let o: () = println "hi" in n + 1)
+*)
+let%test _ =
+  test_infer_tyeffs_eq
+    (ELet
+       ( { is_rec = true
+         ; name = "map"
+         ; ty =
+             TFun
+               ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+               , EffSet.of_list []
+               , TFun (TList (TVar "a"), EffSet.of_list [ EffVar "e" ], TList (TVar "b"))
+               )
+         ; expr =
+             EFun
+               ( "f"
+               , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+               , EFun
+                   ( "xs"
+                   , TList (TVar "a")
+                   , EMatch
+                       ( EVal "xs"
+                       , [ PConst CEmptyList, EConst CEmptyList
+                         ; ( PCons ([ PVal "x" ], PVal "xs")
+                           , EBinop
+                               ( EApp (EVal "f", EVal "x")
+                               , Cons
+                               , EApp (EApp (EVal "map", EVal "f"), EVal "xs") ) )
+                         ] ) ) )
+         }
+       , EApp
+           ( EVal "map"
+           , EFun
+               ( "n"
+               , TInt
+               , ELet
+                   ( { is_rec = false
+                     ; name = "o"
+                     ; ty = TTuple []
+                     ; expr = EApp (EVal "println", EConst (CString "hi"))
+                     }
+                   , EBinop (EVal "n", Add, EConst (CInt 1)) ) ) ) ))
+    (TFun (TList TInt, EffSet.of_list [ EffIO ], TList TInt))
+    EffSet.empty
 ;;
 
-let pp_eff_map fmt map =
-  BindMap.fold
-    (fun k v _ ->
-      Format.fprintf fmt "%s=" k;
-      List.iter
-        (fun e ->
-          pp_eff fmt e;
-          Format.fprintf fmt ",")
-        v;
-      Format.fprintf fmt "\n")
-    map
-    ()
+(*
+let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 'c list = 
+  fun f: ('a --> 'b -['e]-> 'c) ->
+    fun l1: 'a list -> fun l2: 'b list ->
+  match (l1, l2) with
+  | ([], []) -> []
+  | (a1::l1, a2::l2) -> let r: 'c = f a1 a2 in r :: map2 f l1 l2
+  | (o1, o2) -> raise1 ()
+in
+map2 (fun n: int -> fun m: 'a -> n)
+*)
+
+let%test _ =
+  test_infer_tyeffs
+    (ELet
+       ( { is_rec = true
+         ; name = "map2"
+         ; ty =
+             TFun
+               ( TFun
+                   ( TVar "a"
+                   , EffSet.of_list []
+                   , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
+               , EffSet.of_list []
+               , TFun
+                   ( TList (TVar "a")
+                   , EffSet.of_list []
+                   , TFun
+                       ( TList (TVar "b")
+                       , EffSet.of_list [ EffExc Exc1; EffVar "e" ]
+                       , TList (TVar "c") ) ) )
+         ; expr =
+             EFun
+               ( "f"
+               , TFun
+                   ( TVar "a"
+                   , EffSet.of_list []
+                   , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
+               , EFun
+                   ( "l1"
+                   , TList (TVar "a")
+                   , EFun
+                       ( "l2"
+                       , TList (TVar "b")
+                       , EMatch
+                           ( ETuple [ EVal "l1"; EVal "l2" ]
+                           , [ ( PTuple [ PConst CEmptyList; PConst CEmptyList ]
+                               , EConst CEmptyList )
+                             ; ( PTuple
+                                   [ PCons ([ PVal "a1" ], PVal "l1")
+                                   ; PCons ([ PVal "a2" ], PVal "l2")
+                                   ]
+                               , ELet
+                                   ( { is_rec = false
+                                     ; name = "r"
+                                     ; ty = TVar "c"
+                                     ; expr = EApp (EApp (EVal "f", EVal "a1"), EVal "a2")
+                                     }
+                                   , EBinop
+                                       ( EVal "r"
+                                       , Cons
+                                       , EApp
+                                           ( EApp (EApp (EVal "map2", EVal "f"), EVal "l1")
+                                           , EVal "l2" ) ) ) )
+                             ; ( PTuple [ PVal "o1"; PVal "o2" ]
+                               , EApp (EVal "raise1", ETuple []) )
+                             ] ) ) ) )
+         }
+       , EApp (EVal "map2", EFun ("n", TInt, EFun ("m", TVar "a", EVal "n"))) ))
+  @@ function
+  | TFun (TList TInt, effs1, TFun (TList (TVar _), effs2, TList TInt)), effs3 ->
+    EffSet.is_empty effs1
+    && equal_eff_set effs2 (EffSet.singleton (EffExc Exc1))
+    && EffSet.is_empty effs3
+  | _ -> false
 ;;
 
-(* Deduction (rename to substition) *)
-type deduc =
-  { ty : tvar_grp_map
-  ; eff : eff_map
-  }
-[@@deriving show { with_path = false }]
-
-let empty_deduc = { ty = BindMap.empty; eff = BindMap.empty }
-let ty_deduc ty = { ty; eff = BindMap.empty }
-
-let ty_deduc_grp grp =
-  ty_deduc
-    (BindSet.fold (fun name map -> BindMap.add name grp map) grp.names BindMap.empty)
+(*
+let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 'c list = 
+  fun f: ('a --> 'b -['e]-> 'c) ->
+    fun l1: 'a list -> fun l2: 'b list ->
+  match (l1, l2) with
+  | ([], []) -> []
+  | (a1::l1, a2::l2) -> let r: 'c = f a1 a2 in r :: map2 f l1 l2
+  | (o1, o2) -> raise1 ()
+in
+map2 (fun n: int -> fun m: 'a -> raise2 ()) (1 :: [])
+*)
+let%test _ =
+  test_infer_tyeffs
+    (ELet
+       ( { is_rec = true
+         ; name = "map2"
+         ; ty =
+             TFun
+               ( TFun
+                   ( TVar "a"
+                   , EffSet.of_list []
+                   , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
+               , EffSet.of_list []
+               , TFun
+                   ( TList (TVar "a")
+                   , EffSet.of_list []
+                   , TFun
+                       ( TList (TVar "b")
+                       , EffSet.of_list [ EffExc Exc1; EffVar "e" ]
+                       , TList (TVar "c") ) ) )
+         ; expr =
+             EFun
+               ( "f"
+               , TFun
+                   ( TVar "a"
+                   , EffSet.of_list []
+                   , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
+               , EFun
+                   ( "l1"
+                   , TList (TVar "a")
+                   , EFun
+                       ( "l2"
+                       , TList (TVar "b")
+                       , EMatch
+                           ( ETuple [ EVal "l1"; EVal "l2" ]
+                           , [ ( PTuple [ PConst CEmptyList; PConst CEmptyList ]
+                               , EConst CEmptyList )
+                             ; ( PTuple
+                                   [ PCons ([ PVal "a1" ], PVal "l1")
+                                   ; PCons ([ PVal "a2" ], PVal "l2")
+                                   ]
+                               , ELet
+                                   ( { is_rec = false
+                                     ; name = "r"
+                                     ; ty = TVar "c"
+                                     ; expr = EApp (EApp (EVal "f", EVal "a1"), EVal "a2")
+                                     }
+                                   , EBinop
+                                       ( EVal "r"
+                                       , Cons
+                                       , EApp
+                                           ( EApp (EApp (EVal "map2", EVal "f"), EVal "l1")
+                                           , EVal "l2" ) ) ) )
+                             ; ( PTuple [ PVal "o1"; PVal "o2" ]
+                               , EApp (EVal "raise1", ETuple []) )
+                             ] ) ) ) )
+         }
+       , EApp
+           ( EApp
+               ( EVal "map2"
+               , EFun ("n", TInt, EFun ("m", TVar "a", EApp (EVal "raise2", ETuple [])))
+               )
+           , EBinop (EConst (CInt 1), Cons, EConst CEmptyList) ) ))
+  @@ function
+  | TFun (TList (TVar _), effs1, TList (TVar _)), effs2 ->
+    equal_eff_set effs1 (EffSet.of_list [ EffExc Exc1; EffExc Exc2 ])
+    && EffSet.is_empty effs2
+  | _ -> false
 ;;
 
-let ty_deduc_singleton name ty = ty_deduc_grp (tvar_grp_singleton name ty)
-let eff_deduc eff = { ty = BindMap.empty; eff }
-
-let mrg_tys ty1 ty2 subst = 
-  match ty1 with
-  | TVar name1 -> (match (BindMap.find_opt name1 subst.ty) with 
-      | None -> BindMap. )
-  | _ -> failwith ""
-
-let mrg_deducs d1 d2 =
-  { ty =
-      BindMap.fold
-        (fun name group1 tvars ->
-          match BindMap.find_opt name tvars with
-          | None -> BindMap.add name group1 tvars
-          | Some group2 ->
-            let group = mrg_tvar_grps group1 group2 in
-            BindSet.fold
-              (fun name tvars -> BindMap.add name group tvars)
-              group.names
-              tvars)
-        d2.ty
-        d1.ty
-  ; eff =
-      BindMap.merge
-        (fun _ eff1_opt eff2_opt ->
-          match eff1_opt, eff2_opt with
-          | Some e1, Some e2 ->
-            if eff_subset e1 e2 && eff_subset e2 e1 then Some e1 else raise Incorrect_ty
-          | None, x -> x
-          | x, None -> x)
-        d1.eff
-        d2.eff
-  }
+(*
+try raise1 () with
+| Exc1 -> 1
+*)
+let%test _ =
+  test_infer_tyeffs (ETry (EApp (EVal "raise1", ETuple []), [ Exc1, EConst (CInt 1) ]))
+  @@ function
+  | TInt, effs -> EffSet.is_empty effs
+  | _ -> false
 ;;
 
-(* let merge_deductions d1 d2 =
-  
-  ( BindMap.merge
-      (fun name ty1_opt ty2_opt ->
-        match ty1_opt, ty2_opt with
-        (* TODO if types t1 != t2 && name.startsWith("arg ") && (
-          t1 is TVar(name) && (ty[name] == t2 || ty.CAS(null, t2)) ||
-          t2 is TVar(name) && (ty[name] == t1 || ty.CAS(null, t1)) ||
-          t1 is TVar(name1) && t2 is TVar(name2) &&...
-          )
-        *)
-        (* TODO if types aren't equal and one match TVar("arg " ^ name) maybe TVar is bound to matching type
-          or TVar isn't yet bound and can be bound to a matching type *)
-        | Some t1, Some t2 -> if equal_ty t1 t2 then Some t1 else raise Incorrect_ty
-        | None, x -> x
-        | x, None -> x)
-      ty1
-      ty2
-  , BindMap.merge
-      (fun _ eff1_opt eff2_opt ->
-        match eff1_opt, eff2_opt with
-        | Some e1, Some e2 ->
-          (* TODO allow permuations *)
-          if List.equal equal_eff e1 e2 then Some e1 else raise Incorrect_ty
-        | None, x -> x
-        | x, None -> x)
-      eff1
-      eff2 )
-;; *)
-
-let rec deduce_tvars prmty argty covar =
-  match argty with
-  | TVar argname ->
-    (match prmty with
-    | TVar prmname ->
-      ty_deduc_grp
-        { names = BindSet.of_list [ argname; prmname ]
-        ; ty = TVar (safe_tvar_name (argname ^ " " ^ prmname))
-        }
-    | _ -> ty_deduc_singleton argname prmty)
-  | _ ->
-    (match prmty with
-    | TInt ->
-      (match argty with
-      | TInt -> empty_deduc
-      | _ -> raise Incorrect_ty)
-    | TString ->
-      (match argty with
-      | TString -> empty_deduc
-      | _ -> raise Incorrect_ty)
-    | TBool ->
-      (match argty with
-      | TBool -> empty_deduc
-      | _ -> raise Incorrect_ty)
-    | TExc prm_exc ->
-      (match argty with
-      | TExc arg_exc when equal_exc prm_exc arg_exc -> empty_deduc
-      | _ -> raise Incorrect_ty)
-    | TBoundVar name ->
-      (match argty with
-      | TBoundVar name2 when name = name2 -> empty_deduc
-      | _ -> raise Incorrect_ty)
-    | TTuple prmtys ->
-      (match argty with
-      | TTuple argtys ->
-        List.fold_right
-          (fun d1 d2 -> mrg_deducs d1 d2)
-          (List.map (fun (p, a) -> deduce_tvars p a covar) (List.combine prmtys argtys))
-          empty_deduc
-      | _ -> raise Incorrect_ty)
-    | TList prmty ->
-      (match argty with
-      | TList argty -> deduce_tvars prmty argty covar
-      | _ -> raise Incorrect_ty)
-    | TRef prmty ->
-      (match argty with
-      | TRef argty -> deduce_tvars prmty argty covar
-      | _ -> raise Incorrect_ty)
-    | TVar name -> ty_deduc_singleton name argty
-    | TFun (p1, peff, p2) ->
-      (match argty with
-      | TFun (a1, aeff, a2) ->
-        mrg_deducs
-          (mrg_deducs (deduce_tvars p1 a1 (not covar)) (deduce_tvars p2 a2 covar))
-          (match
-             List.find_opt
-               (fun eff ->
-                 match eff with
-                 | EffVar _ -> true
-                 | _ -> false)
-               peff
-           with
-          | Some _ ->
-            eff_deduc
-              (List.fold_right
-                 (fun eff map ->
-                   match eff with
-                   | EffVar s -> BindMap.add s aeff map
-                   | _ -> map)
-                 peff
-                 BindMap.empty)
-          | None when if covar then eff_subset aeff peff else eff_subset peff aeff ->
-            empty_deduc
-          | _ -> raise Incorrect_ty)
-      | _ -> raise Incorrect_ty))
+(*
+try raise1 () with
+| Exc1 -> raise2 ()
+*)
+let%test _ =
+  test_infer_tyeffs
+    (ETry (EApp (EVal "raise1", ETuple []), [ Exc1, EApp (EVal "raise2", ETuple []) ]))
+  @@ function
+  | TVar _, effs -> equal_eff_set effs (EffSet.singleton (EffExc Exc2))
+  | _ -> false
 ;;
 
-let deduce_tvars prmty argty = deduce_tvars prmty argty true
-
-let apply_eff_deduc effs deduc =
-  List.flatten
-    (List.map
-       (fun eff ->
-         match eff with
-         | EffVar name -> Option.value ~default:[ eff ] (BindMap.find_opt name deduc.eff)
-         | _ -> [ eff ])
-       effs)
+(*
+try raise1 () with
+| Exc1 -> raise1 ()
+*)
+let%test _ =
+  test_infer_tyeffs
+    (ETry (EApp (EVal "raise1", ETuple []), [ Exc1, EApp (EVal "raise1", ETuple []) ]))
+  @@ function
+  | TVar _, effs -> equal_eff_set effs (EffSet.singleton (EffExc Exc1))
+  | _ -> false
 ;;
 
-(* rename induce *)
-let rec apply_deduc ty deduc =
-  match ty with
-  | TInt | TString | TBool | TExc _ | TBoundVar _ -> ty
-  | TTuple l -> TTuple (List.map (fun t -> apply_deduc t deduc) l)
-  | TList t -> TList (apply_deduc t deduc)
-  | TRef t -> TRef (apply_deduc t deduc)
-  | TVar name ->
-    (match BindMap.find_opt name deduc.ty with
-    | Some grp -> grp.ty
-    | None -> ty)
-  | TFun (ty1, effs, ty2) ->
-    TFun (apply_deduc ty1 deduc, apply_eff_deduc effs deduc, apply_deduc ty2 deduc)
+(*
+let f: bool -[exc Exc1, exc Exc2]-> string = fun flag: bool ->
+  match flag with
+  | true -> raise1 ()
+  | false -> raise2 ()
+in
+try f true with
+| Exc1 -> raise2 ()
+| Exc2 -> "literal"
+*)
+let%test _ =
+  test_infer_tyeffs
+    (ELet
+       ( { is_rec = false
+         ; name = "f"
+         ; ty = TFun (TBool, EffSet.of_list [ EffExc Exc1; EffExc Exc2 ], TString)
+         ; expr =
+             EFun
+               ( "flag"
+               , TBool
+               , EMatch
+                   ( EVal "flag"
+                   , [ PConst (CBool true), EApp (EVal "raise1", ETuple [])
+                     ; PConst (CBool false), EApp (EVal "raise2", ETuple [])
+                     ] ) )
+         }
+       , ETry
+           ( EApp (EVal "f", EConst (CBool true))
+           , [ Exc1, EApp (EVal "raise2", ETuple []); Exc2, EConst (CString "literal") ]
+           ) ))
+  @@ function
+  | TString, effs -> equal_eff_set effs (EffSet.singleton (EffExc Exc2))
+  | _ -> false
 ;;
 
-let all_evars effs =
-  BindSet.of_list
-    (List.filter_map
-       (fun eff ->
-         match eff with
-         | EffVar name -> Some name
-         | _ -> None)
-       effs)
+(*
+let rec fix: (('a -['e]-> 'b) --> 'a -['e]-> 'b) --> 'a -['e]-> 'b = 
+  fun (f: ('a -['e]-> 'b) --> 'a -['e]-> 'b) -> fun eta: 'a -> f (fix f) eta
+in
+let fac: (int --> int) --> int --> int = fun self: (int --> int) -> fun n: int -> 
+  match n <= 1 with
+  | true -> 1
+  | false -> n * (self (n-1))
+in
+fix fac
+*)
+let%test _ =
+  test_infer_tyeffs
+    (ELet
+       ( { is_rec = true
+         ; name = "fix"
+         ; ty =
+             TFun
+               ( TFun
+                   ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+                   , EffSet.of_list []
+                   , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b") )
+               , EffSet.of_list []
+               , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b") )
+         ; expr =
+             EFun
+               ( "f"
+               , TFun
+                   ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+                   , EffSet.of_list []
+                   , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b") )
+               , EFun
+                   ( "eta"
+                   , TVar "a"
+                   , EApp (EApp (EVal "f", EApp (EVal "fix", EVal "f")), EVal "eta") ) )
+         }
+       , ELet
+           ( { is_rec = false
+             ; name = "fac"
+             ; ty =
+                 TFun
+                   ( TFun (TInt, EffSet.of_list [], TInt)
+                   , EffSet.of_list []
+                   , TFun (TInt, EffSet.of_list [], TInt) )
+             ; expr =
+                 EFun
+                   ( "self"
+                   , TFun (TInt, EffSet.of_list [], TInt)
+                   , EFun
+                       ( "n"
+                       , TInt
+                       , EMatch
+                           ( EBinop (EVal "n", Leq, EConst (CInt 1))
+                           , [ PConst (CBool true), EConst (CInt 1)
+                             ; ( PConst (CBool false)
+                               , EBinop
+                                   ( EVal "n"
+                                   , Mul
+                                   , EApp
+                                       ( EVal "self"
+                                       , EBinop (EVal "n", Sub, EConst (CInt 1)) ) ) )
+                             ] ) ) )
+             }
+           , EApp (EVal "fix", EVal "fac") ) ))
+  @@ function
+  | TFun (TInt, effs1, TInt), effs2 -> EffSet.is_empty effs1 && EffSet.is_empty effs2
+  | _ -> false
 ;;
 
-let rec all_teffvars = function
-  | TInt | TString | TBool | TExc _ | TBoundVar _ -> BindSet.empty, BindSet.empty
-  | TTuple l ->
-    List.fold_left
-      (fun (tys1, effs1) t ->
-        let tys2, effs2 = all_teffvars t in
-        BindSet.union tys1 tys2, BindSet.union effs1 effs2)
-      (BindSet.empty, BindSet.empty)
-      l
-  | TList t -> all_teffvars t
-  | TRef t -> all_teffvars t
-  | TVar name -> BindSet.singleton name, BindSet.empty
-  | TFun (ty1, effs, ty2) ->
-    let tys1, effs1 = all_teffvars ty1 in
-    let tys2, effs2 = all_teffvars ty2 in
-    BindSet.union tys1 tys2, BindSet.union (all_evars effs) (BindSet.union effs1 effs2)
+(*
+(fun (f : ('a -['e]-> 'b) --> 'a -['e]-> 'b) ->
+  let r : ('a -['e]-> 'b) ref = ref (fun o : 'a -> (sneaky_eff raise1) ()) in
+  let fixf : 'a -['e]-> 'b = fun x : 'a -> f !r x in
+  let o: () = r := fixf in
+  !r)
+(fun (self: string list -[IO]-> ()) -> fun l: string list -> match l with
+| hd::tl -> let o: unit = println hd in self tl
+| o -> ())
+*)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EApp
+       ( EFun
+           ( "f"
+           , TFun
+               ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+               , EffSet.of_list []
+               , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b") )
+           , ELet
+               ( { is_rec = false
+                 ; name = "r"
+                 ; ty = TRef (TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b"))
+                 ; expr =
+                     EApp
+                       ( EVal "ref"
+                       , EFun
+                           ( "o"
+                           , TVar "a"
+                           , EApp (EApp (EVal "sneaky_eff", EVal "raise1"), ETuple []) )
+                       )
+                 }
+               , ELet
+                   ( { is_rec = false
+                     ; name = "fixf"
+                     ; ty = TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+                     ; expr =
+                         EFun
+                           ( "x"
+                           , TVar "a"
+                           , EApp (EApp (EVal "f", EUnop (Deref, EVal "r")), EVal "x") )
+                     }
+                   , ELet
+                       ( { is_rec = false
+                         ; name = "o"
+                         ; ty = TTuple []
+                         ; expr = EBinop (EVal "r", Asgmt, EVal "fixf")
+                         }
+                       , EUnop (Deref, EVal "r") ) ) ) )
+       , EFun
+           ( "self"
+           , TFun (TList TString, EffSet.of_list [ EffIO ], TTuple [])
+           , EFun
+               ( "l"
+               , TList TString
+               , EMatch
+                   ( EVal "l"
+                   , [ ( PCons ([ PVal "hd" ], PVal "tl")
+                       , ELet
+                           ( { is_rec = false
+                             ; name = "o"
+                             ; ty = TTuple []
+                             ; expr = EApp (EVal "println", EVal "hd")
+                             }
+                           , EApp (EVal "self", EVal "tl") ) )
+                     ; PVal "o", ETuple []
+                     ] ) ) ) ))
+    (TFun (TList TString, EffSet.of_list [ EffIO ], TTuple []))
+    (EffSet.singleton EffAsgmt)
 ;;
 
-let safe_deduc ty =
-  let tys, effs = all_teffvars ty in
-  { ty =
-      BindSet.fold
-        (fun name map ->
-          BindMap.add name (tvar_grp_singleton name (TVar (safe_tvar_name name))) map)
-        tys
-        BindMap.empty
-  ; eff =
-      BindSet.fold
-        (fun name map -> BindMap.add name [ EffVar (safe_tvar_name name) ] map)
-        effs
-        BindMap.empty
-  }
+(* 1 + 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Add, EConst (CInt 1))) TInt EffSet.empty
 ;;
 
-let safe_ty ty = apply_deduc ty (safe_deduc ty)
-
-let safe_effs effs =
-  List.map
-    (fun eff ->
-      match eff with
-      | EffVar name -> EffVar (safe_tvar_name name)
-      | _ -> eff)
-    effs
+(* 1 - 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Sub, EConst (CInt 1))) TInt EffSet.empty
 ;;
 
-let safe_tyeffs (ty, effs) = safe_ty ty, safe_effs effs
-
-let bind_effvars env effs =
-  List.map (fun eff -> match eff with
-  | EffVar name -> if is_bound name env.beffvars then EffBoundVar(name) else eff
-  | _ -> eff) effs
-
-let rec bind_teffvars env ty =
-  match ty with
-  | TInt | TString | TBool | TExc _ | TBoundVar _ -> ty
-  | TTuple l -> TTuple (List.map (fun t -> bind_teffvars env t) l)
-  | TList t -> TList (bind_teffvars env t)
-  | TRef t -> TRef (bind_teffvars env t)
-  | TVar name ->
-    if is_bound name env.btvars then TBoundVar(name) else ty
-  | TFun (ty1, effs, ty2) ->
-    TFun (bind_teffvars env ty1, bind_effvars env effs, bind_teffvars env ty2)
+(* 1 * 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Mul, EConst (CInt 1))) TInt EffSet.empty
 ;;
 
-let unbind_effvars env effs =
-  List.map (fun eff -> match eff with
-  | EffBoundVar name -> if is_bound name env.beffvars then EffVar(name) else eff
-  | _ -> eff) effs
-
-let rec unbind_teffvars env ty =
-  match ty with
-  | TInt | TString | TBool | TExc _ | TVar _ -> ty
-  | TTuple l -> TTuple (List.map (fun t -> unbind_teffvars env t) l)
-  | TList t -> TList (unbind_teffvars env t)
-  | TRef t -> TRef (unbind_teffvars env t)
-  | TBoundVar name ->
-    if is_bound name env.btvars then TVar(name) else ty
-  | TFun (ty1, effs, ty2) ->
-    TFun (unbind_teffvars env ty1, unbind_effvars env effs, unbind_teffvars env ty2)
+(* 1 / 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Div, EConst (CInt 1))) TInt EffSet.empty
 ;;
 
-(* TODO use Random.int64 twice to rename generics right after obtaining any value that has not bound TVars *)
-let rec infer_tyeffs env expr =
-  safe_tyeffs
-    (match expr with
-    | EConst const ->
-      ( (match const with
-        | CInt _ -> TInt
-        | CString _ -> TString
-        | CBool _ -> TBool
-        | CEmptyList -> TList (TVar (safe_tvar_name "[]")))
-      , [] )
-    | EVal name -> find_bind env.decls name, []
-    | EApp (f, arg) ->
-      let fty, feffs = infer_tyeffs env f in
-      let argty, argeffs = infer_tyeffs env arg in
-      (match fty with
-      | TFun (prmty, effty, retty) ->
-        let deduc = deduce_tvars prmty argty in
-        apply_deduc retty deduc, feffs @ argeffs @ apply_eff_deduc effty deduc
-      | _ -> raise Incorrect_ty)
-    | ELet (decl, expr) ->
-      let vty, veff = infer_tyeffs env decl.expr in
-      let dty = safe_ty (bind_teffvars env decl.ty) in
-      let _ = deduce_tvars vty dty in
-      let ty, eff = infer_tyeffs ({
-         decls = BindMap.add (decl.name) dty env.decls;
-         btvars = env.btvars;
-         beffvars = env.beffvars;
-         }) expr in
-      ty, veff @ eff
-    | EFun (arg, argty, expr) ->
-      let argty = bind_teffvars env argty in
-      let (new_tvars, new_effvars) = all_teffvars argty in
-      let env = {
-        decls = env.decls;
-        btvars = BindSet.of_seq (Seq.append (BindSet.to_seq env.btvars) (BindSet.to_seq new_tvars));
-        beffvars = BindSet.of_seq (Seq.append (BindSet.to_seq env.beffvars) (BindSet.to_seq new_effvars));
-      } in
-      let argty = bind_teffvars env argty in
-      let env = {
-        decls = BindMap.add arg argty env.decls;
-        btvars = env.btvars;
-        beffvars = env.beffvars; 
-      } in
-      let (resty, effs) = infer_tyeffs env expr in
-      let unbind_env = { decls = BindMap.empty; btvars = new_tvars; beffvars = new_effvars; } in
-      let argty = unbind_teffvars unbind_env argty in
-      let resty = unbind_teffvars unbind_env resty in
-      let effs = unbind_effvars unbind_env effs in
-      TFun(argty, effs, resty), []
-    | _ -> TInt, [])
-;; *)
+(* 1 = 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Eq, EConst (CInt 1))) TBool EffSet.empty
+;;
+
+(* 1 != 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Neq, EConst (CInt 1))) TBool EffSet.empty
+;;
+
+(* 1 < 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Les, EConst (CInt 1))) TBool EffSet.empty
+;;
+
+(* 1 <= 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Leq, EConst (CInt 1))) TBool EffSet.empty
+;;
+
+(* 1 > 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Gre, EConst (CInt 1))) TBool EffSet.empty
+;;
+
+(* 1 >= 1 *)
+let%test _ =
+  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Geq, EConst (CInt 1))) TBool EffSet.empty
+;;
+
+(* "s" = "s" *)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EBinop (EConst (CString "s"), Eq, EConst (CString "s")))
+    TBool
+    EffSet.empty
+;;
+
+(* "s" != "s" *)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EBinop (EConst (CString "s"), Neq, EConst (CString "s")))
+    TBool
+    EffSet.empty
+;;
+
+(* true = false *)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EBinop (EConst (CBool true), Eq, EConst (CBool false)))
+    TBool
+    EffSet.empty
+;;
+
+(* true != false *)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EBinop (EConst (CBool true), Neq, EConst (CBool false)))
+    TBool
+    EffSet.empty
+;;
+
+(* true && false *)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EBinop (EConst (CBool true), And, EConst (CBool false)))
+    TBool
+    EffSet.empty
+;;
+
+(* true || false *)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EBinop (EConst (CBool true), Or, EConst (CBool false)))
+    TBool
+    EffSet.empty
+;;
+
+(* (ref 1) := 2 *)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EBinop (EApp (EVal "ref", EConst (CInt 1)), Asgmt, EConst (CInt 2)))
+    (TTuple [])
+    (EffSet.singleton EffAsgmt)
+;;
+
+(* 1 :: [] *)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EBinop (EConst (CInt 1), Cons, EConst CEmptyList))
+    (TList TInt)
+    EffSet.empty
+;;
+
+(* !(ref 1) *)
+let%test _ =
+  test_infer_tyeffs_eq
+    (EUnop (Deref, EApp (EVal "ref", EConst (CInt 1))))
+    TInt
+    EffSet.empty
+;;
+
+(* -(1) *)
+let%test _ = test_infer_tyeffs_eq (EUnop (Neg, EConst (CInt 1))) TInt EffSet.empty

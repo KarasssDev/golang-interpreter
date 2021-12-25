@@ -1,4 +1,0 @@
-(executable
- (name runULC)
- (modules runULC QCTests)
- (libraries ocaml_typed_effects_lib qcheck-core qcheck-core.runner))

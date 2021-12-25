@@ -1,5 +1,6 @@
 open Angstrom
 open Ast
+open Format
 
 let is_space = function
   | ' ' | '\t' | '\n' | '\r' -> true
@@ -246,7 +247,7 @@ let petry pexpr =
 ;;
 
 let pebinop term pbinops =
-  chainl1 term ((fun op expr1 expr2 -> e_binop expr1 op expr2) <$> pbinops)
+  chainr1 term ((fun op expr1 expr2 -> e_binop expr1 op expr2) <$> pbinops)
 ;;
 
 let pmul = pstoken "*" *> return mul
@@ -305,3 +306,310 @@ let pdecl = ptoken (pdecl_base pexpr)
 let pdecl_delim = many (pstoken ";;") *> pspace
 let pprogram = pdecl_delim *> many (pdecl <* pdecl_delim)
 let parse s = parse_string ~consume:Consume.All pprogram s
+
+(* Tests *)
+
+let test_parse str expected =
+  match parse str with
+  | Error err ->
+    printf "%s\n" err;
+    false
+  | Ok actual ->
+    let is_eq = List.equal equal_decl expected actual in
+    if is_eq
+    then ()
+    else (
+      printf "Expected: ";
+      pp_program std_formatter expected;
+      printf "\nActual: ";
+      pp_program std_formatter expected;
+      printf "\n");
+    is_eq
+;;
+
+let%test _ = test_parse "" []
+
+let%test _ = test_parse {|
+;;;;
+;;
+;;
+|} []
+
+let%test _ =
+  test_parse
+    {|
+let rec map : ('a -['e]-> 'b) --> 'a list -['e]-> 'b list = fun f: ('a -['e]-> 'b) -> fun xs : 'a list ->
+  match xs with
+  | [] -> []
+  | x::xs -> (f x) :: (map f xs)
+;;
+let id: 'a --> 'a = fun x: 'a -> x
+;;
+|}
+    [ { is_rec = true
+      ; name = "map"
+      ; ty =
+          TFun
+            ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+            , EffSet.of_list []
+            , TFun (TList (TVar "a"), EffSet.of_list [ EffVar "e" ], TList (TVar "b")) )
+      ; expr =
+          EFun
+            ( "f"
+            , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
+            , EFun
+                ( "xs"
+                , TList (TVar "a")
+                , EMatch
+                    ( EVal "xs"
+                    , [ PConst CEmptyList, EConst CEmptyList
+                      ; ( PCons ([ PVal "x" ], PVal "xs")
+                        , EBinop
+                            ( EApp (EVal "f", EVal "x")
+                            , Cons
+                            , EApp (EApp (EVal "map", EVal "f"), EVal "xs") ) )
+                      ] ) ) )
+      }
+    ; { is_rec = false
+      ; name = "id"
+      ; ty = TFun (TVar "a", EffSet.of_list [], TVar "a")
+      ; expr = EFun ("x", TVar "a", EVal "x")
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    {|
+let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 'c list = 
+  fun f: ('a --> 'b -['e]-> 'c) ->
+    fun l1: 'a list -> fun l2: 'b list ->
+  match (l1, l2) with
+  | ([], []) -> []
+  | (a1::l1, a2::l2) -> let r: 'c = f a1 a2 in r :: map2 f l1 l2
+  | (o1, o2) -> raiseExc1 ()
+;;
+|}
+    [ { is_rec = true
+      ; name = "map2"
+      ; ty =
+          TFun
+            ( TFun
+                ( TVar "a"
+                , EffSet.of_list []
+                , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
+            , EffSet.of_list []
+            , TFun
+                ( TList (TVar "a")
+                , EffSet.of_list []
+                , TFun
+                    ( TList (TVar "b")
+                    , EffSet.of_list [ EffExc Exc1; EffVar "e" ]
+                    , TList (TVar "c") ) ) )
+      ; expr =
+          EFun
+            ( "f"
+            , TFun
+                ( TVar "a"
+                , EffSet.of_list []
+                , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
+            , EFun
+                ( "l1"
+                , TList (TVar "a")
+                , EFun
+                    ( "l2"
+                    , TList (TVar "b")
+                    , EMatch
+                        ( ETuple [ EVal "l1"; EVal "l2" ]
+                        , [ ( PTuple [ PConst CEmptyList; PConst CEmptyList ]
+                            , EConst CEmptyList )
+                          ; ( PTuple
+                                [ PCons ([ PVal "a1" ], PVal "l1")
+                                ; PCons ([ PVal "a2" ], PVal "l2")
+                                ]
+                            , ELet
+                                ( { is_rec = false
+                                  ; name = "r"
+                                  ; ty = TVar "c"
+                                  ; expr = EApp (EApp (EVal "f", EVal "a1"), EVal "a2")
+                                  }
+                                , EBinop
+                                    ( EVal "r"
+                                    , Cons
+                                    , EApp
+                                        ( EApp (EApp (EVal "map2", EVal "f"), EVal "l1")
+                                        , EVal "l2" ) ) ) )
+                          ; ( PTuple [ PVal "o1"; PVal "o2" ]
+                            , EApp (EVal "raiseExc1", ETuple []) )
+                          ] ) ) ) )
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    {|
+let x: int ref = ref 1
+;;
+let o: () = x := !x + 1
+;;
+let result: int = !x
+;;
+|}
+    [ { is_rec = false
+      ; name = "x"
+      ; ty = TRef TInt
+      ; expr = EApp (EVal "ref", EConst (CInt 1))
+      }
+    ; { is_rec = false
+      ; name = "o"
+      ; ty = TTuple []
+      ; expr =
+          EBinop (EVal "x", Asgmt, EBinop (EUnop (Deref, EVal "x"), Add, EConst (CInt 1)))
+      }
+    ; { is_rec = false; name = "result"; ty = TInt; expr = EUnop (Deref, EVal "x") }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    {|
+let f: bool -[exc Exc1, exc Exc2]-> string = fun flag: bool ->
+  match flag with
+  | true -> raiseExc1 ()
+  | false -> raiseExc2 ()
+;;
+let s: string = try f true with
+| Exc1 -> raiseExc2 ()
+| Exc2 -> "literal"
+|}
+    [ { is_rec = false
+      ; name = "f"
+      ; ty = TFun (TBool, EffSet.of_list [ EffExc Exc1; EffExc Exc2 ], TString)
+      ; expr =
+          EFun
+            ( "flag"
+            , TBool
+            , EMatch
+                ( EVal "flag"
+                , [ PConst (CBool true), EApp (EVal "raiseExc1", ETuple [])
+                  ; PConst (CBool false), EApp (EVal "raiseExc2", ETuple [])
+                  ] ) )
+      }
+    ; { is_rec = false
+      ; name = "s"
+      ; ty = TString
+      ; expr =
+          ETry
+            ( EApp (EVal "f", EConst (CBool true))
+            , [ Exc1, EApp (EVal "raiseExc2", ETuple [])
+              ; Exc2, EConst (CString "literal")
+              ] )
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    {|
+let b: bool = false || (1 + 3) * 2 + 10 >= 24 / 2 - 1 && 5 + 2 * 2 = 9
+|}
+    [ { is_rec = false
+      ; name = "b"
+      ; ty = TBool
+      ; expr =
+          EBinop
+            ( EConst (CBool false)
+            , Or
+            , EBinop
+                ( EBinop
+                    ( EBinop
+                        ( EBinop
+                            ( EBinop (EConst (CInt 1), Add, EConst (CInt 3))
+                            , Mul
+                            , EConst (CInt 2) )
+                        , Add
+                        , EConst (CInt 10) )
+                    , Geq
+                    , EBinop
+                        ( EBinop (EConst (CInt 24), Div, EConst (CInt 2))
+                        , Sub
+                        , EConst (CInt 1) ) )
+                , And
+                , EBinop
+                    ( EBinop
+                        ( EConst (CInt 5)
+                        , Add
+                        , EBinop (EConst (CInt 2), Mul, EConst (CInt 2)) )
+                    , Eq
+                    , EConst (CInt 9) ) ) )
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    {|
+let x: int = a1, a2 || a3 && a4 != a5 = a6 >= a7 > a8 <= a9 < a10 :: a11 - a12 * -a13 a14 !a15 / a16 + a17
+|}
+    [ { is_rec = false
+      ; name = "x"
+      ; ty = TInt
+      ; expr =
+          ETuple
+            [ EVal "a1"
+            ; EBinop
+                ( EVal "a2"
+                , Or
+                , EBinop
+                    ( EVal "a3"
+                    , And
+                    , EBinop
+                        ( EVal "a4"
+                        , Neq
+                        , EBinop
+                            ( EVal "a5"
+                            , Eq
+                            , EBinop
+                                ( EVal "a6"
+                                , Geq
+                                , EBinop
+                                    ( EVal "a7"
+                                    , Gre
+                                    , EBinop
+                                        ( EVal "a8"
+                                        , Leq
+                                        , EBinop
+                                            ( EVal "a9"
+                                            , Les
+                                            , EBinop
+                                                ( EVal "a10"
+                                                , Cons
+                                                , EBinop
+                                                    ( EVal "a11"
+                                                    , Sub
+                                                    , EBinop
+                                                        ( EBinop
+                                                            ( EVal "a12"
+                                                            , Mul
+                                                            , EBinop
+                                                                ( EUnop
+                                                                    ( Neg
+                                                                    , EApp
+                                                                        ( EApp
+                                                                            ( EVal "a13"
+                                                                            , EVal "a14"
+                                                                            )
+                                                                        , EUnop
+                                                                            ( Deref
+                                                                            , EVal "a15"
+                                                                            ) ) )
+                                                                , Div
+                                                                , EVal "a16" ) )
+                                                        , Add
+                                                        , EVal "a17" ) ) ) ) ) ) ) ) ) )
+                )
+            ]
+      }
+    ]
+;;

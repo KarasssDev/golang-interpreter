@@ -278,8 +278,6 @@ let eval_dec state = function
     state
 ;;
 
-(* | DEffect (name, tp) -> extend_env name (EffV tp) state *)
-
 let eval_test decls expected =
   try
     let init_state = { env = empty_id_map; context = empty_eff_map } in
@@ -287,7 +285,7 @@ let eval_test decls expected =
     let res =
       IdMap.fold
         (fun k v ln ->
-          let new_res = ln ^ Printf.sprintf "%s -> %s " k (exval_to_str v) in
+          let new_res = ln ^ Printf.sprintf "%s -> %s; " k (exval_to_str v) in
           new_res)
         state.env
         ""
@@ -316,7 +314,7 @@ let test code expected =
 (*
    let x = 1
 *)
-let%test _ = eval_test [ DLet (false, PVar "x", EConst (CInt 1)) ] "x -> 1 "
+let%test _ = eval_test [ DLet (false, PVar "x", EConst (CInt 1)) ] "x -> 1; "
 
 (* Eval test 2 *)
 
@@ -339,7 +337,7 @@ let%test _ = eval_test [ DLet (false, PVar "x", EConst (CInt 1)) ] "x -> 1 "
 let%test _ =
   eval_test
     [ DLet (false, PVar "x", EOp (Less, EConst (CInt 3), EConst (CInt 2))) ]
-    "x -> false "
+    "x -> false; "
 ;;
 
 (* Eval test 4 *)
@@ -370,7 +368,7 @@ let%test _ =
 let%test _ =
   eval_test
     [ DLet (false, PVar "x", ELet ([ false, PVar "y", EConst (CInt 5) ], EVar "y")) ]
-    "x -> 5 "
+    "x -> 5; "
 ;;
 
 (* Eval test 6 *)
@@ -390,7 +388,7 @@ let%test _ =
             ( [ false, PVar "y", EConst (CInt 5); false, PVar "z", EConst (CInt 10) ]
             , EOp (Add, EVar "y", EVar "z") ) )
     ]
-    "x -> 15 "
+    "x -> 15; "
 ;;
 
 (* Eval test 7 *)
@@ -410,7 +408,7 @@ let%test _ =
             ( [ false, PVar "y", EConst (CInt 5); false, PVar "y", EConst (CInt 10) ]
             , EVar "y" ) )
     ]
-    "x -> 10 "
+    "x -> 10; "
 ;;
 
 (* Eval test 8 *)
@@ -435,7 +433,7 @@ let%test _ =
               ]
             , EVar "y" ) )
     ]
-    "x -> 5 "
+    "x -> 5; "
 ;;
 
 (* Eval test 9 *)
@@ -448,7 +446,7 @@ let%test _ =
     [ DLet
         (false, PVar "f", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
     ]
-    "f -> x "
+    "f -> x; "
 ;;
 
 (* Eval test 10 *)
@@ -463,7 +461,7 @@ let%test _ =
         (false, PVar "f", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
     ; DLet (false, PVar "a", EApp (EApp (EVar "f", EConst (CInt 1)), EConst (CInt 2)))
     ]
-    "a -> 3 f -> x "
+    "a -> 3; f -> x; "
 ;;
 
 (* Eval test 11 *)
@@ -480,7 +478,7 @@ let%test _ =
     ; DLet (false, PVar "kek", EApp (EVar "f", EConst (CInt 1)))
     ; DLet (false, PVar "lol", EApp (EVar "kek", EConst (CInt 2)))
     ]
-    "f -> x kek -> y lol -> 3 "
+    "f -> x; kek -> y; lol -> 3; "
 ;;
 
 (* Eval test 12 *)
@@ -492,8 +490,8 @@ let%test _ =
    | _ -> n * fact (n + -1)
    let x = fact 3
 *)
-(* let%test _ =
-   eval_test
+let%test _ =
+  eval_test
     [ DLet
         ( true
         , PVar "fact"
@@ -512,60 +510,10 @@ let%test _ =
                   ] ) ) )
     ; DLet (false, PVar "x", EApp (EVar "fact", EConst (CInt 3)))
     ]
-    "fact -> n x -> 6 "
-   ;; *)
+    "fact -> n; x -> 6; "
+;;
 
 (* Eval test 13 *)
-
-(*
-  let rec sort lst =
-    let sorted =
-      match lst with
-      | hd1 :: hd2 :: tl ->
-        if hd1 > hd2 then hd2 :: sort (hd1 :: tl) else hd1 :: sort (hd2 :: tl)
-      | tl -> tl
-    in
-    if lst = sorted then lst else sort sorted
-  ;;
-
-  let l = [1; 2; 3]
-  let sorted = sort l
-*)
-(* let%test _ =
-   eval_test
-    [ DLet
-        ( true
-        , PVar "sort"
-        , EFun
-            ( PVar "lst"
-            , ELet
-                ( [ ( false
-                    , PVar "sorted"
-                    , EMatch
-                        ( EVar "lst"
-                        , [ ( PCons (PVar "hd1", PCons (PVar "hd2", PVar "tl"))
-                            , EIf
-                                ( EOp (Gre, EVar "hd1", EVar "hd2")
-                                , ECons
-                                    ( EVar "hd2"
-                                    , EApp (EVar "sort", ECons (EVar "hd1", EVar "tl")) )
-                                , ECons
-                                    ( EVar "hd1"
-                                    , EApp (EVar "sort", ECons (EVar "hd2", EVar "tl")) )
-                                ) )
-                          ; PVar "tl", EVar "tl"
-                          ] ) )
-                  ]
-                , EIf
-                    ( EOp (Eq, EVar "lst", EVar "sorted")
-                    , EVar "lst"
-                    , EApp (EVar "sort", EVar "sorted") ) ) ) )
-    ; DLet (false, PVar "l", EList [ EConst (CInt 1); EConst (CInt 3); EConst (CInt 2) ])
-    ; DLet (false, PVar "sorted", EApp (EVar "sort", EVar "l"))
-    ]
-    "l -> [1;3;2] sort -> lst sorted -> [1;2;3] " *)
-
-(* Eval test 14 *)
 
 (*
    effect Failure: int -> int
@@ -579,7 +527,6 @@ let%test _ =
 
    let y = matcher 1 <- must be 3 upon success
 *)
-(* TODO: fix this test *)
 let%test _ =
   eval_test
     [ DEffect2 ("Failure", TInt, TInt)
@@ -603,21 +550,39 @@ let%test _ =
                   ] ) ) )
     ; DLet (false, PVar "y", EApp (EVar "matcher", EConst (CInt 1)))
     ]
-    "Failure -> Failure eff dec, 2 arg helper -> x matcher -> x y -> 0 "
+    "Failure -> Failure eff dec, 2 arg; helper -> x; matcher -> x; y -> 0; "
 ;;
 
-(* let%test _ =
+let%test _ =
   test
     {|
+  effect E1: int
+  
+  let y = E1
 
-let rec fold init f = function 
-  | [] -> init 
-  | x :: xs -> fold (f init x) f xs
+  let helper x = 1 + perform (y)
 
-let list  = 5 :: [1; 2; 3; 4; 5];;
-
-let l = fold 0 (fun x y -> x + y) [1; 2; 3];;
+  let res = match helper 1 with
+  | effect (E1) k -> continue k (100)
+  | 101 -> "correct"
+  | _ -> "wrong"
 
 |}
-    ""
-;; *)
+    "E1 -> E1 eff dec, 1 arg; helper -> x; res -> correct; y -> E1 eff; "
+;;
+
+let%test _ =
+  test
+    {|
+  effect E: int -> int
+
+  let helper x = match perform (E x) with
+  | effect (E s) k -> continue k s*s
+  | l -> l
+
+  let res = match perform (E 5) with
+  | effect (E s) k -> continue k s*s
+  | l -> helper l
+|}
+    "E -> E eff dec, 2 arg; helper -> x; res -> 625; "
+;;

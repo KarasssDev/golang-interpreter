@@ -412,3 +412,39 @@ let%test _ =
         )
     ]
 ;;
+
+let%test _ =
+  Tester.test_parse
+    {|
+    let rec fix f x = f (fix f) x
+    let fac f n = if n <= 1 then 1 else f (n - 1) * n
+    let fact = fix fac
+    let res = fact 10
+  
+  |}
+    [ DLet
+        ( true
+        , PVar "fix"
+        , EFun
+            ( PVar "f"
+            , EFun
+                (PVar "x", EApp (EApp (EVar "f", EApp (EVar "fix", EVar "f")), EVar "x"))
+            ) )
+    ; DLet
+        ( false
+        , PVar "fac"
+        , EFun
+            ( PVar "f"
+            , EFun
+                ( PVar "n"
+                , EIf
+                    ( EOp (Leq, EVar "n", EConst (CInt 1))
+                    , EConst (CInt 1)
+                    , EOp
+                        ( Mul
+                        , EApp (EVar "f", EOp (Sub, EVar "n", EConst (CInt 1)))
+                        , EVar "n" ) ) ) ) )
+    ; DLet (false, PVar "fact", EApp (EVar "fix", EVar "fac"))
+    ; DLet (false, PVar "res", EApp (EVar "fact", EConst (CInt 10)))
+    ]
+;;

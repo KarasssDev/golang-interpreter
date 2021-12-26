@@ -326,12 +326,7 @@ let test_parse str expected =
     let is_eq = List.equal equal_decl expected actual in
     if is_eq
     then ()
-    else (
-      printf "Expected: ";
-      pp_program std_formatter expected;
-      printf "\nActual: ";
-      pp_program std_formatter actual;
-      printf "\n");
+    else printf "Expected: %a\nActual: %a\n" pp_program expected pp_program actual;
     is_eq
 ;;
 

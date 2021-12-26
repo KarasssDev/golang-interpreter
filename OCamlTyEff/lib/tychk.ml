@@ -18,7 +18,7 @@ type bind_set = BindSet.t
 let pp_bind_set fmt set =
   pp_print_seq
     ~pp_sep:(fun fmt () -> fprintf fmt ", ")
-    (fun fmt e -> fprintf fmt "%s" e)
+    pp_print_string
     fmt
     (BindSet.to_seq set)
 ;;
@@ -472,14 +472,7 @@ let check_program =
 let test_infer_tyeffs expr matcher =
   let ty, effs = infer_ty_effs stdlib_ty_chk_env expr in
   let result = matcher (ty, effs) in
-  if result
-  then ()
-  else (
-    printf "Actual:\nty=";
-    pp_ty std_formatter ty;
-    printf "\neffs=";
-    pp_eff_set std_formatter effs;
-    printf "\n");
+  if result then () else printf "Actual:\nty=%a\neffs=%a\n" pp_ty ty pp_eff_set effs;
   result
 ;;
 

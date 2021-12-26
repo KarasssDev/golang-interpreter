@@ -24,9 +24,7 @@ let all_effs = [ eff_exc exc1; eff_exc exc2; eff_io; eff_asgmt ]
 let pp_eff fmt = function
   | EffIO -> fprintf fmt "IO"
   | EffAsgmt -> fprintf fmt "Asgmt"
-  | EffExc exc ->
-    fprintf fmt "exc ";
-    pp_exc fmt exc
+  | EffExc exc -> fprintf fmt "exc %a" pp_exc exc
   | EffVar name -> fprintf fmt "'%s" name
 ;;
 
@@ -77,28 +75,18 @@ let rec pp_ty fmt = function
   | TBool -> fprintf fmt "bool"
   | TExc exc -> pp_exc fmt exc
   | TTuple tys ->
-    fprintf fmt "(";
-    Format.pp_print_list
-      ~pp_sep:(fun fmt () -> fprintf fmt " * ")
-      (fun fmt ty -> pp_ty fmt ty)
+    fprintf
       fmt
-      tys;
-    fprintf fmt ")"
-  | TList ty ->
-    pp_ty fmt ty;
-    fprintf fmt " list"
-  | TRef ty ->
-    pp_ty fmt ty;
-    fprintf fmt " ref"
+      "(%a)"
+      (Format.pp_print_list
+         ~pp_sep:(fun fmt () -> fprintf fmt " * ")
+         (fun fmt ty -> pp_ty fmt ty))
+      tys
+  | TList ty -> fprintf fmt "%a list" pp_ty ty
+  | TRef ty -> fprintf fmt "%a ref" pp_ty ty
   | TVar name -> fprintf fmt "'%s" name
-  | TFun (argty, effs, retty) ->
-    fprintf fmt "(";
-    pp_ty fmt argty;
-    fprintf fmt " -[";
-    pp_eff_set fmt effs;
-    fprintf fmt "]-> ";
-    pp_ty fmt retty;
-    fprintf fmt ")"
+  | TFun (arg_ty, effs, ret_ty) ->
+    fprintf fmt "(%a -[%a]-> %a)" pp_ty arg_ty pp_eff_set effs pp_ty ret_ty
 ;;
 
 type unop =
@@ -146,21 +134,24 @@ let _or = Or
 let asgmt = Asgmt
 let cons = Cons
 
-let rec pp_binop fmt = function
-  | Add -> fprintf fmt "+"
-  | Sub -> fprintf fmt "-"
-  | Mul -> fprintf fmt "*"
-  | Div -> fprintf fmt "/"
-  | Eq -> fprintf fmt "="
-  | Neq -> fprintf fmt "!="
-  | Les -> fprintf fmt "<"
-  | Leq -> fprintf fmt "<="
-  | Gre -> fprintf fmt ">"
-  | Geq -> fprintf fmt ">="
-  | And -> fprintf fmt "&&"
-  | Or -> fprintf fmt "||"
-  | Asgmt -> fprintf fmt ":="
-  | Cons -> fprintf fmt "::"
+let rec pp_binop fmt op =
+  fprintf
+    fmt
+    (match op with
+    | Add -> "+"
+    | Sub -> "-"
+    | Mul -> "*"
+    | Div -> "/"
+    | Eq -> "="
+    | Neq -> "!="
+    | Les -> "<"
+    | Leq -> "<="
+    | Gre -> ">"
+    | Geq -> ">="
+    | And -> "&&"
+    | Or -> "||"
+    | Asgmt -> ":="
+    | Cons -> "::")
 ;;
 
 type const =
@@ -177,7 +168,7 @@ let c_empty_list = CEmptyList
 
 let rec pp_const fmt = function
   | CInt d -> fprintf fmt "%d" d
-  | CString s -> fprintf fmt "\"%s\"" s
+  | CString s -> fprintf fmt "%S" s
   | CBool b -> fprintf fmt "%b" b
   | CEmptyList -> fprintf fmt "[]"
 ;;
@@ -199,24 +190,14 @@ let rec pp_ptrn fmt = function
   | PVal s -> fprintf fmt "%s" s
   | PConst c -> pp_const fmt c
   | PTuple l ->
-    fprintf fmt "(";
-    pp_print_list
-      ~pp_sep:(fun fmt () -> fprintf fmt ", ")
-      (fun fmt eff -> pp_ptrn fmt eff)
-      fmt
-      l;
-    fprintf fmt ")"
+    fprintf fmt "(%a)" (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt ", ") pp_ptrn) l
   | PCons (ptrns, ptrn) ->
-    fprintf fmt "(";
     pp_print_list
       ~pp_sep:(fun _ () -> ())
-      (fun fmt p ->
-        pp_ptrn fmt p;
-        fprintf fmt " :: ")
+      (fun fmt p -> fprintf fmt "%a :: " pp_ptrn p)
       fmt
       ptrns;
-    pp_ptrn fmt ptrn;
-    fprintf fmt ")"
+    pp_ptrn fmt ptrn
 ;;
 
 type decl =
@@ -253,86 +234,49 @@ let e_fun prm_name prm_ty body = EFun (prm_name, prm_ty, body)
 let e_try scr cases = ETry (scr, cases)
 
 let rec pp_decl fmt decl =
-  fprintf fmt "let ";
-  if decl.is_rec then fprintf fmt "rec " else ();
-  fprintf fmt "%s: " decl.name;
-  pp_ty fmt decl.ty;
-  fprintf fmt " = ";
-  pp_expr fmt decl.expr
+  fprintf
+    fmt
+    "let %s%s : %a = %a"
+    (if decl.is_rec then "rec " else "")
+    decl.name
+    pp_ty
+    decl.ty
+    pp_expr
+    decl.expr
 
 and pp_expr fmt = function
   | EConst c -> pp_const fmt c
   | EVal s -> fprintf fmt "%s" s
-  | EUnop (op, expr) ->
-    pp_unop fmt op;
-    pp_expr fmt expr
+  | EUnop (op, expr) -> fprintf fmt "%a%a" pp_unop op pp_expr expr
   | EBinop (expr1, op, expr2) ->
-    fprintf fmt "(";
-    pp_expr fmt expr1;
-    fprintf fmt " ";
-    pp_binop fmt op;
-    fprintf fmt " ";
-    pp_expr fmt expr2;
-    fprintf fmt ")"
-  | EApp (f, arg) ->
-    fprintf fmt "(";
-    pp_expr fmt f;
-    fprintf fmt " ";
-    fprintf fmt " ";
-    pp_expr fmt arg;
-    fprintf fmt ")"
+    fprintf fmt "(%a %a %a)" pp_expr expr1 pp_binop op pp_expr expr2
+  | EApp (f, arg) -> fprintf fmt "(%a %a)" pp_expr f pp_expr arg
   | ETuple l ->
-    fprintf fmt "(";
-    pp_print_list
-      ~pp_sep:(fun fmt () -> fprintf fmt ", ")
-      (fun fmt e -> pp_expr fmt e)
-      fmt
-      l;
-    fprintf fmt ")"
-  | ELet (decl, expr) ->
-    pp_decl fmt decl;
-    fprintf fmt " in \n";
-    pp_expr fmt expr
+    fprintf fmt "(%a)" (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt ", ") pp_expr) l
+  | ELet (decl, expr) -> fprintf fmt "%a in\n%a" pp_decl decl pp_expr expr
   | EMatch (scr, ptrns) ->
-    fprintf fmt "match ";
-    pp_expr fmt scr;
-    fprintf fmt " with\n";
-    pp_print_list
-      (fun fmt (p, e) ->
-        fprintf fmt "| ";
-        pp_ptrn fmt p;
-        fprintf fmt " -> ";
-        pp_expr fmt e)
+    fprintf
       fmt
+      "match %a with\n%a"
+      pp_expr
+      scr
+      (pp_print_list (fun fmt (p, e) -> fprintf fmt "| %a -> %a" pp_ptrn p pp_expr e))
       ptrns
   | EFun (prm, prmty, expr) ->
-    fprintf fmt "(";
-    fprintf fmt "fun %s: " prm;
-    pp_ty fmt prmty;
-    fprintf fmt " -> ";
-    pp_expr fmt expr;
-    fprintf fmt ")"
+    fprintf fmt "fun %s : %a -> %a" prm pp_ty prmty pp_expr expr
   | ETry (scr, excs) ->
-    fprintf fmt "try ";
-    pp_expr fmt scr;
-    fprintf fmt " with\n";
-    pp_print_list
-      (fun fmt (exc, exp) ->
-        fprintf fmt "| ";
-        pp_exc fmt exc;
-        fprintf fmt " -> ";
-        pp_expr fmt exp)
+    fprintf
       fmt
+      "try %a with\n%a"
+      pp_expr
+      scr
+      (pp_print_list (fun fmt (exc, expr) ->
+           fprintf fmt "| %a -> %a" pp_exc exc pp_expr expr))
       excs
 ;;
 
 type program = decl list [@@deriving eq]
 
 let pp_program fmt program =
-  pp_print_list
-    (fun fmt decl ->
-      pp_decl fmt decl;
-      fprintf fmt "\n;;\n")
-    fmt
-    program
+  pp_print_list (fun fmt decl -> fprintf fmt "%a\n;;\n" pp_decl decl) fmt program
 ;;

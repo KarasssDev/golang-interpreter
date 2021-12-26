@@ -1,309 +1,313 @@
 open Ast
 open Env
+open Base
+open Format
 
-type state =
-  { env: exval Env.id_t
-  ; context: effhval Env.eff_t
-  }
+module type MONAD_FAIL = sig
+  include Base.Monad.S2
 
-and effhval = EffHV of pat * ident * exp
+  val fail : 'e -> ('a, 'e) t
+end
 
-and exval =
-  | IntV of int
-  | BoolV of bool
-  | StringV of string
-  | TupleV of exval list
-  | ListV of exval list
-  | FunV of pat * exp * state
-  | Eff1V of capitalized_ident
-  | Eff2V of capitalized_ident * exval
-  | EffDec1V of capitalized_ident * tyexp
-  | EffDec2V of capitalized_ident * tyexp * tyexp
-  | ContV of ident
+module Interpret (M : MONAD_FAIL) = struct
+  open M
 
-let str_converter = function
-  | IntV x -> string_of_int x
-  | BoolV x -> string_of_bool x
-  | StringV x -> x
-  | _ -> failwith "Interpretation error: not basic type."
-;;
+  type state =
+    { env: exval Env.id_t
+    ; context: effhval Env.eff_t
+    }
 
-let rec exval_to_str = function
-  | IntV x -> str_converter (IntV x)
-  | BoolV x -> str_converter (BoolV x)
-  | StringV x -> str_converter (StringV x)
-  | TupleV x -> Printf.sprintf "(%s)" (String.concat "," (List.map str_converter x))
-  | ListV x -> Printf.sprintf "[%s]" (String.concat ";" (List.map str_converter x))
-  | FunV (pat, _, _) ->
-    (match pat with
-    | PVar x -> x
-    | _ -> "error")
-  | Eff1V name -> Printf.sprintf "%s eff" name
-  | Eff2V (name, exval) ->
-    Printf.sprintf "%s eff with %s inside" name (exval_to_str exval)
-  | ContV name -> Printf.sprintf "%s cont" name
-  | EffDec1V (name, _) -> Printf.sprintf "%s eff dec, 1 arg" name
-  | EffDec2V (name, _, _) -> Printf.sprintf "%s eff decl, 2 arg" name
-;;
+  and effhval = EffHV of pat * ident * exp
 
-let lookup_in_env id state = lookup_id_map id state.env
-let lookup_in_context id state = lookup_eff_map id state.context
-let extend_env id v state = { state with env = extend_id_map id v state.env }
-let extend_context id v state = { state with context = extend_eff_map id v state.context }
+  and exval =
+    | IntV of int
+    | BoolV of bool
+    | StringV of string
+    | TupleV of exval list
+    | ListV of exval list
+    | FunV of pat * exp * state
+    | Eff1V of capitalized_ident
+    | Eff2V of capitalized_ident * exval
+    | EffDec1V of capitalized_ident * tyexp
+    | EffDec2V of capitalized_ident * tyexp * tyexp
+    | ContV of ident
 
-exception Tuple_compare
-exception Match_fail
+  let lookup_in_env id state = lookup_id_map id state.env
+  let lookup_in_context id state = lookup_eff_map id state.context
+  let extend_env id v state = { state with env = extend_id_map id v state.env }
 
-let rec match_pat pat var =
-  match pat, var with
-  | PWild, _ -> []
-  | PVar name, v -> [ name, v ]
-  | PConst x, v ->
-    (match x, v with
-    | CInt a, IntV b when a = b -> []
-    | CString a, StringV b when a = b -> []
-    | CBool a, BoolV b when a = b -> []
-    | _ -> raise Match_fail)
-  | PCons (pat1, pat2), ListV (hd :: tl) -> match_pat pat1 hd @ match_pat pat2 (ListV tl)
-  | PNil, ListV [] -> []
-  | PTuple pats, TupleV vars when List.length pats = List.length vars ->
-    List.fold_left2 (fun binds pat var -> binds @ match_pat pat var) [] pats vars
-  | PEffect1 name_p, Eff1V name_exp when name_p = name_exp -> []
-  | PEffect2 (name_p, p), Eff2V (name_exp, v) when name_p = name_exp -> match_pat p v
-  | PEffectH (pat, _), Eff1V name_exp -> match_pat pat (Eff1V name_exp)
-  | PEffectH (pat, _), Eff2V (name_exp, v) -> match_pat pat (Eff2V (name_exp, v))
-  | _ -> raise Match_fail
-;;
+  let extend_context id v state =
+    { state with context = extend_eff_map id v state.context }
+  ;;
 
-let apply_infix_op op x y =
-  match op, x, y with
-  | Add, IntV x, IntV y -> IntV (x + y)
-  | Sub, IntV x, IntV y -> IntV (x - y)
-  | Mul, IntV x, IntV y -> IntV (x * y)
-  | Div, IntV x, IntV y -> IntV (x / y)
-  (* "<" block *)
-  | Less, IntV x, IntV y -> BoolV (x < y)
-  | Less, StringV x, StringV y -> BoolV (x < y)
-  | Less, BoolV x, BoolV y -> BoolV (x < y)
-  | Less, TupleV x, TupleV y when List.length x = List.length y -> BoolV (x < y)
-  | Less, ListV x, ListV y -> BoolV (x < y)
-  (* "<=" block *)
-  | Leq, IntV x, IntV y -> BoolV (x <= y)
-  | Leq, StringV x, StringV y -> BoolV (x <= y)
-  | Leq, BoolV x, BoolV y -> BoolV (x <= y)
-  | Leq, TupleV x, TupleV y when List.length x = List.length y -> BoolV (x <= y)
-  | Leq, ListV x, ListV y -> BoolV (x <= y)
-  (* ">" block *)
-  | Gre, IntV x, IntV y -> BoolV (x > y)
-  | Gre, StringV x, StringV y -> BoolV (x > y)
-  | Gre, BoolV x, BoolV y -> BoolV (x > y)
-  | Gre, TupleV x, TupleV y when List.length x = List.length y -> BoolV (x > y)
-  | Gre, ListV x, ListV y -> BoolV (x > y)
-  (* ">=" block *)
-  | Geq, IntV x, IntV y -> BoolV (x >= y)
-  | Geq, StringV x, StringV y -> BoolV (x >= y)
-  | Geq, BoolV x, BoolV y -> BoolV (x >= y)
-  | Geq, TupleV x, TupleV y when List.length x = List.length y -> BoolV (x >= y)
-  | Geq, ListV x, ListV y -> BoolV (x >= y)
-  (* "=" block *)
-  | Eq, IntV x, IntV y -> BoolV (x = y)
-  | Eq, StringV x, StringV y -> BoolV (x = y)
-  | Eq, BoolV x, BoolV y -> BoolV (x = y)
-  | Eq, TupleV x, TupleV y -> BoolV (x = y)
-  | Eq, ListV x, ListV y -> BoolV (x = y)
-  (* "!=" block *)
-  | Neq, IntV x, IntV y -> BoolV (x != y)
-  | Neq, StringV x, StringV y -> BoolV (x != y)
-  | Neq, BoolV x, BoolV y -> BoolV (x != y)
-  | Neq, TupleV x, TupleV y -> BoolV (x != y)
-  | Neq, ListV x, ListV y -> BoolV (x != y)
-  (* Other bool ops *)
-  | And, BoolV x, BoolV y -> BoolV (x && y)
-  | Or, BoolV x, BoolV y -> BoolV (x || y)
-  (* failures *)
-  | _, TupleV x, TupleV y when List.length x != List.length y -> raise Tuple_compare
-  | _ -> failwith "Interpretation error: Wrong infix operation."
-;;
+  exception Tuple_compare
+  exception Match_fail
 
-let apply_unary_op op x =
-  match op, x with
-  | Minus, IntV x -> IntV (-x)
-  | Not, BoolV x -> BoolV (not x)
-  | _ -> failwith "Interpretation error: Wrong unary operation."
-;;
+  let rec match_pat pat var =
+    match pat, var with
+    | PWild, _ -> []
+    | PVar name, v -> [ name, v ]
+    | PConst x, v ->
+      (match x, v with
+      | CInt a, IntV b when a = b -> []
+      | CString a, StringV b when a == b -> []
+      | CBool a, BoolV b when a == b -> []
+      | _ -> raise Match_fail)
+    | PCons (pat1, pat2), ListV (hd :: tl) ->
+      match_pat pat1 hd @ match_pat pat2 (ListV tl)
+    | PNil, ListV [] -> []
+    | PTuple pats, TupleV vars ->
+      (* TODO: add try with *)
+      List.fold2_exn
+        ~f:(fun binds pat var -> binds @ match_pat pat var)
+        pats
+        vars
+        ~init:[]
+    | PEffect1 name_p, Eff1V name_exp when name_p == name_exp -> []
+    | PEffect2 (name_p, p), Eff2V (name_exp, v) when name_p == name_exp -> match_pat p v
+    | PEffectH (pat, _), Eff1V name_exp -> match_pat pat (Eff1V name_exp)
+    | PEffectH (pat, _), Eff2V (name_exp, v) -> match_pat pat (Eff2V (name_exp, v))
+    | _ -> raise Match_fail
+  ;;
 
-let rec scan_cases = function
-  | hd :: tl ->
-    (match hd with
-    | PEffectH (PEffect1 name, cont), exp ->
-      (name, EffHV (PEffect1 name, cont, exp)) :: scan_cases tl
-    | PEffectH (PEffect2 (name, pat), cont), exp ->
-      (name, EffHV (PEffect2 (name, pat), cont, exp)) :: scan_cases tl
-    | _ -> scan_cases tl)
-  | [] -> []
-;;
+  let apply_infix_op op x y =
+    match op, x, y with
+    | Add, IntV x, IntV y -> IntV (x + y)
+    | Sub, IntV x, IntV y -> IntV (x - y)
+    | Mul, IntV x, IntV y -> IntV (x * y)
+    | Div, IntV x, IntV y -> IntV (x / y)
+    (* "<" block *)
+    | Less, IntV x, IntV y -> BoolV (x < y)
+    | Less, StringV x, StringV y -> BoolV String.(x < y)
+    | Less, TupleV x, TupleV y when List.length x = List.length y -> BoolV Poly.(x < y)
+    | Less, ListV x, ListV y -> BoolV Poly.(x < y)
+    (* "<=" block *)
+    | Leq, IntV x, IntV y -> BoolV (x <= y)
+    | Leq, StringV x, StringV y -> BoolV Poly.(x <= y)
+    | Leq, TupleV x, TupleV y when List.length x = List.length y -> BoolV Poly.(x <= y)
+    | Leq, ListV x, ListV y -> BoolV Poly.(x <= y)
+    (* ">" block *)
+    | Gre, IntV x, IntV y -> BoolV (x > y)
+    | Gre, StringV x, StringV y -> BoolV Poly.(x > y)
+    | Gre, TupleV x, TupleV y when List.length x = List.length y -> BoolV Poly.(x > y)
+    | Gre, ListV x, ListV y -> BoolV Poly.(x > y)
+    (* ">=" block *)
+    | Geq, IntV x, IntV y -> BoolV (x >= y)
+    | Geq, StringV x, StringV y -> BoolV Poly.(x >= y)
+    | Geq, TupleV x, TupleV y when List.length x = List.length y -> BoolV Poly.(x >= y)
+    | Geq, ListV x, ListV y -> BoolV Poly.(x >= y)
+    (* "=" block *)
+    | Eq, IntV x, IntV y -> BoolV (x == y)
+    | Eq, StringV x, StringV y -> BoolV (x == y)
+    | Eq, BoolV x, BoolV y -> BoolV (x == y)
+    | Eq, TupleV x, TupleV y -> BoolV (x == y)
+    | Eq, ListV x, ListV y -> BoolV (x == y)
+    (* "!=" block *)
+    | Neq, IntV x, IntV y -> BoolV (x != y)
+    | Neq, StringV x, StringV y -> BoolV (x != y)
+    | Neq, BoolV x, BoolV y -> BoolV (x != y)
+    | Neq, TupleV x, TupleV y -> BoolV (x != y)
+    | Neq, ListV x, ListV y -> BoolV (x != y)
+    (* Other bool ops *)
+    | And, BoolV x, BoolV y -> BoolV (x && y)
+    | Or, BoolV x, BoolV y -> BoolV (x || y)
+    (* failures *)
+    | _, TupleV x, TupleV y when List.length x != List.length y -> raise Tuple_compare
+    | _ -> failwith "Interpretation error: Wrong infix operation."
+  ;;
 
-let rec eval_exp state = function
-  | ENil -> ListV []
-  | EConst x ->
-    (match x with
-    | CInt x -> IntV x
-    | CBool x -> BoolV x
-    | CString x -> StringV x)
-  | EVar x ->
-    (try lookup_in_env x state with
-    | Not_bound -> failwith "Interpretation error: undef variable.")
-  | EOp (op, x, y) ->
-    let exp_x = eval_exp state x in
-    let exp_y = eval_exp state y in
-    apply_infix_op op exp_x exp_y
-  | EUnOp (op, x) ->
-    let exp_x = eval_exp state x in
-    apply_unary_op op exp_x
-  | ETuple exps -> TupleV (List.map (eval_exp state) exps)
-  | ECons (exp1, exp2) ->
-    let exp1_evaled = eval_exp state exp1 in
-    let exp2_evaled = eval_exp state exp2 in
-    (match exp2_evaled with
-    | ListV list -> ListV ([ exp1_evaled ] @ list)
-    | x -> ListV [ exp1_evaled; x ])
-  | EIf (exp1, exp2, exp3) ->
-    (match eval_exp state exp1 with
-    | BoolV true -> eval_exp state exp2
-    | BoolV false -> eval_exp state exp3
-    | _ -> failwith "Interpretation error: couldn't interpret \"if\" expression")
-  | ELet (bindings, exp1) ->
-    let gen_state =
-      List.fold_left
-        (fun state binding ->
-          match binding with
-          | _, pat, exp ->
-            let evaled = eval_exp state exp in
-            let binds = match_pat pat evaled in
-            List.fold_left (fun state (id, v) -> extend_env id v state) state binds)
-        state
-        bindings
-    in
-    eval_exp gen_state exp1
-  | EFun (pat, exp) -> FunV (pat, exp, state)
-  | EApp (exp1, exp2) ->
-    (match eval_exp state exp1 with
-    | FunV (pat, exp, fstate) ->
-      let binds = match_pat pat (eval_exp state exp2) in
-      let new_state =
-        List.fold_left (fun state (id, v) -> extend_env id v state) fstate binds
+  let apply_unary_op op x =
+    match op, x with
+    | Minus, IntV x -> IntV (-x)
+    | Not, BoolV x -> BoolV (not x)
+    | _ -> failwith "Interpretation error: Wrong unary operation."
+  ;;
+
+  let rec scan_cases = function
+    | hd :: tl ->
+      (match hd with
+      | PEffectH (PEffect1 name, cont), exp ->
+        (name, EffHV (PEffect1 name, cont, exp)) :: scan_cases tl
+      | PEffectH (PEffect2 (name, pat), cont), exp ->
+        (name, EffHV (PEffect2 (name, pat), cont, exp)) :: scan_cases tl
+      | _ -> scan_cases tl)
+    | [] -> []
+  ;;
+
+  let rec eval_exp state = function
+    | ENil -> M.return (ListV [])
+    | EConst x ->
+      (match x with
+      | CInt x -> M.return (IntV x)
+      | CBool x -> M.return (BoolV x)
+      | CString x -> M.return (StringV x))
+    | EVar x ->
+      (try M.return (lookup_in_env x state) with
+      | Not_bound -> failwith "Interpretation error: undef variable.")
+    | EOp (op, x, y) ->
+      eval_exp state x
+      >>= fun exp_x ->
+      eval_exp state y >>= fun exp_y -> M.return (apply_infix_op op exp_x exp_y)
+    | EUnOp (op, x) ->
+      eval_exp state x >>= fun exp_x -> M.return (apply_unary_op op exp_x)
+    | ETuple exps ->
+      M.return
+        (TupleV (List.map exps ~f:(fun exp -> eval_exp state exp >>= fun res -> res)))
+    | ECons (exp1, exp2) ->
+      eval_exp state exp1
+      >>= fun exp1_evaled ->
+      eval_exp state exp2
+      >>= fun exp2_evaled ->
+      (match exp2_evaled with
+      | ListV list -> M.return (ListV (exp1_evaled :: list))
+      | x -> M.return (ListV [ exp1_evaled; x ]))
+    | EIf (exp1, exp2, exp3) ->
+      eval_exp state exp1
+      >>= fun evaled ->
+      (match evaled with
+      | BoolV true -> eval_exp state exp2
+      | BoolV false -> eval_exp state exp3
+      | _ -> failwith "Interpretation error: couldn't interpret \"if\" expression")
+    | ELet (bindings, exp1) ->
+      let gen_state =
+        List.fold bindings ~init:state ~f:(fun state binding ->
+            match binding with
+            | _, pat, exp ->
+              eval_exp state exp
+              >>= fun evaled ->
+              let binds = match_pat pat evaled in
+              List.fold binds ~init:state ~f:(fun state (id, v) -> extend_env id v state))
       in
-      let very_new_state =
-        match exp1 with
-        | EVar x -> extend_env x (eval_exp state exp1) new_state
-        | _ -> new_state
+      eval_exp gen_state exp1
+    | EFun (pat, exp) -> M.return (FunV (pat, exp, state))
+    | EApp (exp1, exp2) ->
+      eval_exp state exp1
+      >>= fun evaled ->
+      (match evaled with
+      | FunV (pat, exp, fstate) ->
+        eval_exp state exp2
+        >>= fun evaled2 ->
+        let binds = match_pat pat evaled2 in
+        let new_state =
+          List.fold binds ~init:fstate ~f:(fun state (id, v) -> extend_env id v state)
+        in
+        let very_new_state =
+          match exp1 with
+          | EVar x -> extend_env x evaled new_state
+          | _ -> new_state
+        in
+        eval_exp { very_new_state with context = state.context } exp
+      | _ -> failwith "Interpretation error: wrong application")
+    | EMatch (exp, mathchings) ->
+      let effh = scan_cases mathchings in
+      let exp_state =
+        List.fold effh ~init:state ~f:(fun state (id, v) -> extend_context id v state)
       in
-      eval_exp { very_new_state with context = state.context } exp
-    | _ -> failwith "Interpretation error: wrong application")
-  | EMatch (exp, mathchings) ->
-    let effh = scan_cases mathchings in
-    let exp_state =
-      List.fold_left (fun state (id, v) -> extend_context id v state) state effh
-    in
-    let evaled = eval_exp exp_state exp in
-    let rec do_match = function
-      | [] -> failwith "Pattern matching is not exhaustive!"
-      | (pat, exp) :: tl ->
-        (try
-           let binds = match_pat pat evaled in
-           let state =
-             List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-           in
-           eval_exp state exp
-         with
-        | Match_fail -> do_match tl)
-    in
-    do_match mathchings
-  | EPerform exp ->
-    let eff = eval_exp state exp in
-    (match eff with
-    | Eff1V name ->
-      let (EffHV (pat, cont_val, exph)) =
-        try lookup_in_context name state with
-        | Not_bound -> failwith "no handler for effect"
+      eval_exp exp_state exp
+      >>= fun evaled ->
+      let rec do_match = function
+        | [] -> failwith "Pattern matching is not exhaustive!"
+        | (pat, exp) :: tl ->
+          (try
+             let binds = match_pat pat evaled in
+             let state =
+               List.fold binds ~init:state ~f:(fun state (id, v) -> extend_env id v state)
+             in
+             eval_exp state exp
+           with
+          | Match_fail -> do_match tl)
       in
+      do_match mathchings
+    | EPerform exp ->
+      eval_exp state exp
+      >>= fun eff ->
+      (match eff with
+      | Eff1V name ->
+        let (EffHV (pat, cont_val, exph)) =
+          try lookup_in_context name state with
+          | Not_bound -> failwith "no handler for effect"
+        in
+        let _ =
+          try lookup_in_env name state with
+          | Not_bound -> failwith "no effect found"
+        in
+        let _ = match_pat pat (Eff1V name) in
+        eval_exp (extend_env cont_val (ContV cont_val) state) exph
+      | Eff2V (name, exval) ->
+        let (EffHV (pat, cont_val, exph)) =
+          try lookup_in_context name state with
+          | Not_bound -> failwith "no handler for effect"
+        in
+        let _ =
+          try lookup_in_env name state with
+          | Not_bound -> failwith "no effect found"
+        in
+        let binds = match_pat pat (Eff2V (name, exval)) in
+        let state =
+          List.fold binds ~init:state ~f:(fun state (id, v) -> extend_env id v state)
+        in
+        eval_exp (extend_env cont_val (ContV cont_val) state) exph
+      | _ -> failwith "internal error")
+    | EContinue (cont_val, exp) ->
       let _ =
-        try lookup_in_env name state with
-        | Not_bound -> failwith "no effect found"
+        try lookup_in_env cont_val state with
+        | Not_bound -> failwith "not a continuation value"
       in
-      let _ = match_pat pat (Eff1V name) in
-      eval_exp (extend_env cont_val (ContV cont_val) state) exph
-    | Eff2V (name, exval) ->
-      let (EffHV (pat, cont_val, exph)) =
-        try lookup_in_context name state with
-        | Not_bound -> failwith "no handler for effect"
-      in
-      let _ =
-        try lookup_in_env name state with
-        | Not_bound -> failwith "no effect found"
-      in
-      let binds = match_pat pat (Eff2V (name, exval)) in
-      let state =
-        List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-      in
-      eval_exp (extend_env cont_val (ContV cont_val) state) exph
-    | _ -> failwith "internal error")
-  | EContinue (cont_val, exp) ->
-    let _ =
-      try lookup_in_env cont_val state with
-      | Not_bound -> failwith "not a continuation value"
-    in
-    eval_exp state exp
-  | EEffect1 name -> Eff1V name
-  | EEffect2 (name, exp) ->
-    let evaled = eval_exp state exp in
-    Eff2V (name, evaled)
-;;
+      eval_exp state exp
+    | EEffect1 name -> M.return (Eff1V name)
+    | EEffect2 (name, exp) ->
+      eval_exp state exp >>= fun evaled -> M.return (Eff2V (name, evaled))
+  ;;
 
-let eval_dec state = function
-  | DLet bindings ->
-    (match bindings with
-    | _, pat, exp ->
-      let evaled = eval_exp state exp in
-      let binds = match_pat pat evaled in
-      let state =
-        List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-      in
-      state)
-  | DEffect1 (name, tyexp) ->
-    let state = extend_env name (EffDec1V (name, tyexp)) state in
-    state
-  | DEffect2 (name, tyexp1, tyexp2) ->
-    let state = extend_env name (EffDec2V (name, tyexp1, tyexp2)) state in
-    state
-;;
+  let eval_dec state = function
+    | DLet bindings ->
+      (match bindings with
+      | _, pat, exp ->
+        eval_exp state exp
+        >>= fun evaled ->
+        let binds = match_pat pat evaled in
+        let state =
+          List.fold binds ~init:state ~f:(fun state (id, v) -> extend_env id v state)
+        in
+        M.return state)
+    | DEffect1 (name, tyexp) ->
+      let state = extend_env name (EffDec1V (name, tyexp)) state in
+      M.return state
+    | DEffect2 (name, tyexp1, tyexp2) ->
+      let state = extend_env name (EffDec2V (name, tyexp1, tyexp2)) state in
+      M.return state
+  ;;
 
-let eval_test decls expected =
-  try
-    let init_state = { env = empty_id_map; context = empty_eff_map } in
-    let state = List.fold_left (fun state decl -> eval_dec state decl) init_state decls in
-    let res =
-      IdMap.fold
-        (fun k v ln ->
-          let new_res = ln ^ Printf.sprintf "%s -> %s; " k (exval_to_str v) in
-          new_res)
-        state.env
-        ""
-    in
-    if res = expected
-    then true
-    else (
-      Printf.printf "%s\n" res;
-      false)
-  with
-  | Tuple_compare
-    when expected = "Interpretation error: Cannot compare tuples of different size." ->
-    true
-  | Match_fail when expected = "Interpretation error: pattern-match failed." -> true
-  | _ -> false
-;;
+  let eval_test decls expected =
+    try
+      let init_state = { env = empty_id_map; context = empty_eff_map } in
+      let state =
+        List.fold decls ~init:init_state ~f:(fun state decl -> eval_dec state decl)
+      in
+      let res =
+        IdMap.fold
+          (fun k v ln ->
+            let new_res = ln ^ Printf.sprintf "%s -> %s; " k (exval_to_str v) in
+            new_res)
+          state.env
+          ""
+      in
+      if res = expected
+      then true
+      else (
+        Printf.printf "%s\n" res;
+        false)
+    with
+    | Tuple_compare
+      when expected = "Interpretation error: Cannot compare tuples of different size." ->
+      true
+    | Match_fail when expected = "Interpretation error: pattern-match failed." -> true
+    | _ -> false
+  ;;
+end
 
 let test code expected =
+  let open Interpret (Result) in
   match Parser.parse Parser.prog code with
   | Result.Ok prog -> eval_test prog expected
   | _ -> failwith "Parse error"

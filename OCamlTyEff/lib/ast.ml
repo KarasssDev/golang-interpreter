@@ -54,7 +54,7 @@ type ty =
   | TTuple of ty list
   | TList of ty
   | TRef of ty
-  | TVar of string (* 'string *)
+  | TVar of string
   | TFun of ty * eff_set * ty
 [@@deriving eq]
 
@@ -247,7 +247,7 @@ let rec pp_decl fmt decl =
 and pp_expr fmt = function
   | EConst c -> pp_const fmt c
   | EVal s -> fprintf fmt "%s" s
-  | EUnop (op, expr) -> fprintf fmt "%a%a" pp_unop op pp_expr expr
+  | EUnop (op, expr) -> fprintf fmt "(%a%a)" pp_unop op pp_expr expr
   | EBinop (expr1, op, expr2) ->
     fprintf fmt "(%a %a %a)" pp_expr expr1 pp_binop op pp_expr expr2
   | EApp (f, arg) -> fprintf fmt "(%a %a)" pp_expr f pp_expr arg

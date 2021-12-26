@@ -254,10 +254,12 @@ let petry pexpr =
     (many1 @@ pcase pexc pexpr)
 ;;
 
-let pebinop term pbinops =
-  chainr1 term ((fun op expr1 expr2 -> e_binop expr1 op expr2) <$> pbinops)
+let pebinop chain1 term pbinops =
+  chain1 term ((fun op expr1 expr2 -> e_binop expr1 op expr2) <$> pbinops)
 ;;
 
+let pelbinop = pebinop chainl1
+let perbinop = pebinop chainr1
 let pmul = pstoken "*" *> return mul
 let pdiv = pstoken "/" *> return div
 let padd = pstoken "+" *> return add
@@ -293,12 +295,12 @@ let pexpr =
           (many (pstoken "-"))
           term
       in
-      let term = pebinop term (pmul <|> pdiv) in
-      let term = pebinop term (padd <|> psub) in
-      let term = pebinop term pcons in
-      let term = pebinop term (choice [ pneq; peq; pleq; ples; pgeq; pgre ]) in
-      let term = pebinop term pand in
-      let term = pebinop term por in
+      let term = pelbinop term (pmul <|> pdiv) in
+      let term = pelbinop term (padd <|> psub) in
+      let term = perbinop term pcons in
+      let term = pelbinop term (choice [ pneq; peq; pleq; ples; pgeq; pgre ]) in
+      let term = perbinop term pand in
+      let term = perbinop term por in
       let term =
         (fun l ->
           match l with
@@ -306,7 +308,7 @@ let pexpr =
           | _ -> ETuple l)
         <$> sep_by1 (pstoken ",") term
       in
-      let term = pebinop term pasgmt in
+      let term = perbinop term pasgmt in
       choice [ pelet pexpr; pematch pexpr; pefun pexpr; petry pexpr; term ])
 ;;
 
@@ -567,50 +569,38 @@ let x: int = a1, a2 || a3 && a4 != a5 = a6 >= a7 > a8 <= a9 < a10 :: a11 - a12 *
                     ( EVal "a3"
                     , And
                     , EBinop
-                        ( EVal "a4"
-                        , Neq
+                        ( EBinop
+                            ( EBinop
+                                ( EBinop
+                                    ( EBinop
+                                        (EBinop (EVal "a4", Neq, EVal "a5"), Eq, EVal "a6")
+                                    , Geq
+                                    , EVal "a7" )
+                                , Gre
+                                , EVal "a8" )
+                            , Leq
+                            , EVal "a9" )
+                        , Les
                         , EBinop
-                            ( EVal "a5"
-                            , Eq
+                            ( EVal "a10"
+                            , Cons
                             , EBinop
-                                ( EVal "a6"
-                                , Geq
-                                , EBinop
-                                    ( EVal "a7"
-                                    , Gre
+                                ( EBinop
+                                    ( EVal "a11"
+                                    , Sub
                                     , EBinop
-                                        ( EVal "a8"
-                                        , Leq
-                                        , EBinop
-                                            ( EVal "a9"
-                                            , Les
-                                            , EBinop
-                                                ( EVal "a10"
-                                                , Cons
-                                                , EBinop
-                                                    ( EVal "a11"
-                                                    , Sub
-                                                    , EBinop
-                                                        ( EBinop
-                                                            ( EVal "a12"
-                                                            , Mul
-                                                            , EBinop
-                                                                ( EUnop
-                                                                    ( Neg
-                                                                    , EApp
-                                                                        ( EApp
-                                                                            ( EVal "a13"
-                                                                            , EVal "a14"
-                                                                            )
-                                                                        , EUnop
-                                                                            ( Deref
-                                                                            , EVal "a15"
-                                                                            ) ) )
-                                                                , Div
-                                                                , EVal "a16" ) )
-                                                        , Add
-                                                        , EVal "a17" ) ) ) ) ) ) ) ) ) )
-                )
+                                        ( EBinop
+                                            ( EVal "a12"
+                                            , Mul
+                                            , EUnop
+                                                ( Neg
+                                                , EApp
+                                                    ( EApp (EVal "a13", EVal "a14")
+                                                    , EUnop (Deref, EVal "a15") ) ) )
+                                        , Div
+                                        , EVal "a16" ) )
+                                , Add
+                                , EVal "a17" ) ) ) ) )
             ]
       }
     ]
@@ -618,24 +608,93 @@ let x: int = a1, a2 || a3 && a4 != a5 = a6 >= a7 > a8 <= a9 < a10 :: a11 - a12 *
 
 let%test _ =
   test_parse
-    {|
-let x: int = match l with | 1 :: 2 :: 3 :: 4 :: [] -> 5
-|}
+    "let x: unit = f g h"
     [ { is_rec = false
       ; name = "x"
-      ; ty = TInt
+      ; ty = TTuple []
+      ; expr = EApp (EApp (EVal "f", EVal "g"), EVal "h")
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    "let x: unit = 8 / 4 / 2"
+    [ { is_rec = false
+      ; name = "x"
+      ; ty = TTuple []
       ; expr =
-          EMatch
-            ( EVal "l"
-            , [ ( PCons
-                    ( [ PConst (CInt 1)
-                      ; PConst (CInt 2)
-                      ; PConst (CInt 3)
-                      ; PConst (CInt 4)
-                      ]
-                    , PConst CEmptyList )
-                , EConst (CInt 5) )
-              ] )
+          EBinop (EBinop (EConst (CInt 8), Div, EConst (CInt 4)), Div, EConst (CInt 2))
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    "let x: unit = a1 > a2 > a3 = a4 <= a5"
+    [ { is_rec = false
+      ; name = "x"
+      ; ty = TTuple []
+      ; expr =
+          EBinop
+            ( EBinop
+                ( EBinop (EBinop (EVal "a1", Gre, EVal "a2"), Gre, EVal "a3")
+                , Eq
+                , EVal "a4" )
+            , Leq
+            , EVal "a5" )
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    "let x: unit = b1 && b2 && b3"
+    [ { is_rec = false
+      ; name = "x"
+      ; ty = TTuple []
+      ; expr = EBinop (EVal "b1", And, EBinop (EVal "b2", And, EVal "b3"))
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    "let x: unit = b1 || b2 || b3"
+    [ { is_rec = false
+      ; name = "x"
+      ; ty = TTuple []
+      ; expr = EBinop (EVal "b1", Or, EBinop (EVal "b2", Or, EVal "b3"))
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    "let x: unit = e1 :: e2 :: e3 :: e4 :: []"
+    [ { is_rec = false
+      ; name = "x"
+      ; ty = TTuple []
+      ; expr =
+          EBinop
+            ( EVal "e1"
+            , Cons
+            , EBinop
+                ( EVal "e2"
+                , Cons
+                , EBinop (EVal "e3", Cons, EBinop (EVal "e4", Cons, EConst CEmptyList)) )
+            )
+      }
+    ]
+;;
+
+let%test _ =
+  test_parse
+    "let x: unit = a := b:= c"
+    [ { is_rec = false
+      ; name = "x"
+      ; ty = TTuple []
+      ; expr = EBinop (EVal "a", Asgmt, EBinop (EVal "b", Asgmt, EVal "c"))
       }
     ]
 ;;

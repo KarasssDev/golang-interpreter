@@ -254,8 +254,8 @@ let rec eval_exp state = function
       | Not_bound -> failwith "not a continuation value"
     in
     eval_exp state exp
-  | Effect1 name -> Eff1V name
-  | Effect2 (name, exp) ->
+  | EEffect1 name -> Eff1V name
+  | EEffect2 (name, exp) ->
     let evaled = eval_exp state exp in
     Eff2V (name, evaled)
 ;;
@@ -588,7 +588,7 @@ let%test _ =
         , PVar "helper"
         , EFun
             ( PVar "x"
-            , EOp (Add, EConst (CInt 1), EPerform (Effect2 ("Failure", EVar "x"))) ) )
+            , EOp (Add, EConst (CInt 1), EPerform (EEffect2 ("Failure", EVar "x"))) ) )
     ; DLet
         ( false
         , PVar "matcher"

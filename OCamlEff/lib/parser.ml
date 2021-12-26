@@ -67,9 +67,7 @@ let is_keyword = function
   | "false"
   | "rec"
   | "fun"
-  | "perform"
   | "if"
-  | "continue"
   | "else"
   | "then"
   | "with"
@@ -127,6 +125,8 @@ let ematch e cases = EMatch (e, cases)
 let efun args rhs = List.fold_right args ~f:efun ~init:rhs
 let eop o e1 e2 = EOp (o, e1, e2)
 let elist = List.fold_right ~f:econs ~init:ENil
+let eeff1 id = EEffect1 id
+let eeff2 id exp = EEffect2 (id, exp)
 
 (*-------------- Case ctors --------------*)
 let ccase p e = p, e
@@ -144,14 +144,15 @@ let ptuple l = PTuple l
 let popcons = token "::" *> return (fun p1 p2 -> PCons (p1, p2))
 let pcons = return @@ fun p1 p2 -> PCons (p1, p2)
 let plist = List.fold_right ~f:(fun p1 p2 -> PCons (p1, p2)) ~init:PNil
+let peff1 id = PEffect1 id
+let peff2 id pat = PEffect2 (id, pat)
+let peffh k pat = PEffectH (k, pat)
 
 (*-------------- Decl ctors --------------*)
 
 let dlet isrec p e = DLet (isrec, p, e)
-
-(*-------------- Concinutation ctors --------------*)
-
-(*-------------- Effect ctors --------------*)
+let deff1 id t1 = DEffect1 (id, t1)
+let deff2 id t1 t2 = DEffect2 (id, t1, t2)
 
 (*-------------- Plain parsers --------------*)
 
@@ -244,31 +245,46 @@ let pconst = const >>| pconst
 
 type pdispatch =
   { tuple: pdispatch -> pat t
-  ; cons: pdispatch -> pat t
+  ; other: pdispatch -> pat t
   ; pat: pdispatch -> pat t
   }
 
 let pack =
-  let pat d = fix @@ fun _self -> trim @@ choice [ d.tuple d; d.cons d ] in
+  let pat d = fix @@ fun _self -> trim @@ choice [ d.tuple d; d.other d ] in
   let tuple d =
     fix
     @@ fun _self ->
-    trim @@ lift2 (fun hd tl -> hd :: tl) (d.cons d) (many1 (comma *> d.cons d))
+    trim @@ lift2 (fun hd tl -> hd :: tl) (d.other d) (many1 (comma *> d.other d))
     >>| ptuple
   in
-  let cons d =
+  let other d =
     fix
     @@ fun _self ->
     let plist = trim @@ between lsb rsb @@ sep_by semi @@ d.pat d >>| plist in
     let prim = trim @@ choice [ pconst; pvar; pwild; plist; parens @@ d.pat d ] in
-    trim @@ chainr1 prim popcons
+    let peff1 = capitalized_ident >>| peff1 in
+    let peff2 = lift2 peff2 capitalized_ident prim in
+    let peffh = lift2 peffh (kwd "effect" *> (peff1 <|> prim)) ident in
+    trim @@ chainr1 (choice [ peffh; peff2; peff1; prim ]) popcons
   in
-  { tuple; cons; pat }
+  { tuple; other; pat }
 ;;
 
 let pat = pack.pat pack
 
 (*-------------- Expr parsing --------------*)
+
+let rec try_econtinue = function
+  | EApp (EApp (EVar "continue", EVar k), e) -> EContinue (k, e)
+  | EApp (e1, e2) -> EApp (try_econtinue e1, e2)
+  | e -> e
+;;
+
+let rec try_eperform = function
+  | EApp (EVar "perform", e) -> EPerform e
+  | EApp (e1, e2) -> EApp (try_eperform e1, e2)
+  | e -> e
+;;
 
 type edispatch =
   { key: edispatch -> exp t
@@ -320,7 +336,14 @@ let pack =
       trim
       @@ choice [ lst >>| elist; uns_const >>| econst; ident >>| evar; parens @@ d.exp d ]
     in
-    let app_op = trim @@ chainl1 prim eapp in
+    let eeff =
+      let eeff1 = capitalized_ident >>| eeff1 in
+      let eeff2 = lift2 eeff2 capitalized_ident prim in
+      eeff2 <|> eeff1
+    in
+    let app_op =
+      trim @@ chainl1 (prim <|> eeff) eapp >>| try_eperform >>| try_econtinue
+    in
     let mul_op = procl mult_div app_op @@ d.key d in
     let add_op = procl add_sub (app_unop mul_op) (app_unop @@ d.key d) in
     let cons_op = procr cons add_op @@ d.key d in
@@ -336,37 +359,51 @@ let exp = pack.exp pack
 
 (*-------------- Type parsing --------------*)
 
-let tyexp =
-  fix
-  @@ fun tyexp ->
-  let prim =
-    trim
-    @@ choice
-         [ token "int" *> return TInt
-         ; token "string" *> return TString
-         ; token "bool" *> return TBool
-         ; (uns >>| fun bind -> TVar (Base.Int.of_string bind))
-         ; parens tyexp
-         ]
-  in
-  let list =
-    let* lst_ty = prim in
-    let* l = many1 @@ (empty *> token "list") in
-    let rec wrap acc n =
-      match n with
-      | 0 -> acc
-      | _ -> wrap (TList acc) (n - 1)
+type tydispatch =
+  { tyexp: tydispatch -> tyexp t
+  ; prim: tydispatch -> tyexp t
+  }
+
+let pack =
+  let prim d =
+    fix
+    @@ fun _self ->
+    let basic =
+      trim
+      @@ choice
+           [ token "int" *> return TInt
+           ; token "string" *> return TString
+           ; token "bool" *> return TBool
+           ; (uns >>| fun bind -> TVar (Base.Int.of_string bind))
+           ; parens @@ d.tyexp d
+           ]
     in
-    return @@ wrap lst_ty (List.length l)
-  in
-  let tup =
-    sep_by1 (token "*" *> empty) (list <|> prim)
+    let list =
+      let* lst_ty = basic in
+      let* l = many1 @@ (empty *> token "list") in
+      let rec wrap acc n =
+        match n with
+        | 0 -> acc
+        | _ -> wrap (TList acc) (n - 1)
+      in
+      return @@ wrap lst_ty (List.length l)
+    in
+    sep_by1 (token "*" *> empty) (list <|> basic)
     >>| function
     | [ a ] -> a
     | tup -> TTuple tup
   in
-  trim @@ chainr1 tup (arrow *> return (fun t1 t2 -> TArrow (t1, t2)))
+  let tyexp d =
+    fix
+    @@ fun _self ->
+    trim @@ chainr1 (d.prim d) (arrow *> return (fun t1 t2 -> TArrow (t1, t2)))
+  in
+  { tyexp; prim }
 ;;
+
+let tyexp = pack.tyexp pack
+let ty1 = pack.prim pack
+let ty2 = lift2 (fun t1 t2 -> t1, t2) (ty1 <* arrow) ty1
 
 (*-------------- Decl parsing --------------*)
 
@@ -378,7 +415,11 @@ let decl =
       pat
       (lift2 efun (empty *> many pat <* token "=") exp)
   in
-  trim @@ dlet
+  let deff2 =
+    lift3 deff2 (trim (kwd "effect" *> capitalized_ident)) (colon *> ty1) (arrow *> ty1)
+  in
+  let deff1 = lift2 deff1 (trim (kwd "effect" *> capitalized_ident)) (colon *> ty1) in
+  trim @@ choice [ dlet; deff2; deff1 ]
 ;;
 
 (*-------------- Prog parsing --------------*)

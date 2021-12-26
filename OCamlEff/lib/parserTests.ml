@@ -1,3 +1,5 @@
+open Parser
+
 (*  Catamorphism  *)
 let%test _ =
   Tester.test_parse
@@ -329,5 +331,84 @@ let%test _ =
                     , ENil ) )
               ]
             , ECons (EConst (CInt 5), EVar "y") ) )
+    ]
+;;
+
+let%test _ = Tester.test_parse {|
+        effect E : string
+|} [ DEffect1 ("E", TString) ]
+
+let%test _ =
+  Tester.test_parse
+    {|
+        effect E : (int -> int)
+|}
+    [ DEffect1 ("E", TArrow (TInt, TInt)) ]
+;;
+
+let%test _ =
+  Tester.test_parse
+    {|
+        effect E : ((string) -> int) -> 1
+|}
+    [ DEffect2 ("E", TArrow (TString, TInt), TVar 1) ]
+;;
+
+let%test _ =
+  Tester.test_parse
+    {|
+        let e = continue k (continue k2 4) 3
+|}
+    [ DLet
+        ( false
+        , PVar "e"
+        , EApp (EContinue ("k", EContinue ("k2", EConst (CInt 4))), EConst (CInt 3)) )
+    ]
+;;
+
+let%test _ =
+  Tester.test_parse
+    {|
+        effect E : int -> int
+
+        let smth x = x + perform x
+
+        let _ = match smth 10 with 
+        | effect (E x) k -> continue k 10
+        | res -> res;;
+
+|}
+    [ DEffect2 ("E", TInt, TInt)
+    ; DLet (false, PVar "smth", EFun (PVar "x", EOp (Add, EVar "x", EPerform (EVar "x"))))
+    ; DLet
+        ( false
+        , PWild
+        , EMatch
+            ( EApp (EVar "smth", EConst (CInt 10))
+            , [ PEffectH (PEffect2 ("E", PVar "x"), "k"), EContinue ("k", EConst (CInt 10))
+              ; PVar "res", EVar "res"
+              ] ) )
+    ]
+;;
+
+let%test _ =
+  Tester.test_parse
+    {|
+        effect E : (int -> int)
+
+        let e = E
+
+        let _ = match e with 
+        E -> 1000
+        | _ -> 0;;
+
+|}
+    [ DEffect1 ("E", TArrow (TInt, TInt))
+    ; DLet (false, PVar "e", EEffect1 "E")
+    ; DLet
+        ( false
+        , PWild
+        , EMatch (EVar "e", [ PEffect1 "E", EConst (CInt 1000); PWild, EConst (CInt 0) ])
+        )
     ]
 ;;

@@ -45,7 +45,6 @@ and const =
 [@@deriving show { with_path = false }]
 
 and binding = bool * pat * exp [@@deriving show { with_path = false }]
-
 and case = pat * exp [@@deriving show { with_path = false }]
 
 and exp =
@@ -61,8 +60,8 @@ and exp =
   | EFun of pat * exp (**    fun x,y,z -> x + y * z    *)
   | EApp of exp * exp (**    fold f list init    *)
   | EMatch of exp * case list (**    match lst with [] -> 0 | hd :: tl -> hd    *)
-  | Effect1 of capitalized_ident (** E *)
-  | Effect2 of capitalized_ident * exp (** E 1 *)
+  | EEffect1 of capitalized_ident (** E *)
+  | EEffect2 of capitalized_ident * exp (** E 1 *)
   | EPerform of exp (** perform (E 1) *)
   | EContinue of ident * exp (** continue k (2 + 5) *)
 [@@deriving show { with_path = false }]

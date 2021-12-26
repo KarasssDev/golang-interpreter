@@ -43,7 +43,7 @@ let rec exval_to_str = function
     Printf.sprintf "%s eff with %s inside" name (exval_to_str exval)
   | ContV name -> Printf.sprintf "%s cont" name
   | EffDec1V (name, _) -> Printf.sprintf "%s eff dec, 1 arg" name
-  | EffDec2V (name, _, _) -> Printf.sprintf "%s eff dec, 2 arg" name
+  | EffDec2V (name, _, _) -> Printf.sprintf "%s eff decl, 2 arg" name
 ;;
 
 let lookup_in_env id state = lookup_id_map id state.env
@@ -293,7 +293,7 @@ let eval_test decls expected =
     if res = expected
     then true
     else (
-      Printf.printf "%s" res;
+      Printf.printf "%s\n" res;
       false)
   with
   | Tuple_compare
@@ -550,7 +550,7 @@ let%test _ =
                   ] ) ) )
     ; DLet (false, PVar "y", EApp (EVar "matcher", EConst (CInt 1)))
     ]
-    "Failure -> Failure eff dec, 2 arg; helper -> x; matcher -> x; y -> 0; "
+    "Failure -> Failure eff decl, 2 arg; helper -> x; matcher -> x; y -> 0; "
 ;;
 
 let%test _ =
@@ -584,5 +584,5 @@ let%test _ =
   | effect (E s) k -> continue k s*s
   | l -> helper l
 |}
-    "E -> E eff dec, 2 arg; helper -> x; res -> 625; "
+    "E -> E eff decl, 2 arg; helper -> x; res -> 625; "
 ;;

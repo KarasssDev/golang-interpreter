@@ -45,6 +45,7 @@ and const =
 [@@deriving show { with_path = false }]
 
 and binding = bool * pat * exp [@@deriving show { with_path = false }]
+
 and case = pat * exp [@@deriving show { with_path = false }]
 
 and exp =

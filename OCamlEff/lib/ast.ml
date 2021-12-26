@@ -4,6 +4,7 @@ type ident = string [@@deriving show { with_path = false }]
 (** Choice  *)
 type capitalized_ident = string [@@deriving show { with_path = false }]
 
+(**  1  *)
 type binder = int [@@deriving show { with_path = false }]
 
 type tyexp =
@@ -14,8 +15,7 @@ type tyexp =
   | TTuple of tyexp list (**  int list * string   *)
   | TVar of binder (**  1 (polymorphic type)   *)
   | TArrow of tyexp * tyexp (**   string -> int   *)
-  | TEffect1 of tyexp (**  (int -> int)  *)
-  | TEffect2 of tyexp * tyexp (**  (int -> int) -> string  *)
+  | TEffect of tyexp (**  (int -> int) eff  *)
 [@@deriving show { with_path = false }]
 
 type infix_op =
@@ -71,7 +71,7 @@ and pat =
   | PVar of ident (**  abc   *)
   | PConst of const (**  1   *)
   | PCons of pat * pat (**  hd :: tl  *)
-  | PNil
+  | PNil (**  []  *)
   | PTuple of pat list (**  a, b   *)
   | PEffect1 of capitalized_ident (** E *)
   | PEffect2 of capitalized_ident * pat (** E (a :: b) *)

@@ -6,11 +6,19 @@ open Format
 module type MONAD_FAIL = sig
   include Base.Monad.S2
 
-  val fail : 'e -> ('a, 'e) t
+  val fail : 'err -> ('a, 'err) t
 end
 
 module Interpret (M : MONAD_FAIL) = struct
   open M
+
+  let fold list ~f ~init =
+    let rec helper acc = function
+      | [] -> acc
+      | hd :: tl -> helper (acc >>= fun acc -> f acc hd) tl
+    in
+    helper (return init) list
+  ;;
 
   type state =
     { env: exval Env.id_t
@@ -32,6 +40,7 @@ module Interpret (M : MONAD_FAIL) = struct
     | EffDec2V of capitalized_ident * tyexp * tyexp
     | ContV of ident
 
+  let create_state () = { env = Env.IdMap.empty; context = Env.EffMap.empty }
   let lookup_in_env id state = lookup_id_map id state.env
   let lookup_in_context id state = lookup_eff_map id state.context
   let extend_env id v state = { state with env = extend_id_map id v state.env }
@@ -42,6 +51,7 @@ module Interpret (M : MONAD_FAIL) = struct
 
   exception Tuple_compare
   exception Match_fail
+  exception Undef_variable
 
   let rec match_pat pat var =
     match pat, var with
@@ -151,8 +161,8 @@ module Interpret (M : MONAD_FAIL) = struct
     | EUnOp (op, x) ->
       eval_exp state x >>= fun exp_x -> M.return (apply_unary_op op exp_x)
     | ETuple exps ->
-      M.return
-        (TupleV (List.map exps ~f:(fun exp -> eval_exp state exp >>= fun res -> res)))
+      all @@ List.map exps ~f:(fun exp -> eval_exp state exp)
+      >>= fun l -> return @@ TupleV l
     | ECons (exp1, exp2) ->
       eval_exp state exp1
       >>= fun exp1_evaled ->
@@ -170,15 +180,18 @@ module Interpret (M : MONAD_FAIL) = struct
       | _ -> failwith "Interpretation error: couldn't interpret \"if\" expression")
     | ELet (bindings, exp1) ->
       let gen_state =
-        List.fold bindings ~init:state ~f:(fun state binding ->
-            match binding with
-            | _, pat, exp ->
-              eval_exp state exp
-              >>= fun evaled ->
-              let binds = match_pat pat evaled in
-              List.fold binds ~init:state ~f:(fun state (id, v) -> extend_env id v state))
+        fold bindings ~init:state ~f:(fun state binding ->
+            let _, pat, exp = binding in
+            eval_exp state exp
+            >>= fun evaled ->
+            let binds = match_pat pat evaled in
+            fold binds ~init:state ~f:(fun state (id, v) ->
+                return @@ extend_env id v state))
       in
-      eval_exp gen_state exp1
+      gen_state >>= fun s -> eval_exp s exp1
+    (* let* evaled = eval_exp state exp in 
+       let binds = match_pat pat evaled in
+       List.fold binds ~init:state ~f:(fun state (id, v) -> extend_env id v state) *)
     | EFun (pat, exp) -> M.return (FunV (pat, exp, state))
     | EApp (exp1, exp2) ->
       eval_exp state exp1
@@ -277,55 +290,39 @@ module Interpret (M : MONAD_FAIL) = struct
       let state = extend_env name (EffDec2V (name, tyexp1, tyexp2)) state in
       M.return state
   ;;
-
-  let eval_test decls expected =
-    try
-      let init_state = { env = empty_id_map; context = empty_eff_map } in
-      let state =
-        List.fold decls ~init:init_state ~f:(fun state decl -> eval_dec state decl)
-      in
-      let res =
-        IdMap.fold
-          (fun k v ln ->
-            let new_res = ln ^ Printf.sprintf "%s -> %s; " k (exval_to_str v) in
-            new_res)
-          state.env
-          ""
-      in
-      if res = expected
-      then true
-      else (
-        Printf.printf "%s\n" res;
-        false)
-    with
-    | Tuple_compare
-      when expected = "Interpretation error: Cannot compare tuples of different size." ->
-      true
-    | Match_fail when expected = "Interpretation error: pattern-match failed." -> true
-    | _ -> false
-  ;;
 end
 
-let test code expected =
-  let open Interpret (Result) in
-  match Parser.parse Parser.prog code with
-  | Result.Ok prog -> eval_test prog expected
-  | _ -> failwith "Parse error"
-;;
+(* let test code expected =
+  let module E = Interpret(Result) in 
+  match Parser.parse Parser.decl code with
+  | Result.Ok decl -> (match E.eval_dec (E.create_state()) decl with 
+      | Result.Ok res -> true
+      | _ -> res >>= fun res -> 
+      )
+  | _ -> print_string "Parse error"; false
+)
+;; *)
 
-(* Eval test 1 *)
+(* let test code expected =
+   let open Interpret (Result) in
+   match Parser.parse Parser.prog code with
+   | Result.Ok prog -> Interpret prog expected
+   | _ -> failwith "Parse error"
+   ;;
 
-(*
+   (* Eval test 1 *)
+
+   (*
    let x = 1
-*)
-let%test _ = eval_test [ DLet (false, PVar "x", EConst (CInt 1)) ] "x -> 1; "
+ *)
+   let%test _ = eval_test [ DLet (false, PVar "x", EConst (CInt 1)) ] "x -> 1; "
 
-(* Eval test 2 *)
+   (* Eval test 2 *)
 
-(*
+   (*
    let (x, y) = (1, 2)
-*)
-(* let%test _ =
+ *)
+   (* let%test _ =
    eval_test
     [ DLet
         (false, PTuple [ PVar "x"; PVar "y" ], ETuple [ EConst (CInt 1); EConst (CInt 2) ])
@@ -333,24 +330,24 @@ let%test _ = eval_test [ DLet (false, PVar "x", EConst (CInt 1)) ] "x -> 1; "
     "x -> 1 y -> 2 "
    ;; *)
 
-(* Eval test 3 *)
+   (* Eval test 3 *)
 
-(*
+   (*
    let x = 3 < 2
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet (false, PVar "x", EOp (Less, EConst (CInt 3), EConst (CInt 2))) ]
     "x -> false; "
-;;
+   ;;
 
-(* Eval test 4 *)
+   (* Eval test 4 *)
 
-(*
+   (*
    let x = (1, 2) < (1, 2, 3)
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet
         ( false
         , PVar "x"
@@ -360,31 +357,31 @@ let%test _ =
             , ETuple [ EConst (CInt 1); EConst (CInt 2); EConst (CInt 3) ] ) )
     ]
     "Interpretation error: Cannot compare tuples of different size."
-;;
+   ;;
 
-(* Eval test 5 *)
+   (* Eval test 5 *)
 
-(*
+   (*
    let x =
      let y = 5
      in y
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet (false, PVar "x", ELet ([ false, PVar "y", EConst (CInt 5) ], EVar "y")) ]
     "x -> 5; "
-;;
+   ;;
 
-(* Eval test 6 *)
+   (* Eval test 6 *)
 
-(*
+   (*
    let x =
      let y = 5 in
      let z = 10 in
      y + z
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet
         ( false
         , PVar "x"
@@ -393,18 +390,18 @@ let%test _ =
             , EOp (Add, EVar "y", EVar "z") ) )
     ]
     "x -> 15; "
-;;
+   ;;
 
-(* Eval test 7 *)
+   (* Eval test 7 *)
 
-(*
+   (*
    let x =
      let y = 5 in
      let y = 10 in
      y
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet
         ( false
         , PVar "x"
@@ -413,20 +410,20 @@ let%test _ =
             , EVar "y" ) )
     ]
     "x -> 10; "
-;;
+   ;;
 
-(* Eval test 8 *)
+   (* Eval test 8 *)
 
-(*
+   (*
    let x =
      let y =
        let y = 10 in
        5
      in
      y
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet
         ( false
         , PVar "x"
@@ -438,64 +435,64 @@ let%test _ =
             , EVar "y" ) )
     ]
     "x -> 5; "
-;;
+   ;;
 
-(* Eval test 9 *)
+   (* Eval test 9 *)
 
-(*
+   (*
    let f x y = x + y
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet
         (false, PVar "f", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
     ]
     "f -> x; "
-;;
+   ;;
 
-(* Eval test 10 *)
+   (* Eval test 10 *)
 
-(*
+   (*
    let f x y = x + y
    let a = f 1 2
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet
         (false, PVar "f", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
     ; DLet (false, PVar "a", EApp (EApp (EVar "f", EConst (CInt 1)), EConst (CInt 2)))
     ]
     "a -> 3; f -> x; "
-;;
+   ;;
 
-(* Eval test 11 *)
+   (* Eval test 11 *)
 
-(*
+   (*
    let f x y = x + y
    let kek = f 1
    let lol = kek 2
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet
         (false, PVar "f", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
     ; DLet (false, PVar "kek", EApp (EVar "f", EConst (CInt 1)))
     ; DLet (false, PVar "lol", EApp (EVar "kek", EConst (CInt 2)))
     ]
     "f -> x; kek -> y; lol -> 3; "
-;;
+   ;;
 
-(* Eval test 12 *)
+   (* Eval test 12 *)
 
-(*
+   (*
    let rec fact n =
    match n with
    | 0 -> 1
    | _ -> n * fact (n + -1)
    let x = fact 3
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DLet
         ( true
         , PVar "fact"
@@ -515,11 +512,11 @@ let%test _ =
     ; DLet (false, PVar "x", EApp (EVar "fact", EConst (CInt 3)))
     ]
     "fact -> n; x -> 6; "
-;;
+   ;;
 
-(* Eval test 13 *)
+   (* Eval test 13 *)
 
-(*
+   (*
    effect Failure: int -> int
 
    let helper x = 1 + perform (Failure x)
@@ -530,9 +527,9 @@ let%test _ =
      | _ -> 100
 
    let y = matcher 1 <- must be 3 upon success
-*)
-let%test _ =
-  eval_test
+ *)
+   let%test _ =
+   eval_test
     [ DEffect2 ("Failure", TInt, TInt)
     ; DLet
         ( false
@@ -555,38 +552,38 @@ let%test _ =
     ; DLet (false, PVar "y", EApp (EVar "matcher", EConst (CInt 1)))
     ]
     "Failure -> Failure eff decl, 2 arg; helper -> x; matcher -> x; y -> 0; "
-;;
+   ;;
 
-let%test _ =
-  test
+   let%test _ =
+   test
     {|
-  effect E1: int
-  
-  let y = E1
+   effect E1: int
 
-  let helper x = 1 + perform (y)
+   let y = E1
 
-  let res = match helper 1 with
-  | effect (E1) k -> continue k (100)
-  | 101 -> "correct"
-  | _ -> "wrong"
+   let helper x = 1 + perform (y)
 
-|}
+   let res = match helper 1 with
+   | effect (E1) k -> continue k (100)
+   | 101 -> "correct"
+   | _ -> "wrong"
+
+   |}
     "E1 -> E1 eff dec, 1 arg; helper -> x; res -> correct; y -> E1 eff; "
-;;
+   ;;
 
-let%test _ =
-  test
+   let%test _ =
+   test
     {|
-  effect E: int -> int
+   effect E: int -> int
 
-  let helper x = match perform (E x) with
-  | effect (E s) k -> continue k s*s
-  | l -> l
+   let helper x = match perform (E x) with
+   | effect (E s) k -> continue k s*s
+   | l -> l
 
-  let res = match perform (E 5) with
-  | effect (E s) k -> continue k s*s
-  | l -> helper l
-|}
+   let res = match perform (E 5) with
+   | effect (E s) k -> continue k s*s
+   | l -> helper l
+   |}
     "E -> E eff decl, 2 arg; helper -> x; res -> 625; "
-;;
+   ;; *)

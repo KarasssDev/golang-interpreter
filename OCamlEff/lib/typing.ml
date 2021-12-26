@@ -322,7 +322,7 @@ let infer_exp =
         let* s1, t1 = helper context hd in
         let* s_tl, t_tl = helper context (ETuple tl) in
         (match t_tl with
-        | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
+        | TTuple tyexps -> return (Subst.(s_tl ++ s1), TTuple (t1 :: tyexps))
         | _ -> failwith "typing failure")
       | [] -> return (Subst.empty, TTuple []))
     | ENil ->
@@ -334,7 +334,7 @@ let infer_exp =
       (match t2 with
       | TList _ ->
         let* s_uni = unify (TList t1) t2 in
-        return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
+        return (Subst.(s_uni ++ s1 ++ s2), TList (Subst.apply s_uni t1))
       | _ -> failwith "typing failure")
     | EIf (exp1, exp2, exp3) ->
       let* s1, t1 = helper context exp1 in
@@ -439,6 +439,12 @@ let test_infer prog =
     true
   with
   | Failure _ -> false
+;;
+
+let test code =
+  match Parser.parse Parser.prog code with
+  | Result.Ok prog -> test_infer prog
+  | _ -> failwith "Parse error"
 ;;
 
 (* let%test _ =

@@ -16,6 +16,8 @@ let is_bound set name =
   | Not_found -> false
 ;;
 
+let is_not_bound set name = not (is_bound set name)
+
 let pp_bind_map pp fmt map =
   BindMap.fold
     (fun k v _ ->

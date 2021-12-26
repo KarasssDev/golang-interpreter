@@ -13,14 +13,12 @@ type eff =
   | EffAsgmt
   | EffExc of exc
   | EffVar of string
-  | EffBoundVar of string
 [@@deriving eq, ord]
 
 let eff_io = EffIO
 let eff_asgmt = EffAsgmt
 let eff_exc exc = EffExc exc
 let eff_var name = EffVar name
-let eff_bound_var name = EffBoundVar name
 let all_effs = [ eff_exc exc1; eff_exc exc2; eff_io; eff_asgmt ]
 
 let pp_eff fmt = function
@@ -30,7 +28,6 @@ let pp_eff fmt = function
     fprintf fmt "exc ";
     pp_exc fmt exc
   | EffVar name -> fprintf fmt "'%s" name
-  | EffBoundVar name -> fprintf fmt "':%s" name
 ;;
 
 module EffSet = Set.Make (struct
@@ -60,7 +57,6 @@ type ty =
   | TList of ty
   | TRef of ty
   | TVar of string (* 'string *)
-  | TBoundVar of string
   | TFun of ty * eff_set * ty
 [@@deriving eq]
 
@@ -73,7 +69,6 @@ let t_unit = t_tuple []
 let t_list ty = TList ty
 let t_ref ty = TRef ty
 let t_var name = TVar name
-let t_bound_var name = TBoundVar name
 let t_fun arg_ty effs ret_ty = TFun (arg_ty, effs, ret_ty)
 
 let rec pp_ty fmt = function
@@ -96,7 +91,6 @@ let rec pp_ty fmt = function
     pp_ty fmt ty;
     fprintf fmt " ref"
   | TVar name -> fprintf fmt "'%s" name
-  | TBoundVar name -> fprintf fmt "':%s" name
   | TFun (argty, effs, retty) ->
     fprintf fmt "(";
     pp_ty fmt argty;

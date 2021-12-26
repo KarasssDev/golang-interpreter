@@ -495,3 +495,7 @@ let tuple = (1, 2, 2) < (1, 2, 3)
 let%test _ = test {|
 let id x y = x = y
 |}
+
+let%test _ = test {|
+
+|}

@@ -322,7 +322,7 @@ let infer_exp =
         let* s1, t1 = helper context hd in
         let* s_tl, t_tl = helper context (ETuple tl) in
         (match t_tl with
-        | TTuple tyexps -> return (Subst.(s_tl ++ s1), TTuple (t1 :: tyexps))
+        | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
         | _ -> failwith "typing failure")
       | [] -> return (Subst.empty, TTuple []))
     | ENil ->
@@ -334,7 +334,7 @@ let infer_exp =
       (match t2 with
       | TList _ ->
         let* s_uni = unify (TList t1) t2 in
-        return (Subst.(s_uni ++ s1 ++ s2), TList (Subst.apply s_uni t1))
+        return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
       | _ -> failwith "typing failure")
     | EIf (exp1, exp2, exp3) ->
       let* s1, t1 = helper context exp1 in
@@ -427,25 +427,18 @@ let infer_prog prog =
 let w e = Result.map (fun (_, t) -> t) (run (infer_exp TypeContext.empty e))
 
 let test_infer prog =
-  (* try *)
-  let context = infer_prog prog in
-  TypeMap.iter
-    (fun k v ->
-      match Result.map (fun t -> t) (run (instantiate v)) with
-      | Ok x -> Printf.printf "%s -> %s\n" k (tyexp_to_st x)
-      | Error x -> Printf.printf "Some error???: %s\n" (error_to_st x))
-    context;
-  Printf.printf "-----\n";
-  true
-;;
-
-(* with
-  | Failure _ -> false *)
-
-let test code =
-  match Parser.parse Parser.prog code with
-  | Result.Ok prog -> test_infer prog
-  | _ -> failwith "Parse error"
+  try
+    let context = infer_prog prog in
+    TypeMap.iter
+      (fun k v ->
+        match Result.map (fun t -> t) (run (instantiate v)) with
+        | Ok x -> Printf.printf "%s -> %s\n" k (tyexp_to_st x)
+        | Error x -> Printf.printf "Some error???: %s\n" (error_to_st x))
+      context;
+    Printf.printf "-----\n";
+    true
+  with
+  | Failure _ -> false
 ;;
 
 (* let%test _ =
@@ -468,34 +461,3 @@ let%test _ =
         (false, PVar "x", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
     ]
 ;; *)
-
-let%test _ =
-  test
-    {|
-let x = 2 + 5 + 3 * 4
-let y = [x+1;x+2;x+3;x+4]
-let c =  5 :: y
-let f x y = x + y
-|}
-;;
-
-let%test _ =
-  test
-    {|
-let x =
-     let y =
-       let y = 10 in
-       5
-     in
-     y
-let tuple = (1, 2, 2) < (1, 2, 3)     
-|}
-;;
-
-let%test _ = test {|
-let id x y = x = y
-|}
-
-let%test _ = test {|
-
-|}

@@ -2,7 +2,7 @@
  (name ocamlEff_lib)
  (public_name OCamlEff.Lib)
  (modules Ast Parser Typing Env Eval Tester ParserTests TypingTests)
- (libraries base angstrom ppx_show.runtime)
+ (libraries base angstrom)
  (inline_tests)
  (preprocess
-  (pps ppx_expect ppx_show ppx_deriving.eq)))
+  (pps ppx_expect ppx_deriving.show)))

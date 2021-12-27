@@ -102,14 +102,10 @@ let rec unify prm_ty arg_ty subst env =
          && prm_var = arg_var -> subst
   | TVar prm_var, TVar arg_var
     when is_not_bound prm_var env.ty_bvars && is_not_bound arg_var env.ty_bvars ->
-    if prm_var = arg_var
-    then subst
-    else (
-      match BindMap.find_opt prm_var subst.ty, BindMap.find_opt arg_var subst.ty with
-      | None, None ->
-        mrg_subst subst (double_ty_subst prm_var arg_var (fresh_tvar ())) env
-      | Some ty, _ -> mrg_subst subst (single_ty_subst arg_var ty) env
-      | None, Some ty -> mrg_subst subst (single_ty_subst prm_var ty) env)
+    (match BindMap.find_opt prm_var subst.ty, BindMap.find_opt arg_var subst.ty with
+    | None, None -> mrg_subst subst (double_ty_subst prm_var arg_var (fresh_tvar ())) env
+    | Some ty, _ -> mrg_subst subst (single_ty_subst arg_var ty) env
+    | None, Some ty -> mrg_subst subst (single_ty_subst prm_var ty) env)
   | TVar tvar, ty when is_not_bound tvar env.ty_bvars ->
     mrg_subst subst (single_ty_subst tvar ty) env
   | ty, TVar tvar when is_not_bound tvar env.ty_bvars ->

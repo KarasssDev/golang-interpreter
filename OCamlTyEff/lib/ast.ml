@@ -200,6 +200,13 @@ let rec pp_ptrn fmt = function
     pp_ptrn fmt ptrn
 ;;
 
+type native =
+  | NPrintln
+  | NRaise of exc
+  | NRef
+  | NSneakyEff
+[@@deriving eq, show { with_path = false }]
+
 type decl =
   { is_rec : bool
   ; name : string
@@ -219,6 +226,7 @@ and expr =
   | EMatch of expr * (ptrn * expr) list
   | EFun of string * ty * expr
   | ETry of expr * (exc * expr) list
+  | ENative of native (* used by std that prepends functions doing native calls to program *)
 [@@deriving eq]
 
 let e_const const = EConst const
@@ -273,6 +281,7 @@ and pp_expr fmt = function
       (pp_print_list (fun fmt (exc, expr) ->
            fprintf fmt "| %a -> %a" pp_exc exc pp_expr expr))
       excs
+  | ENative native -> fprintf fmt "<<%a>>" pp_native native
 ;;
 
 type program = decl list [@@deriving eq]

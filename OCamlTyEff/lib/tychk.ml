@@ -1,6 +1,7 @@
 open Ast
 open Format
 open Bind
+open Std
 
 exception Incorrect_ty
 exception Occurs_fail
@@ -428,7 +429,8 @@ let rec infer_ty_effs env expr =
           (EffSet.diff
              scr_effs
              (EffSet.of_list (List.map (fun (exc, _) -> EffExc exc) excs)))
-          effs ))
+          effs )
+    | ENative _ -> safe_tvar (), EffSet.singleton (safe_eff_var ()))
     env
 ;;
 
@@ -436,27 +438,7 @@ let empty_ty_chk_env =
   { decls = BindMap.empty; ty_bvars = BindSet.empty; eff_bvars = BindSet.empty }
 ;;
 
-let stdlib_ty_chk_env =
-  { empty_ty_chk_env with
-    decls =
-      BindMap.of_seq
-        (List.to_seq
-           (List.map
-              (fun (name, ty) -> name, safe_ty ty empty_ty_chk_env)
-              [ "println", TFun (TString, EffSet.singleton EffIO, TTuple [])
-              ; "raise1", TFun (TTuple [], EffSet.singleton (EffExc Exc1), TVar "a")
-              ; "raise2", TFun (TTuple [], EffSet.singleton (EffExc Exc2), TVar "a")
-              ; "ref", TFun (TVar "a", EffSet.empty, TRef (TVar "a"))
-              ; ( "sneaky_eff"
-                , TFun
-                    ( TFun (TVar "a", EffSet.singleton (EffVar "e"), TVar "b")
-                    , EffSet.empty
-                    , TFun (TVar "a", EffSet.singleton (EffVar "e2"), TVar "b") ) )
-              ]))
-  }
-;;
-
-let check_program =
+let check_program program =
   List.fold_left
     (fun env (decl : decl) ->
       let decl_ty = safe_ty decl.ty env in
@@ -464,8 +446,11 @@ let check_program =
       let val_ty, _ = infer_ty_effs (if decl.is_rec then new_env else env) decl.expr in
       check_assignable decl_ty val_ty env;
       new_env)
-    stdlib_ty_chk_env
+    empty_ty_chk_env
+    (stdlib @ program)
 ;;
+
+let stdlib_ty_chk_env = check_program []
 
 (* Tests *)
 

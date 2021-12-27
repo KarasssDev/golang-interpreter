@@ -1,7 +1,7 @@
 (library
  (name ocaml_typed_effects_lib)
  (public_name OCamlTyEff.Lib)
- (modules Ast Parser Bind Tychk Interpret)
+ (modules Ast Parser Bind Std Tychk Interpret)
  (libraries base angstrom ppx_show.runtime)
  (inline_tests)
  (preprocess

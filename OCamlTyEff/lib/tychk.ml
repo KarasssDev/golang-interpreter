@@ -451,119 +451,59 @@ let stdlib_ty_chk_env = check_program []
 
 (* Tests *)
 
-let test_infer_tyeffs expr matcher =
-  let ty, effs = infer_ty_effs stdlib_ty_chk_env expr in
-  let result = matcher (ty, effs) in
-  if result then () else printf "Actual:\nty=%a\neffs=%a\n" pp_ty ty pp_eff_set effs;
-  result
+let test_infer_tyeffs str matcher =
+  match
+    Angstrom.parse_string
+      ~consume:Angstrom.Consume.All
+      (Angstrom.( <* ) Parser.pexpr Parser.pspace)
+      str
+  with
+  | Error err ->
+    printf "Parser error: %s\n" err;
+    false
+  | Ok expr ->
+    let ty, effs = infer_ty_effs stdlib_ty_chk_env expr in
+    let result = matcher (ty, effs) in
+    if result then () else printf "Actual:\nty=%a\neffs=%a\n" pp_ty ty pp_eff_set effs;
+    result
 ;;
 
-let test_infer_tyeffs_eq expr ty effs =
-  test_infer_tyeffs expr
-  @@ fun (ty2, effs2) -> equal_ty ty ty2 && equal_eff_set effs effs2
+let test_infer_tyeffs_eq str ty effs =
+  test_infer_tyeffs str @@ fun (ty2, effs2) -> equal_ty ty ty2 && equal_eff_set effs effs2
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs
+    {|
 let rec map : ('a -['e]-> 'b) --> 'a list -['e]-> 'b list = fun f: ('a -['e]-> 'b) -> fun xs : 'a list ->
   match xs with
   | [] -> []
   | x::xs -> (f x) :: (map f xs) in
 let id: 'a --> 'a = fun x: 'a -> x in
-map id
-*)
-let%test _ =
-  test_infer_tyeffs
-    (ELet
-       ( { is_rec = true
-         ; name = "map"
-         ; ty =
-             TFun
-               ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
-               , EffSet.of_list []
-               , TFun (TList (TVar "a"), EffSet.of_list [ EffVar "e" ], TList (TVar "b"))
-               )
-         ; expr =
-             EFun
-               ( "f"
-               , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
-               , EFun
-                   ( "xs"
-                   , TList (TVar "a")
-                   , EMatch
-                       ( EVal "xs"
-                       , [ PConst CEmptyList, EConst CEmptyList
-                         ; ( PCons ([ PVal "x" ], PVal "xs")
-                           , EBinop
-                               ( EApp (EVal "f", EVal "x")
-                               , Cons
-                               , EApp (EApp (EVal "map", EVal "f"), EVal "xs") ) )
-                         ] ) ) )
-         }
-       , ELet
-           ( { is_rec = false
-             ; name = "id"
-             ; ty = TFun (TVar "a", EffSet.of_list [], TVar "a")
-             ; expr = EFun ("x", TVar "a", EVal "x")
-             }
-           , EApp (EVal "map", EVal "id") ) ))
+map id    
+|}
   @@ function
   | TFun (TList (TVar v1), effs1, TList (TVar v2)), effs2 ->
     v1 = v2 && EffSet.is_empty effs1 && EffSet.is_empty effs2
   | _ -> false
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs_eq
+    {|
 let rec map : ('a -['e]-> 'b) --> 'a list -['e]-> 'b list = fun (f: 'a -['e]-> 'b) -> fun xs : 'a list ->
   match xs with
   | [] -> []
   | x::xs -> (f x) :: (map f xs) in
 map (fun n: int -> let o: () = println "hi" in n + 1)
-*)
-let%test _ =
-  test_infer_tyeffs_eq
-    (ELet
-       ( { is_rec = true
-         ; name = "map"
-         ; ty =
-             TFun
-               ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
-               , EffSet.of_list []
-               , TFun (TList (TVar "a"), EffSet.of_list [ EffVar "e" ], TList (TVar "b"))
-               )
-         ; expr =
-             EFun
-               ( "f"
-               , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
-               , EFun
-                   ( "xs"
-                   , TList (TVar "a")
-                   , EMatch
-                       ( EVal "xs"
-                       , [ PConst CEmptyList, EConst CEmptyList
-                         ; ( PCons ([ PVal "x" ], PVal "xs")
-                           , EBinop
-                               ( EApp (EVal "f", EVal "x")
-                               , Cons
-                               , EApp (EApp (EVal "map", EVal "f"), EVal "xs") ) )
-                         ] ) ) )
-         }
-       , EApp
-           ( EVal "map"
-           , EFun
-               ( "n"
-               , TInt
-               , ELet
-                   ( { is_rec = false
-                     ; name = "o"
-                     ; ty = TTuple []
-                     ; expr = EApp (EVal "println", EConst (CString "hi"))
-                     }
-                   , EBinop (EVal "n", Add, EConst (CInt 1)) ) ) ) ))
+|}
     (TFun (TList TInt, EffSet.of_list [ EffIO ], TList TInt))
     EffSet.empty
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs
+    {|
 let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 'c list = 
   fun f: ('a --> 'b -['e]-> 'c) ->
     fun l1: 'a list -> fun l2: 'b list ->
@@ -573,65 +513,7 @@ let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 
   | (o1, o2) -> raise1 ()
 in
 map2 (fun n: int -> fun m: 'a -> n)
-*)
-
-let%test _ =
-  test_infer_tyeffs
-    (ELet
-       ( { is_rec = true
-         ; name = "map2"
-         ; ty =
-             TFun
-               ( TFun
-                   ( TVar "a"
-                   , EffSet.of_list []
-                   , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
-               , EffSet.of_list []
-               , TFun
-                   ( TList (TVar "a")
-                   , EffSet.of_list []
-                   , TFun
-                       ( TList (TVar "b")
-                       , EffSet.of_list [ EffExc Exc1; EffVar "e" ]
-                       , TList (TVar "c") ) ) )
-         ; expr =
-             EFun
-               ( "f"
-               , TFun
-                   ( TVar "a"
-                   , EffSet.of_list []
-                   , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
-               , EFun
-                   ( "l1"
-                   , TList (TVar "a")
-                   , EFun
-                       ( "l2"
-                       , TList (TVar "b")
-                       , EMatch
-                           ( ETuple [ EVal "l1"; EVal "l2" ]
-                           , [ ( PTuple [ PConst CEmptyList; PConst CEmptyList ]
-                               , EConst CEmptyList )
-                             ; ( PTuple
-                                   [ PCons ([ PVal "a1" ], PVal "l1")
-                                   ; PCons ([ PVal "a2" ], PVal "l2")
-                                   ]
-                               , ELet
-                                   ( { is_rec = false
-                                     ; name = "r"
-                                     ; ty = TVar "c"
-                                     ; expr = EApp (EApp (EVal "f", EVal "a1"), EVal "a2")
-                                     }
-                                   , EBinop
-                                       ( EVal "r"
-                                       , Cons
-                                       , EApp
-                                           ( EApp (EApp (EVal "map2", EVal "f"), EVal "l1")
-                                           , EVal "l2" ) ) ) )
-                             ; ( PTuple [ PVal "o1"; PVal "o2" ]
-                               , EApp (EVal "raise1", ETuple []) )
-                             ] ) ) ) )
-         }
-       , EApp (EVal "map2", EFun ("n", TInt, EFun ("m", TVar "a", EVal "n"))) ))
+|}
   @@ function
   | TFun (TList TInt, effs1, TFun (TList (TVar _), effs2, TList TInt)), effs3 ->
     EffSet.is_empty effs1
@@ -640,7 +522,9 @@ let%test _ =
   | _ -> false
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs
+    {|
 let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 'c list = 
   fun f: ('a --> 'b -['e]-> 'c) ->
     fun l1: 'a list -> fun l2: 'b list ->
@@ -650,69 +534,7 @@ let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 
   | (o1, o2) -> raise1 ()
 in
 map2 (fun n: int -> fun m: 'a -> raise2 ()) (1 :: [])
-*)
-let%test _ =
-  test_infer_tyeffs
-    (ELet
-       ( { is_rec = true
-         ; name = "map2"
-         ; ty =
-             TFun
-               ( TFun
-                   ( TVar "a"
-                   , EffSet.of_list []
-                   , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
-               , EffSet.of_list []
-               , TFun
-                   ( TList (TVar "a")
-                   , EffSet.of_list []
-                   , TFun
-                       ( TList (TVar "b")
-                       , EffSet.of_list [ EffExc Exc1; EffVar "e" ]
-                       , TList (TVar "c") ) ) )
-         ; expr =
-             EFun
-               ( "f"
-               , TFun
-                   ( TVar "a"
-                   , EffSet.of_list []
-                   , TFun (TVar "b", EffSet.of_list [ EffVar "e" ], TVar "c") )
-               , EFun
-                   ( "l1"
-                   , TList (TVar "a")
-                   , EFun
-                       ( "l2"
-                       , TList (TVar "b")
-                       , EMatch
-                           ( ETuple [ EVal "l1"; EVal "l2" ]
-                           , [ ( PTuple [ PConst CEmptyList; PConst CEmptyList ]
-                               , EConst CEmptyList )
-                             ; ( PTuple
-                                   [ PCons ([ PVal "a1" ], PVal "l1")
-                                   ; PCons ([ PVal "a2" ], PVal "l2")
-                                   ]
-                               , ELet
-                                   ( { is_rec = false
-                                     ; name = "r"
-                                     ; ty = TVar "c"
-                                     ; expr = EApp (EApp (EVal "f", EVal "a1"), EVal "a2")
-                                     }
-                                   , EBinop
-                                       ( EVal "r"
-                                       , Cons
-                                       , EApp
-                                           ( EApp (EApp (EVal "map2", EVal "f"), EVal "l1")
-                                           , EVal "l2" ) ) ) )
-                             ; ( PTuple [ PVal "o1"; PVal "o2" ]
-                               , EApp (EVal "raise1", ETuple []) )
-                             ] ) ) ) )
-         }
-       , EApp
-           ( EApp
-               ( EVal "map2"
-               , EFun ("n", TInt, EFun ("m", TVar "a", EApp (EVal "raise2", ETuple [])))
-               )
-           , EBinop (EConst (CInt 1), Cons, EConst CEmptyList) ) ))
+|}
   @@ function
   | TFun (TList (TVar _), effs1, TList (TVar _)), effs2 ->
     equal_eff_set effs1 (EffSet.of_list [ EffExc Exc1; EffExc Exc2 ])
@@ -720,42 +542,39 @@ let%test _ =
   | _ -> false
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs {|
 try raise1 () with
 | Exc1 -> 1
-*)
-let%test _ =
-  test_infer_tyeffs (ETry (EApp (EVal "raise1", ETuple []), [ Exc1, EConst (CInt 1) ]))
+|}
   @@ function
   | TInt, effs -> EffSet.is_empty effs
   | _ -> false
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs {|
 try raise1 () with
 | Exc1 -> raise2 ()
-*)
-let%test _ =
-  test_infer_tyeffs
-    (ETry (EApp (EVal "raise1", ETuple []), [ Exc1, EApp (EVal "raise2", ETuple []) ]))
+|}
   @@ function
   | TVar _, effs -> equal_eff_set effs (EffSet.singleton (EffExc Exc2))
   | _ -> false
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs {|
 try raise1 () with
 | Exc1 -> raise1 ()
-*)
-let%test _ =
-  test_infer_tyeffs
-    (ETry (EApp (EVal "raise1", ETuple []), [ Exc1, EApp (EVal "raise1", ETuple []) ]))
+|}
   @@ function
   | TVar _, effs -> equal_eff_set effs (EffSet.singleton (EffExc Exc1))
   | _ -> false
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs
+    {|
 let f: bool -[exc Exc1, exc Exc2]-> string = fun flag: bool ->
   match flag with
   | true -> raise1 ()
@@ -764,33 +583,15 @@ in
 try f true with
 | Exc1 -> raise2 ()
 | Exc2 -> "literal"
-*)
-let%test _ =
-  test_infer_tyeffs
-    (ELet
-       ( { is_rec = false
-         ; name = "f"
-         ; ty = TFun (TBool, EffSet.of_list [ EffExc Exc1; EffExc Exc2 ], TString)
-         ; expr =
-             EFun
-               ( "flag"
-               , TBool
-               , EMatch
-                   ( EVal "flag"
-                   , [ PConst (CBool true), EApp (EVal "raise1", ETuple [])
-                     ; PConst (CBool false), EApp (EVal "raise2", ETuple [])
-                     ] ) )
-         }
-       , ETry
-           ( EApp (EVal "f", EConst (CBool true))
-           , [ Exc1, EApp (EVal "raise2", ETuple []); Exc2, EConst (CString "literal") ]
-           ) ))
+|}
   @@ function
   | TString, effs -> equal_eff_set effs (EffSet.singleton (EffExc Exc2))
   | _ -> false
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs
+    {|
 let rec fix: (('a -['e]-> 'b) --> 'a -['e]-> 'b) --> 'a -['e]-> 'b = 
   fun (f: ('a -['e]-> 'b) --> 'a -['e]-> 'b) -> fun eta: 'a -> f (fix f) eta
 in
@@ -800,66 +601,15 @@ let fac: (int --> int) --> int --> int = fun self: (int --> int) -> fun n: int -
   | false -> n * (self (n-1))
 in
 fix fac
-*)
-let%test _ =
-  test_infer_tyeffs
-    (ELet
-       ( { is_rec = true
-         ; name = "fix"
-         ; ty =
-             TFun
-               ( TFun
-                   ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
-                   , EffSet.of_list []
-                   , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b") )
-               , EffSet.of_list []
-               , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b") )
-         ; expr =
-             EFun
-               ( "f"
-               , TFun
-                   ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
-                   , EffSet.of_list []
-                   , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b") )
-               , EFun
-                   ( "eta"
-                   , TVar "a"
-                   , EApp (EApp (EVal "f", EApp (EVal "fix", EVal "f")), EVal "eta") ) )
-         }
-       , ELet
-           ( { is_rec = false
-             ; name = "fac"
-             ; ty =
-                 TFun
-                   ( TFun (TInt, EffSet.of_list [], TInt)
-                   , EffSet.of_list []
-                   , TFun (TInt, EffSet.of_list [], TInt) )
-             ; expr =
-                 EFun
-                   ( "self"
-                   , TFun (TInt, EffSet.of_list [], TInt)
-                   , EFun
-                       ( "n"
-                       , TInt
-                       , EMatch
-                           ( EBinop (EVal "n", Leq, EConst (CInt 1))
-                           , [ PConst (CBool true), EConst (CInt 1)
-                             ; ( PConst (CBool false)
-                               , EBinop
-                                   ( EVal "n"
-                                   , Mul
-                                   , EApp
-                                       ( EVal "self"
-                                       , EBinop (EVal "n", Sub, EConst (CInt 1)) ) ) )
-                             ] ) ) )
-             }
-           , EApp (EVal "fix", EVal "fac") ) ))
+|}
   @@ function
   | TFun (TInt, effs1, TInt), effs2 -> EffSet.is_empty effs1 && EffSet.is_empty effs2
   | _ -> false
 ;;
 
-(*
+let%test _ =
+  test_infer_tyeffs_eq
+    {|
 (fun (f : ('a -['e]-> 'b) --> 'a -['e]-> 'b) ->
   let r : ('a -['e]-> 'b) ref = ref (fun o : 'a -> (sneaky_eff raise1) ()) in
   let fixf : 'a -['e]-> 'b = fun x : 'a -> f !r x in
@@ -868,189 +618,32 @@ let%test _ =
 (fun (self: string list -[IO]-> ()) -> fun l: string list -> match l with
 | hd::tl -> let o: unit = println hd in self tl
 | o -> ())
-*)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EApp
-       ( EFun
-           ( "f"
-           , TFun
-               ( TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
-               , EffSet.of_list []
-               , TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b") )
-           , ELet
-               ( { is_rec = false
-                 ; name = "r"
-                 ; ty = TRef (TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b"))
-                 ; expr =
-                     EApp
-                       ( EVal "ref"
-                       , EFun
-                           ( "o"
-                           , TVar "a"
-                           , EApp (EApp (EVal "sneaky_eff", EVal "raise1"), ETuple []) )
-                       )
-                 }
-               , ELet
-                   ( { is_rec = false
-                     ; name = "fixf"
-                     ; ty = TFun (TVar "a", EffSet.of_list [ EffVar "e" ], TVar "b")
-                     ; expr =
-                         EFun
-                           ( "x"
-                           , TVar "a"
-                           , EApp (EApp (EVal "f", EUnop (Deref, EVal "r")), EVal "x") )
-                     }
-                   , ELet
-                       ( { is_rec = false
-                         ; name = "o"
-                         ; ty = TTuple []
-                         ; expr = EBinop (EVal "r", Asgmt, EVal "fixf")
-                         }
-                       , EUnop (Deref, EVal "r") ) ) ) )
-       , EFun
-           ( "self"
-           , TFun (TList TString, EffSet.of_list [ EffIO ], TTuple [])
-           , EFun
-               ( "l"
-               , TList TString
-               , EMatch
-                   ( EVal "l"
-                   , [ ( PCons ([ PVal "hd" ], PVal "tl")
-                       , ELet
-                           ( { is_rec = false
-                             ; name = "o"
-                             ; ty = TTuple []
-                             ; expr = EApp (EVal "println", EVal "hd")
-                             }
-                           , EApp (EVal "self", EVal "tl") ) )
-                     ; PVal "o", ETuple []
-                     ] ) ) ) ))
+|}
     (TFun (TList TString, EffSet.of_list [ EffIO ], TTuple []))
     (EffSet.singleton EffAsgmt)
 ;;
 
-(* 1 + 1 *)
+let%test _ = test_infer_tyeffs_eq {| 1 + 1 |} TInt EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 - 1 |} TInt EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 * 1 |} TInt EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 / 1 |} TInt EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 = 1 |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 != 1 |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 < 1 |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 <= 1 |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 > 1 |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 >= 1 |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| "s" = "s" |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| "s" != "s" |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| true = false |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| true != false |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| true && false |} TBool EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| true || false |} TBool EffSet.empty
+
 let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Add, EConst (CInt 1))) TInt EffSet.empty
+  test_infer_tyeffs_eq {| (ref 1) := 2 |} (TTuple []) (EffSet.singleton EffAsgmt)
 ;;
 
-(* 1 - 1 *)
-let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Sub, EConst (CInt 1))) TInt EffSet.empty
-;;
-
-(* 1 * 1 *)
-let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Mul, EConst (CInt 1))) TInt EffSet.empty
-;;
-
-(* 1 / 1 *)
-let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Div, EConst (CInt 1))) TInt EffSet.empty
-;;
-
-(* 1 = 1 *)
-let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Eq, EConst (CInt 1))) TBool EffSet.empty
-;;
-
-(* 1 != 1 *)
-let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Neq, EConst (CInt 1))) TBool EffSet.empty
-;;
-
-(* 1 < 1 *)
-let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Les, EConst (CInt 1))) TBool EffSet.empty
-;;
-
-(* 1 <= 1 *)
-let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Leq, EConst (CInt 1))) TBool EffSet.empty
-;;
-
-(* 1 > 1 *)
-let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Gre, EConst (CInt 1))) TBool EffSet.empty
-;;
-
-(* 1 >= 1 *)
-let%test _ =
-  test_infer_tyeffs_eq (EBinop (EConst (CInt 1), Geq, EConst (CInt 1))) TBool EffSet.empty
-;;
-
-(* "s" = "s" *)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EBinop (EConst (CString "s"), Eq, EConst (CString "s")))
-    TBool
-    EffSet.empty
-;;
-
-(* "s" != "s" *)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EBinop (EConst (CString "s"), Neq, EConst (CString "s")))
-    TBool
-    EffSet.empty
-;;
-
-(* true = false *)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EBinop (EConst (CBool true), Eq, EConst (CBool false)))
-    TBool
-    EffSet.empty
-;;
-
-(* true != false *)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EBinop (EConst (CBool true), Neq, EConst (CBool false)))
-    TBool
-    EffSet.empty
-;;
-
-(* true && false *)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EBinop (EConst (CBool true), And, EConst (CBool false)))
-    TBool
-    EffSet.empty
-;;
-
-(* true || false *)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EBinop (EConst (CBool true), Or, EConst (CBool false)))
-    TBool
-    EffSet.empty
-;;
-
-(* (ref 1) := 2 *)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EBinop (EApp (EVal "ref", EConst (CInt 1)), Asgmt, EConst (CInt 2)))
-    (TTuple [])
-    (EffSet.singleton EffAsgmt)
-;;
-
-(* 1 :: [] *)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EBinop (EConst (CInt 1), Cons, EConst CEmptyList))
-    (TList TInt)
-    EffSet.empty
-;;
-
-(* !(ref 1) *)
-let%test _ =
-  test_infer_tyeffs_eq
-    (EUnop (Deref, EApp (EVal "ref", EConst (CInt 1))))
-    TInt
-    EffSet.empty
-;;
-
-(* -(1) *)
-let%test _ = test_infer_tyeffs_eq (EUnop (Neg, EConst (CInt 1))) TInt EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| 1 :: [] |} (TList TInt) EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| !(ref 1) |} TInt EffSet.empty
+let%test _ = test_infer_tyeffs_eq {| -(1) |} TInt EffSet.empty

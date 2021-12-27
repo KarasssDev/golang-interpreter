@@ -291,3 +291,252 @@ let parse_and_run str =
 
 let pp_res = InterpretResult.pp_res
 let pp_parse_and_run fmt str = pp_res fmt (parse_and_run str)
+
+(* Tests *)
+
+let test_parse_and_run_ok str vals =
+  match parse_and_run str with
+  | Error err ->
+    printf "%a\n" pp_run_err err;
+    false
+  | Ok ok ->
+    List.for_all
+      (fun (name, expected) ->
+        match List.assoc_opt name ok with
+        | None ->
+          printf "%s is not bound:\n%a\n" name pp_run_ok ok;
+          false
+        | Some (_, actual) when equal_value expected actual -> true
+        | Some (_, actual) ->
+          printf
+            "Incorrect %s, expected: %a, actual: %a\n"
+            name
+            pp_value
+            expected
+            pp_value
+            actual;
+          false)
+      vals
+;;
+
+let test_parse_and_run_err str expected =
+  match parse_and_run str with
+  | Ok actual ->
+    printf "Unexpected success:\n%a\n" pp_run_ok actual;
+    false
+  | Error actual when equal_run_err expected actual -> true
+  | Error actual ->
+    printf
+      "Incorrect error, expected: %a, actual: %a\n"
+      pp_run_err
+      expected
+      pp_run_err
+      actual;
+    false
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let r : int ref = ref 1
+let o : () = r := !r + 5
+|}
+    [ "r", VRef (ref (VInt 6)) ]
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let n : int =
+  try raise1 () with
+  | Exc1 -> 1
+|}
+    [ "n", VInt 1 ]
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let n : int =
+  try raise1 () with
+  | Exc1 -> 1
+  | Exc2 -> 2
+|}
+    [ "n", VInt 1 ]
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let n : int =
+  try raise2 () with
+  | Exc1 -> 1
+  | Exc2 -> 2
+|}
+    [ "n", VInt 2 ]
+;;
+
+let%test _ = test_parse_and_run_err {|
+let n : int = raise1 ()
+|} (Exc Exc1)
+
+let%test _ = test_parse_and_run_err {|
+let n : int = (sneaky_eff raise1) ()
+|} (Exc Exc1)
+
+let%test _ =
+  test_parse_and_run_err {|
+let n : int =
+  try raise2 () with
+  | Exc1 -> 1
+|} (Exc Exc2)
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let rec fix: (('a -['e]-> 'b) --> 'a -['e]-> 'b) -[Asgmt]-> 'a -['e]-> 'b = 
+  fun (f : ('a -['e]-> 'b) --> 'a -['e]-> 'b) ->
+    let r : ('a -['e]-> 'b) ref = ref (fun o : 'a -> (sneaky_eff raise1) ()) in
+    let fixf : 'a -['e]-> 'b = fun x : 'a -> f !r x in
+    let o: () = r := fixf in
+    !r
+;;
+let fac: (int --> int) --> int --> int = fun self: (int --> int) -> fun n: int -> 
+  match n <= 1 with
+  | true -> 1
+  | false -> n * (self (n - 1))
+;;
+let n : int = fix fac 6
+|}
+    [ "n", VInt (2 * 3 * 4 * 5 * 6) ]
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let rec fix: (('a -['e]-> 'b) --> 'a -['e]-> 'b) --> 'a -['e]-> 'b = 
+  fun (f: ('a -['e]-> 'b) --> 'a -['e]-> 'b) -> fun eta: 'a -> f (fix f) eta
+
+let sum: int = fix (fun self: int list --> int -> fun l: int list -> match l with
+  | [] -> 0
+  | hd :: tl -> hd + self tl) (2 :: 5 :: 8 :: 4 :: [])
+|}
+    [ "sum", VInt (2 + 5 + 8 + 4) ]
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 'c list = 
+  fun f: ('a --> 'b -['e]-> 'c) ->
+    fun l1: 'a list -> fun l2: 'b list ->
+  match (l1, l2) with
+  | ([], []) -> []
+  | (a1::l1, a2::l2) -> let r: 'c = f a1 a2 in r :: map2 f l1 l2
+  | (o1, o2) -> raise1 ()
+
+let combine: 'a list --> 'b list -[exc Exc1]-> ('a * 'b) list = 
+  map2 (fun x : 'a -> fun y : 'b -> (x, y))
+
+let l : (int * string) list = combine (1 :: 2 :: 3 :: []) ("1" :: "2" :: "3" :: [])
+|}
+    [ ( "l"
+      , VList
+          [ VTuple [ VInt 1; VString "1" ]
+          ; VTuple [ VInt 2; VString "2" ]
+          ; VTuple [ VInt 3; VString "3" ]
+          ] )
+    ]
+;;
+
+let%test _ =
+  test_parse_and_run_err
+    {|
+let rec map2 : ('a --> 'b -['e]-> 'c) --> 'a list --> 'b list -['e, exc Exc1]-> 'c list = 
+  fun f: ('a --> 'b -['e]-> 'c) ->
+    fun l1: 'a list -> fun l2: 'b list ->
+  match (l1, l2) with
+  | ([], []) -> []
+  | (a1::l1, a2::l2) -> let r: 'c = f a1 a2 in r :: map2 f l1 l2
+  | (o1, o2) -> raise1 ()
+
+let combine: 'a list --> 'b list -[exc Exc1]-> ('a * 'b) list = 
+  map2 (fun x : 'a -> fun y : 'b -> (x, y))
+
+let l : (int * string) list = combine (1 :: 2 :: 3 :: []) ("1" :: "2" :: [])
+|}
+    (Exc Exc1)
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let last_id : int ref = ref -1
+let fresh_id : () -[Asgmt]-> int = fun o : unit ->
+  let o : unit = last_id := !last_id + 1 in
+  !last_id
+let a : int = fresh_id ()
+let b : int = fresh_id ()
+let c : int = fresh_id ()
+|}
+    [ "a", VInt 0; "b", VInt 1; "c", VInt 2; "last_id", VRef (ref (VInt 2)) ]
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let x : int = 1 + -(-8) / 2 - 5 * -5
+|}
+    [ "x", VInt (1 + (8 / 2) - (5 * -5)) ]
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let may_raise : unit -[exc Exc1]-> bool = fun o : () -> (raise1 ())
+let x : bool = true || (may_raise ())
+|}
+    [ "x", VBool true ]
+;;
+
+let%test _ =
+  test_parse_and_run_err
+    {|
+let may_raise : unit -[exc Exc1]-> bool = fun o : () -> (raise1 ())
+let x : bool = false || (may_raise ())
+|}
+    (Exc Exc1)
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
+let may_raise : unit -[exc Exc1]-> bool = fun o : () -> (raise1 ())
+let x : bool = false && (may_raise ())
+|}
+    [ "x", VBool false ]
+;;
+
+let%test _ =
+  test_parse_and_run_ok {|
+let x : bool = true && (false || true)
+|} [ "x", VBool true ]
+;;
+
+let%test _ = test_parse_and_run_err {|
+let rec x : int = x
+|} (Invalid_rec "x")
+
+let%test _ = test_parse_and_run_err {|
+let x : int = 1 / 0
+|} Div0
+
+let%test _ =
+  test_parse_and_run_err
+    {|
+let x : int = match 1 :: [] with
+  | 2 :: [] -> 3 
+|}
+    (Non_exhaustive [ PCons ([ PConst (CInt 2) ], PConst CEmptyList) ])
+;;

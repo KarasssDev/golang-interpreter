@@ -124,7 +124,7 @@ let peff_var = eff_var <$> pvarty
 let peff = choice [ peff_exc; peff_io; peff_asgmt; peff_var ]
 
 let peffs =
-  (fun l -> EffSet.of_list l)
+  EffSet.of_list
   <$> choice
         [ (fun _ -> all_effs) <$> pstoken "->"
         ; (fun _ -> []) <$> pstoken "-->"
@@ -271,8 +271,8 @@ let pleq = pstoken "<=" *> return leq
 let ples = pstoken "<" *> return les
 let pgeq = pstoken ">=" *> return geq
 let pgre = pstoken ">" *> return gre
-let pand = pstoken "&&" *> return _and
-let por = pstoken "||" *> return _or
+let pand = pstoken "&&" *> return and_
+let por = pstoken "||" *> return or_
 let pasgmt = pstoken ":=" *> return asgmt
 
 let pexpr =

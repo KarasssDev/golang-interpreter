@@ -97,7 +97,7 @@ type unop =
 let neg = Neg
 let deref = Deref
 
-let rec pp_unop fmt = function
+let pp_unop fmt = function
   | Neg -> fprintf fmt "-"
   | Deref -> fprintf fmt "!"
 ;;
@@ -129,12 +129,12 @@ let les = Les
 let leq = Leq
 let geq = Geq
 let gre = Gre
-let _and = And
-let _or = Or
+let and_ = And
+let or_ = Or
 let asgmt = Asgmt
 let cons = Cons
 
-let rec pp_binop fmt op =
+let pp_binop fmt op =
   fprintf
     fmt
     (match op with
@@ -166,7 +166,7 @@ let c_string s = CString s
 let c_bool b = CBool b
 let c_empty_list = CEmptyList
 
-let rec pp_const fmt = function
+let pp_const fmt = function
   | CInt d -> fprintf fmt "%d" d
   | CString s -> fprintf fmt "%S" s
   | CBool b -> fprintf fmt "%b" b

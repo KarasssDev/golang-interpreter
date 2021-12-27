@@ -5,7 +5,7 @@ open Std
 
 exception Incorrect_ty
 exception Occurs_fail
-exception Empty_macth
+exception Empty_match
 exception Matching_rebound (* inside pattern *)
 
 type ty_map = ty BindMap.t
@@ -66,17 +66,17 @@ let double_ty_subst name1 name2 ty =
 
 let effs_subst effs = { ty = BindMap.empty; effs }
 let single_effs_subst name ty = effs_subst (BindMap.singleton name ty)
-let next_id = ref 0
+let last_id = ref (-1)
 
-let safe_name () =
-  next_id := !next_id + 1;
-  string_of_int !next_id
+let fresh_name () =
+  last_id := !last_id + 1;
+  string_of_int !last_id
 ;;
 
-let safe_tvar () = TVar (safe_name ())
-let safe_eff_var () = EffVar (safe_name ())
+let fresh_tvar () = TVar (fresh_name ())
+let fresh_eff_var () = EffVar (fresh_name ())
 
-let rec deduce_subst prm_ty arg_ty subst env =
+let rec unify prm_ty arg_ty subst env =
   match prm_ty, arg_ty with
   | TInt, TInt | TString, TString | TBool, TBool | TTuple [], TTuple [] -> subst
   | TExc prm_exc, TExc arg_exc when equal_exc prm_exc arg_exc -> subst
@@ -86,27 +86,28 @@ let rec deduce_subst prm_ty arg_ty subst env =
          && prm_bvar = arg_bvar -> subst
   | TTuple prm_tys, TTuple arg_tys ->
     mrg_substs
-      (List.map2
-         (fun prm_ty arg_ty -> deduce_subst prm_ty arg_ty subst env)
-         prm_tys
-         arg_tys)
+      (List.map2 (fun prm_ty arg_ty -> unify prm_ty arg_ty subst env) prm_tys arg_tys)
       env
-  | TList arg_ty, TList prm_ty | TRef arg_ty, TRef prm_ty ->
-    deduce_subst prm_ty arg_ty subst env
+  | TList arg_ty, TList prm_ty | TRef arg_ty, TRef prm_ty -> unify prm_ty arg_ty subst env
   | TFun (aa_ty, a_effs, ap_ty), TFun (pa_ty, p_effs, pp_ty) ->
     mrg_substs
-      [ deduce_subst aa_ty pa_ty subst env
-      ; deduce_subst pp_ty ap_ty subst env
-      ; deduce_effs_subst p_effs a_effs subst env
+      [ unify aa_ty pa_ty subst env
+      ; unify pp_ty ap_ty subst env
+      ; unify_effs p_effs a_effs subst env
       ]
       env
+  | TVar prm_var, TVar arg_var
+    when is_not_bound prm_var env.ty_bvars
+         && is_not_bound arg_var env.ty_bvars
+         && prm_var = arg_var -> subst
   | TVar prm_var, TVar arg_var
     when is_not_bound prm_var env.ty_bvars && is_not_bound arg_var env.ty_bvars ->
     if prm_var = arg_var
     then subst
     else (
       match BindMap.find_opt prm_var subst.ty, BindMap.find_opt arg_var subst.ty with
-      | None, None -> mrg_subst subst (double_ty_subst prm_var arg_var (safe_tvar ())) env
+      | None, None ->
+        mrg_subst subst (double_ty_subst prm_var arg_var (fresh_tvar ())) env
       | Some ty, _ -> mrg_subst subst (single_ty_subst arg_var ty) env
       | None, Some ty -> mrg_subst subst (single_ty_subst prm_var ty) env)
   | TVar tvar, ty when is_not_bound tvar env.ty_bvars ->
@@ -115,7 +116,7 @@ let rec deduce_subst prm_ty arg_ty subst env =
     mrg_subst subst (single_ty_subst tvar ty) env
   | _ -> raise Incorrect_ty
 
-and deduce_effs_subst prm_effs arg_effs subst env =
+and unify_effs prm_effs arg_effs subst env =
   let prm_effs, arg_effs = EffSet.diff prm_effs arg_effs, EffSet.diff arg_effs prm_effs in
   let cp_effs, vp_effs = split_effs prm_effs env in
   let ca_effs, va_effs = split_effs arg_effs env in
@@ -123,7 +124,7 @@ and deduce_effs_subst prm_effs arg_effs subst env =
   | _ :: _, _ :: _ ->
     let effs =
       Option.value
-        ~default:(EffSet.singleton (safe_eff_var ()))
+        ~default:(EffSet.singleton (fresh_eff_var ()))
         (List.find_map (fun name -> BindMap.find_opt name subst.effs) (vp_effs @ va_effs))
     in
     let effs = EffSet.union effs (EffSet.union cp_effs ca_effs) in
@@ -155,7 +156,7 @@ and mrg_subst subst1 subst2 env =
       (fun name ty subst ->
         match BindMap.find_opt name subst.ty with
         | None -> { subst with ty = BindMap.add name ty subst.ty }
-        | Some ty2 -> deduce_subst ty ty2 subst env)
+        | Some ty2 -> unify ty ty2 subst env)
       subst2.ty
       subst1
   in
@@ -163,7 +164,7 @@ and mrg_subst subst1 subst2 env =
     (fun name effs subst ->
       match BindMap.find_opt name subst.effs with
       | None -> { subst with effs = BindMap.add name effs subst.effs }
-      | Some effs2 -> deduce_effs_subst effs effs2 subst env)
+      | Some effs2 -> unify_effs effs effs2 subst env)
     subst2.effs
     subst
 ;;
@@ -184,57 +185,57 @@ let rec occurs_check name ty subst env =
     occurs_check name t2 subst env
 ;;
 
-let deduce_subst prm_ty arg_ty env =
-  let subst = deduce_subst prm_ty arg_ty empty_subst env in
+let unify prm_ty arg_ty env =
+  let subst = unify prm_ty arg_ty empty_subst env in
   BindMap.iter (fun name ty -> occurs_check name ty subst env) subst.ty;
   subst
 ;;
 
-let rec get_effs_subst name subst env =
+let rec lookup_effs name subst env =
   match BindMap.find_opt name subst.effs with
   | None -> EffSet.singleton (EffVar name)
-  | Some effs -> induce_effs_subst effs subst env
+  | Some effs -> apply_effs_subst effs subst env
 
-and induce_effs_subst effs subst env =
+and apply_effs_subst effs subst env =
   EffSet.of_seq
     (Seq.flat_map
        (fun eff ->
          match eff with
          | EffVar name when is_not_bound name env.eff_bvars ->
-           EffSet.to_seq (get_effs_subst name subst env)
-         | _ -> List.to_seq [ eff ])
+           EffSet.to_seq (lookup_effs name subst env)
+         | _ -> Seq.return eff)
        (EffSet.to_seq effs))
 ;;
 
-let rec get_ty_subst name subst env =
+let rec lookup_ty name subst env =
   match BindMap.find_opt name subst.ty with
   | None -> TVar name
-  | Some (TVar name) when is_not_bound name env.ty_bvars -> get_ty_subst name subst env
+  | Some (TVar name) when is_not_bound name env.ty_bvars -> lookup_ty name subst env
   | Some ty -> ty
 ;;
 
-let rec induce_subst ty subst env =
+let rec apply_subst ty subst env =
   match ty with
   | TInt | TString | TBool | TExc _ -> ty
   | TVar name when is_bound name env.ty_bvars -> ty
-  | TTuple l -> TTuple (List.map (fun t -> induce_subst t subst env) l)
-  | TList t -> TList (induce_subst t subst env)
-  | TRef t -> TRef (induce_subst t subst env)
-  | TVar name -> get_ty_subst name subst env
+  | TTuple l -> TTuple (List.map (fun t -> apply_subst t subst env) l)
+  | TList t -> TList (apply_subst t subst env)
+  | TRef t -> TRef (apply_subst t subst env)
+  | TVar name -> lookup_ty name subst env
   | TFun (ty1, effs, ty2) ->
     TFun
-      ( induce_subst ty1 subst env
-      , induce_effs_subst effs subst env
-      , induce_subst ty2 subst env )
+      ( apply_subst ty1 subst env
+      , apply_effs_subst effs subst env
+      , apply_subst ty2 subst env )
 ;;
 
 let all_eff_vars effs env =
-  BindSet.of_list
-    (List.filter_map
+  BindSet.of_seq
+    (Seq.filter_map
        (function
          | EffVar name when is_not_bound name env.eff_bvars -> Some name
          | _ -> None)
-       (List.of_seq (EffSet.to_seq effs)))
+       (EffSet.to_seq effs))
 ;;
 
 let rec all_ty_eff_vars ty env =
@@ -257,29 +258,32 @@ let rec all_ty_eff_vars ty env =
     , BindSet.union (all_eff_vars effs env) (BindSet.union effs1 effs2) )
 ;;
 
-let safe_subst ty env =
+let fresh_subst ty env =
   let tys, effs = all_ty_eff_vars ty env in
   { ty =
-      BindSet.fold (fun name map -> BindMap.add name (safe_tvar ()) map) tys BindMap.empty
+      BindSet.fold
+        (fun name map -> BindMap.add name (fresh_tvar ()) map)
+        tys
+        BindMap.empty
   ; effs =
       BindSet.fold
-        (fun name map -> BindMap.add name (EffSet.singleton (safe_eff_var ())) map)
+        (fun name map -> BindMap.add name (EffSet.singleton (fresh_eff_var ())) map)
         effs
         BindMap.empty
   }
 ;;
 
-let safe_ty ty env = induce_subst ty (safe_subst ty env) env
+let fresh_ty ty env = apply_subst ty (fresh_subst ty env) env
 
-let safe_effs effs env =
+let fresh_effs effs env =
   EffSet.map
     (function
-      | EffVar name when is_not_bound name env.eff_bvars -> safe_eff_var ()
+      | EffVar name when is_not_bound name env.eff_bvars -> fresh_eff_var ()
       | eff -> eff)
     effs
 ;;
 
-let safe_ty_effs (ty, effs) env = safe_ty ty env, safe_effs effs env
+let fresh_ty_effs (ty, effs) env = fresh_ty ty env, fresh_effs effs env
 
 let mrg_decls decls1 decls2 =
   BindMap.merge
@@ -325,19 +329,19 @@ let check_assignable decl_ty val_ty env =
     ; ty_bvars = BindSet.add_seq (BindSet.to_seq new_ty_bvars) env.ty_bvars
     }
   in
-  let _ = deduce_subst decl_ty val_ty bind_env in
+  let _ = unify decl_ty val_ty bind_env in
   ()
 ;;
 
 let rec infer_ty_effs env expr =
-  safe_ty_effs
+  fresh_ty_effs
     (match expr with
     | EConst const ->
       ( (match const with
         | CInt _ -> TInt
         | CString _ -> TString
         | CBool _ -> TBool
-        | CEmptyList -> TList (safe_tvar ()))
+        | CEmptyList -> TList (fresh_tvar ()))
       , EffSet.empty )
     | EVal name -> find_bind env.decls name, EffSet.empty
     | EUnop (op, expr) ->
@@ -368,23 +372,22 @@ let rec infer_ty_effs env expr =
       | TRef ref_ty, Asgmt, val_ty ->
         check_assignable ref_ty val_ty env;
         TTuple [], EffSet.add EffAsgmt effs
-      | ty, Cons, TList lty ->
-        induce_subst (TList lty) (deduce_subst lty ty env) env, effs
+      | ty, Cons, TList lty -> apply_subst (TList lty) (unify lty ty env) env, effs
       | _ -> raise Incorrect_ty)
     | EApp (f, arg) ->
       let f_ty, f_effs = infer_ty_effs env f in
       let arg_ty, arg_effs = infer_ty_effs env arg in
       (match f_ty with
       | TFun (prm_ty, effs, ret_ty) ->
-        let subst = deduce_subst prm_ty arg_ty env in
-        ( induce_subst ret_ty subst env
-        , EffSet.union (EffSet.union f_effs arg_effs) (induce_effs_subst effs subst env) )
+        let subst = unify prm_ty arg_ty env in
+        ( apply_subst ret_ty subst env
+        , EffSet.union (EffSet.union f_effs arg_effs) (apply_effs_subst effs subst env) )
       | _ -> raise Incorrect_ty)
     | ETuple exprs ->
-      let tys, effss = List.split (List.map (fun e -> infer_ty_effs env e) exprs) in
-      TTuple tys, List.fold_left (fun e1 e2 -> EffSet.union e1 e2) EffSet.empty effss
+      let tys, effss = List.split (List.map (infer_ty_effs env) exprs) in
+      TTuple tys, List.fold_left EffSet.union EffSet.empty effss
     | ELet (decl, expr) ->
-      let decl_ty = safe_ty decl.ty env in
+      let decl_ty = fresh_ty decl.ty env in
       let new_env = { env with decls = BindMap.add decl.name decl_ty env.decls } in
       let val_ty, val_effs =
         infer_ty_effs (if decl.is_rec then new_env else env) decl.expr
@@ -392,18 +395,16 @@ let rec infer_ty_effs env expr =
       check_assignable decl_ty val_ty env;
       let ty, effs = infer_ty_effs new_env expr in
       ty, EffSet.union val_effs effs
-    | EMatch (scr, ptrns) ->
+    | EMatch (_, []) -> raise Empty_match
+    | EMatch (scr, (ptrn1, case1) :: cases) ->
       let scr_ty, scr_effs = infer_ty_effs env scr in
-      (match ptrns with
-      | [] -> raise Empty_macth
-      | (ptrn1, case1) :: cases ->
-        let ty, effs = infer_ty_effs (case_env scr_ty ptrn1 env) case1 in
-        List.fold_left
-          (fun (ty, effs) (ptrn, case) ->
-            let ty2, effs2 = infer_ty_effs (case_env scr_ty ptrn env) case in
-            induce_subst ty (deduce_subst ty ty2 env) env, EffSet.union effs effs2)
-          (ty, EffSet.union scr_effs effs)
-          cases)
+      let ty, effs = infer_ty_effs (case_env scr_ty ptrn1 env) case1 in
+      List.fold_left
+        (fun (ty, effs) (ptrn, case) ->
+          let ty2, effs2 = infer_ty_effs (case_env scr_ty ptrn env) case in
+          apply_subst ty (unify ty ty2 env) env, EffSet.union effs effs2)
+        (ty, EffSet.union scr_effs effs)
+        cases
     | EFun (arg, arg_ty, expr) ->
       let new_ty_bvars, new_eff_bvars = all_ty_eff_vars arg_ty env in
       let env =
@@ -420,7 +421,7 @@ let rec infer_ty_effs env expr =
         List.fold_left
           (fun (ty, effs) (_, case) ->
             let ty2, effs2 = infer_ty_effs env case in
-            induce_subst ty (deduce_subst ty ty2 env) env, EffSet.union effs effs2)
+            apply_subst ty (unify ty ty2 env) env, EffSet.union effs effs2)
           (scr_ty, EffSet.empty)
           excs
       in
@@ -430,7 +431,7 @@ let rec infer_ty_effs env expr =
              scr_effs
              (EffSet.of_list (List.map (fun (exc, _) -> EffExc exc) excs)))
           effs )
-    | ENative _ -> safe_tvar (), EffSet.singleton (safe_eff_var ()))
+    | ENative _ -> fresh_tvar (), EffSet.singleton (fresh_eff_var ()))
     env
 ;;
 
@@ -441,7 +442,7 @@ let empty_ty_chk_env =
 let check_program program =
   List.fold_left
     (fun env (decl : decl) ->
-      let decl_ty = safe_ty decl.ty env in
+      let decl_ty = fresh_ty decl.ty env in
       let new_env = { env with decls = BindMap.add decl.name decl_ty env.decls } in
       let val_ty, _ = infer_ty_effs (if decl.is_rec then new_env else env) decl.expr in
       check_assignable decl_ty val_ty env;

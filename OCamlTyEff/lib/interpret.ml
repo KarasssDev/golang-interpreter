@@ -8,7 +8,7 @@ module type FailFoldMonad = sig
   include Base.Monad.S2
 
   val fail : 'e -> ('a, 'e) t
-  val fold : ('a, 'e) t -> ok:('a -> 'b) -> err:('e -> 'b) -> 'b
+  val bimap : ('a, 'e) t -> ok:('a -> 'b) -> err:('e -> 'b) -> 'b
 end
 
 type value =
@@ -126,7 +126,7 @@ end = struct
 
   and mrg_case_envs env1 env2 =
     Option.bind env1 (fun env1 ->
-        fold
+        bimap
           env1
           ~ok:(fun env1 ->
             Option.map
@@ -203,7 +203,7 @@ end = struct
       | None -> fail (Non_exhaustive (List.map (fun (ptrn, _) -> ptrn) cases)))
     | EFun (prm, prm_ty, body) -> return (v_fun prm prm_ty body env)
     | ETry (scr, excs) ->
-      fold
+      bimap
         (eval scr env)
         ~ok:(fun v -> return v)
         ~err:(function
@@ -237,7 +237,7 @@ end = struct
   ;;
 
   let stdlib_env =
-    fold
+    bimap
       ~ok:(fun stdlib -> stdlib)
       ~err:(fun err ->
         eprintf "Error in stdlib: %a\n%!" pp_run_err err;
@@ -264,14 +264,14 @@ end = struct
   ;;
 
   let pp_res fmt res =
-    fold res ~ok:(fun ok -> pp_run_ok fmt ok) ~err:(fun err -> pp_run_err fmt err)
+    bimap res ~ok:(fun ok -> pp_run_ok fmt ok) ~err:(fun err -> pp_run_err fmt err)
   ;;
 end
 
 module InterpretResult = Interpret (struct
   include Base.Result
 
-  let fold res ~ok ~err =
+  let bimap res ~ok ~err =
     match res with
     | Ok v -> ok v
     | Error v -> err v

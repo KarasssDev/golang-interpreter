@@ -19,5 +19,5 @@ let is_bound set name =
 let is_not_bound set name = not (is_bound set name)
 
 let pp_bind_map pp fmt map =
-  BindMap.fold (fun k v _ -> Format.fprintf fmt "%s=%a\n" k pp v) map ()
+  BindMap.iter (fun k v -> Format.fprintf fmt "%s=%a\n" k pp v) map
 ;;

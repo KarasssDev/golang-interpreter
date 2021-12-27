@@ -116,7 +116,7 @@ module Subst = struct
   ;;
 
   let union xs ys = SubstMap.union (fun _ v1 _ -> Some v1) xs ys
-  let compose s1 s2 = union (SubstMap.map (apply s1) s2) s2
+  let compose s1 s2 = union (SubstMap.map (apply s1) s2) s1
   let ( ++ ) = compose
 end
 
@@ -255,7 +255,7 @@ let print_subst s =
       ""
   in
   Printf.printf "%s" res;
-  Printf.printf "%s\n" (string_of_int (SubstMap.cardinal s))
+  Printf.printf "Size: %s\n" (string_of_int (SubstMap.cardinal s))
 ;;
 
 let infer_pat =
@@ -287,6 +287,14 @@ let infer_pat =
   helper
 ;;
 
+let op_to_st = function
+  | Add -> "add"
+  | Div -> "div"
+  | Mul -> "mul"
+  | Sub -> "sub"
+  | _ -> "some infix op"
+;;
+
 let infer_exp =
   let rec (helper : TypeContext.t -> exp -> (Subst.t * tyexp) R.t) =
    fun context -> function
@@ -297,15 +305,14 @@ let infer_exp =
         | CBool _ -> Subst.empty, TBool
         | CString _ -> Subst.empty, TString)
     | EOp (op, exp1, exp2) ->
-      let* _, t1 = helper context exp1 in
-      let* _, t2 = helper context exp2 in
-      let* s = unify t1 t2 in
+      let* s1, t1 = helper context exp1 in
+      let* s2, t2 = helper context exp2 in
       (match op, exp1, exp2 with
       | Add, _, _ | Sub, _, _ | Mul, _, _ | Div, _, _ ->
         let* s1_int = unify t1 TInt in
         let* s2_int = unify t2 TInt in
-        return (Subst.union s1_int s2_int, TInt)
-      | _, _, _ -> return (s, TBool))
+        return (Subst.(s2_int ++ s1_int ++ s2 ++ s1), TInt)
+      | _, _, _ -> return (Subst.(s1 ++ s2), TBool))
     | EUnOp (op, exp) ->
       let* s, t = helper context exp in
       (match op with
@@ -427,37 +434,46 @@ let infer_prog prog =
 let w e = Result.map (fun (_, t) -> t) (run (infer_exp TypeContext.empty e))
 
 let test_infer prog =
-  try
-    let context = infer_prog prog in
-    TypeMap.iter
-      (fun k v ->
-        match Result.map (fun t -> t) (run (instantiate v)) with
-        | Ok x -> Printf.printf "%s -> %s\n" k (tyexp_to_st x)
-        | Error x -> Printf.printf "Some error???: %s\n" (error_to_st x))
-      context;
-    Printf.printf "-----\n";
-    true
-  with
-  | Failure _ -> false
+  (* try *)
+  let context = infer_prog prog in
+  TypeMap.iter
+    (fun k v ->
+      match Result.map (fun t -> t) (run (instantiate v)) with
+      | Ok x -> Printf.printf "%s -> %s\n" k (tyexp_to_st x)
+      | Error x -> Printf.printf "Some error???: %s\n" (error_to_st x))
+    context;
+  Printf.printf "-----\n";
+  true
 ;;
 
-(* let%test _ =
-  test_infer [ DLet (false, PVar "x", ETuple [ EConst (CInt 5); EConst (CInt 6) ]) ]
-;;
-
-let%test _ =
-  test_infer
-    [ DLet
-        ( false
-        , PVar "x"
-        , ECons (EConst (CInt 1), ECons (EConst (CInt 2), ECons (EConst (CInt 5), ENil)))
-        )
-    ]
+let test code =
+  match Parser.parse Parser.prog code with
+  | Result.Ok prog -> test_infer prog
+  | _ -> failwith "Parse error"
 ;;
 
 let%test _ =
-  test_infer
-    [ DLet
-        (false, PVar "x", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
-    ]
-;; *)
+  test
+    {|
+let f1 = fun x y z -> x + y / z
+let f2 = fun x -> x / x
+let f3 = fun x y -> 1 + x + y
+|}
+;;
+
+let%test _ =
+  test
+    {|
+let x =
+     let y =
+       let y = 10 in
+       5
+     in
+     y
+let tuple = (1, 2, 2) < (1, 2, 3)     
+|}
+;;
+
+let%test _ = test {|
+let id x y = x = y
+|}

@@ -355,16 +355,20 @@ module Interpret = struct
   ;;
 end
 
-(* let test code expected =
-  let module E = Interpret(Result) in 
+open Interpret
+open R
+open Syntax
+
+let test code expected =
   match Parser.parse Parser.decl code with
-  | Result.Ok decl -> (match E.eval_dec (E.create_state()) decl with 
-      | Result.Ok res -> true
-      | _ -> res >>= fun res -> 
-      )
-  | _ -> print_string "Parse error"; false
-)
-;; *)
+  | Result.Ok decl ->
+    (match Result.map (fun t -> t) (run (eval_dec (create_state ()) decl)) with
+    | Result.Ok x -> true
+    | _ -> false)
+  | _ ->
+    print_string "Parse error";
+    false
+;;
 
 (* let test code expected =
    let open Interpret (Result) in

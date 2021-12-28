@@ -144,8 +144,8 @@ module Interpret = struct
     | PConst x, v ->
       (match x, v with
       | CInt a, IntV b when a = b -> return []
-      | CString a, StringV b when a == b -> return []
-      | CBool a, BoolV b when a == b -> return []
+      | CString a, StringV b when a = b -> return []
+      | CBool a, BoolV b when a = b -> return []
       | _ -> fail (Match_fail (PConst x, v)))
     | PCons (pat1, pat2), ListV (hd :: tl) ->
       let* hd_matched = match_pat pat1 hd in
@@ -160,8 +160,8 @@ module Interpret = struct
         return (bind_hd @ bind_tl)
       | [], [] -> return []
       | _ -> fail (Match_fail (PTuple pats, TupleV vars)))
-    | PEffect1 name_p, Eff1V name_exp when name_p == name_exp -> return []
-    | PEffect2 (name_p, p), Eff2V (name_exp, v) when name_p == name_exp -> match_pat p v
+    | PEffect1 name_p, Eff1V name_exp when name_p = name_exp -> return []
+    | PEffect2 (name_p, p), Eff2V (name_exp, v) when name_p = name_exp -> match_pat p v
     | PEffectH (pat, _), Eff1V name_exp -> match_pat pat (Eff1V name_exp)
     | PEffectH (pat, _), Eff2V (name_exp, v) -> match_pat pat (Eff2V (name_exp, v))
     | a, b -> fail (Match_fail (a, b))
@@ -230,7 +230,10 @@ module Interpret = struct
     | [] -> []
   ;;
 
-  let rec eval_exp state = function
+  let rec eval_exp state
+    = (* pp_state std_formatter state;
+    Printf.printf "\n"; *)
+    function
     | ENil -> return (ListV [])
     | EConst x ->
       (match x with
@@ -336,7 +339,10 @@ module Interpret = struct
           (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
           | Error _ -> fail (No_effect name)
           | Ok _ ->
-            let _ = match_pat pat (Eff2V (name, exval)) in
+            let* binds = match_pat pat (Eff2V (name, exval)) in
+            let state =
+              List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+            in
             eval_exp (extend_env cont_val (ContV cont_val) state) exph))
       | _ -> fail Internal_Error)
     | EContinue (cont_val, exp) ->
@@ -387,6 +393,7 @@ let test code expected =
     (match run (eval_prog (create_state ()) prog) with
     | Ok state -> show_state state = expected
     | Error x ->
+      Printf.printf "error incoming:\n";
       pp_error std_formatter x;
       false)
   | _ ->
@@ -425,7 +432,7 @@ let%test _ =
 ;;
 
 (* let%test _ =
-   test
+  test
     {|
    effect E: int -> int
 
@@ -438,4 +445,4 @@ let%test _ =
    | l -> helper l;;
    |}
     "E -> E eff decl, 2 arg; helper -> x; res -> 625; "
-   ;; *)
+;; *)

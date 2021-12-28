@@ -486,6 +486,21 @@ let c : int = fresh_id ()
 let%test _ =
   test_parse_and_run_ok
     {|
+let fresh_id : () -[Asgmt]-> int =
+  let last_id : int ref = ref -1 in
+  fun o : unit ->
+    let o : unit = last_id := !last_id + 1 in
+    !last_id
+let a : int = fresh_id ()
+let b : int = fresh_id ()
+let c : int = fresh_id ()
+|}
+    [ "a", VInt 0; "b", VInt 1; "c", VInt 2 ]
+;;
+
+let%test _ =
+  test_parse_and_run_ok
+    {|
 let x : int = 1 + -(-8) / 2 - 5 * -5
 |}
     [ "x", VInt (1 + (8 / 2) - (5 * -5)) ]

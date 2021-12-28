@@ -71,11 +71,12 @@ let ty_subst ty = make_subst ty []
 let single_ty_subst name ty = ty_subst [ name, ty ]
 let double_ty_subst name1 name2 ty = ty_subst [ name1, ty; name2, ty ]
 let effs_subst effs = make_subst [] effs
-let last_id = ref (-1)
 
-let fresh_name () =
-  last_id := !last_id + 1;
-  string_of_int !last_id
+let fresh_name =
+  let last_id = ref (-1) in
+  fun () ->
+    last_id := !last_id + 1;
+    string_of_int !last_id
 ;;
 
 let fresh_tvar () = TVar (fresh_name ())

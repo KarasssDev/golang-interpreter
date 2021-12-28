@@ -134,10 +134,8 @@ module Type = struct
     | TInt | TBool | TString -> false
     | TList tyexp -> occurs_in v tyexp
     | TTuple tyexp_l -> List.exists (fun tyexp -> occurs_in v tyexp) tyexp_l
-    | _ -> false
+    | TEffect tyexp -> occurs_in v tyexp
   ;;
-
-  (* unimplemented *)
 
   let free_vars =
     let rec helper acc = function
@@ -146,8 +144,7 @@ module Type = struct
       | TArrow (l, r) -> helper (helper acc l) r
       | TList tyexp -> helper acc tyexp
       | TTuple tyexp_l -> List.fold_left (fun acc tyexp -> helper acc tyexp) acc tyexp_l
-      | _ -> acc
-      (* unimplemented *)
+      | TEffect tyexp -> helper acc tyexp
     in
     helper VarSet.empty
   ;;
@@ -208,6 +205,7 @@ let unify l r =
       let* subs1 = helper l1 l2 in
       let* subs2 = helper (Type.apply subs1 r1) (Type.apply subs1 r2) in
       return (Subst.compose subs1 subs2)
+    | TEffect t1, TEffect t2 -> helper t1 t2
     | _ -> fail (UnificationFailed (l, r))
   in
   helper l r
@@ -265,7 +263,7 @@ let infer_pat =
       (match t2 with
       | TList _ ->
         let* s_uni = unify (TList t1) t2 in
-        return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1), TypeContext.empty)
+        return (Subst.(s_uni ++ s1 ++ s2), TList (Subst.apply s_uni t1), TypeContext.empty)
       | _ -> fail (Typing_failure_pat (PCons (pat1, pat2))))
     | PNil ->
       let* fresh = fresh_var in
@@ -274,17 +272,31 @@ let infer_pat =
       let* fresh = fresh_var in
       let context2 = TypeContext.extend context x (S (VarSet.empty, fresh)) in
       return (Subst.empty, fresh, context2)
-    | _ -> fail Not_Implemented
+    | PWild ->
+      let* fresh = fresh_var in
+      return (Subst.empty, fresh, TypeContext.empty)
+    | PTuple pats ->
+      (match pats with
+      | hd :: tl ->
+        let* s1, t1, _ = helper context hd in
+        let* s_tl, t_tl, _ = helper context (PTuple tl) in
+        (match t_tl with
+        | TTuple tyexps ->
+          return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps), TypeContext.empty)
+        | _ -> fail (Typing_failure_pat (PTuple pats)))
+      | [] -> return (Subst.empty, TTuple [], TypeContext.empty))
+    | PEffect1 name ->
+      let* s, t = lookup_context name context in
+      return (s, TEffect t, TypeContext.empty)
+    | PEffect2 (name, pat) ->
+      let* s1, t1 = lookup_context name context in
+      let* s2, t2, _ = helper context pat in
+      return (Subst.(s1 ++ s2), TArrow (t1, t2), TypeContext.empty)
+    | PEffectH (_, _) ->
+      let* fresh = fresh_var in
+      return (Subst.empty, fresh, TypeContext.empty)
   in
   helper
-;;
-
-let op_to_st = function
-  | Add -> "add"
-  | Div -> "div"
-  | Mul -> "mul"
-  | Sub -> "sub"
-  | _ -> "some infix op"
 ;;
 
 let infer_exp =

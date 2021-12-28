@@ -4,7 +4,7 @@ open Parser
 open Std
 open Format
 
-module type FailFoldMonad = sig
+module type FailBimapMonad = sig
   include Base.Monad.S2
 
   val fail : 'e -> ('a, 'e) t
@@ -79,7 +79,7 @@ type run_ok = run_ok_elm list [@@deriving eq]
 
 let pp_run_ok = pp_print_list pp_run_ok_elm
 
-module Interpret (M : FailFoldMonad) : sig
+module Interpret (M : FailBimapMonad) : sig
   val run : program -> (run_ok, run_err) M.t
   val pp_res : formatter -> (run_ok, run_err) M.t -> unit
 end = struct

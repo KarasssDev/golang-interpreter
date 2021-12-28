@@ -4,6 +4,8 @@ type error =
   | Occurs_check
   | NoVariable of string
   | UnificationFailed of tyexp * tyexp
+  | Typing_failure_exp of exp
+  | Typing_failure_decl of decl
 
 module R : sig
   open Base
@@ -193,8 +195,8 @@ let unify l r =
         let* subst_tl = helper (TTuple tl1) (TTuple tl2) in
         return (Subst.compose subst_hd subst_tl)
       | _ -> return Subst.empty)
+    | TVar _, TVar _ -> return Subst.empty
     | TVar b, t when Type.occurs_in b t -> fail Occurs_check
-    | TVar a, TVar b when Int.equal a b -> return Subst.empty
     | TVar b, t | t, TVar b -> return (Subst.singleton b t)
     | TArrow (l1, r1), TArrow (l2, r2) ->
       let* subs1 = helper l1 l2 in
@@ -307,12 +309,13 @@ let infer_exp =
     | EOp (op, exp1, exp2) ->
       let* s1, t1 = helper context exp1 in
       let* s2, t2 = helper context exp2 in
+      let* s3 = unify t1 t2 in
       (match op, exp1, exp2 with
       | Add, _, _ | Sub, _, _ | Mul, _, _ | Div, _, _ ->
         let* s1_int = unify t1 TInt in
         let* s2_int = unify t2 TInt in
-        return (Subst.(s2_int ++ s1_int ++ s2 ++ s1), TInt)
-      | _, _, _ -> return (Subst.(s1 ++ s2), TBool))
+        return (Subst.(s2_int ++ s1_int ++ s3 ++ s2 ++ s1), TInt)
+      | _, _, _ -> return (Subst.(s3 ++ s2 ++ s1), TBool))
     | EUnOp (op, exp) ->
       let* s, t = helper context exp in
       (match op with
@@ -405,7 +408,7 @@ let infer_decl context = function
       let context2 = TypeContext.apply s1 context in
       let t2 = generalize context2 t1 in
       return (TypeContext.extend context2 x t2)
-    | _ -> failwith "typing error")
+    | _ -> fail (Typing_failure_decl (DLet binding)))
   | _ -> failwith "unimpl"
 ;;
 
@@ -414,6 +417,8 @@ let error_to_st = function
   | NoVariable x -> String.concat " " [ "no var"; x ]
   | UnificationFailed (x, y) ->
     String.concat " " [ "uni fail:"; tyexp_to_st x; tyexp_to_st y ]
+  | Typing_failure_exp _ -> "typing failure exp"
+  | Typing_failure_decl _ -> "typing failure decl"
 ;;
 
 let infer_prog prog =
@@ -476,4 +481,5 @@ let tuple = (1, 2, 2) < (1, 2, 3)
 
 let%test _ = test {|
 let id x y = x = y
+let to_int s = if s = "0" then 0 else 1
 |}

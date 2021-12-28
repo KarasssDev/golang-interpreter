@@ -1,6 +1,5 @@
 open Ast
 open Env
-open Format
 
 (* module type MONAD_FAIL = sig
   include Base.Monad.S2
@@ -100,7 +99,7 @@ module Interpret = struct
     helper (return init) list
   ;;
 
-  let create_state () = { env = Env.IdMap.empty; context = Env.EffMap.empty }
+  let create_state () = { env = IdMap.empty; context = EffMap.empty }
 
   let lookup_in_env id state =
     try return (lookup_id_map id state.env) with
@@ -156,7 +155,7 @@ module Interpret = struct
     | Div, IntV x, IntV y -> return (IntV (x / y))
     (* "<" block *)
     | Less, IntV x, IntV y -> return (BoolV (x < y))
-    | Less, StringV x, StringV y -> return (BoolV String.(x < y))
+    | Less, StringV x, StringV y -> return (BoolV (x < y))
     | Less, TupleV x, TupleV y when List.length x = List.length y ->
       return (BoolV (x < y))
     | Less, ListV x, ListV y -> return (BoolV (x < y))
@@ -353,276 +352,72 @@ module Interpret = struct
       let state = extend_env name (EffDec2V (name, tyexp1, tyexp2)) state in
       return state
   ;;
+
+  let rec eval_prog state = function
+    | hd :: tl ->
+      (match Result.map (fun t -> t) (run (eval_dec state hd)) with
+      | Ok x -> eval_prog x tl
+      | Error x -> fail x)
+    | [] -> return state
+  ;;
+
+  let str_converter = function
+    | IntV x -> string_of_int x
+    | BoolV x -> string_of_bool x
+    | StringV x -> x
+    | _ -> failwith "Interpretation error: not basic type."
+  ;;
+
+  let rec exval_to_str = function
+    | IntV x -> str_converter (IntV x)
+    | BoolV x -> str_converter (BoolV x)
+    | StringV x -> str_converter (StringV x)
+    | TupleV x -> Printf.sprintf "(%s)" (String.concat "," (List.map str_converter x))
+    | ListV x -> Printf.sprintf "[%s]" (String.concat ";" (List.map str_converter x))
+    | FunV (pat, _, _) ->
+      (match pat with
+      | PVar x -> x
+      | _ -> "error")
+    | Eff1V name -> Printf.sprintf "%s eff" name
+    | Eff2V (name, exval) ->
+      Printf.sprintf "%s eff with %s inside" name (exval_to_str exval)
+    | ContV name -> Printf.sprintf "%s cont" name
+    | EffDec1V (name, _) -> Printf.sprintf "%s eff dec, 1 arg" name
+    | EffDec2V (name, _, _) -> Printf.sprintf "%s eff dec, 2 arg" name
+  ;;
+
+  let compare_states st1 expected =
+    let res =
+      IdMap.fold
+        (fun k v ln ->
+          let new_res = ln ^ Printf.sprintf "%s -> %s; " k (exval_to_str v) in
+          new_res)
+        st1.env
+        ""
+    in
+    if res = expected
+    then true
+    else (
+      Printf.printf "%s" res;
+      false)
+  ;;
 end
 
 open Interpret
 open R
-open Syntax
 
 let test code expected =
-  match Parser.parse Parser.decl code with
-  | Result.Ok decl ->
-    (match Result.map (fun t -> t) (run (eval_dec (create_state ()) decl)) with
-    | Result.Ok x -> true
-    | _ -> false)
-  | _ ->
-    print_string "Parse error";
-    false
+  match Parser.parse Parser.prog code with
+  | Ok prog ->
+    (match Result.map (fun t -> t) (run (eval_prog (create_state ()) prog)) with
+    | Ok state -> compare_states state expected
+    (* TODO: SANEK, POFIKSI CHTOB NORM PRINTIL ERROR I STATE ITOGOVIY *)
+    | Error x -> failwith "Interp error")
+  | _ -> failwith "Parse error"
 ;;
 
-(* let test code expected =
-   let open Interpret (Result) in
-   match Parser.parse Parser.prog code with
-   | Result.Ok prog -> Interpret prog expected
-   | _ -> failwith "Parse error"
-   ;;
-
-   (* Eval test 1 *)
-
-   (*
-   let x = 1
- *)
-   let%test _ = eval_test [ DLet (false, PVar "x", EConst (CInt 1)) ] "x -> 1; "
-
-   (* Eval test 2 *)
-
-   (*
-   let (x, y) = (1, 2)
- *)
-   (* let%test _ =
-   eval_test
-    [ DLet
-        (false, PTuple [ PVar "x"; PVar "y" ], ETuple [ EConst (CInt 1); EConst (CInt 2) ])
-    ]s
-    "x -> 1 y -> 2 "
-   ;; *)
-
-   (* Eval test 3 *)
-
-   (*
-   let x = 3 < 2
- *)
-   let%test _ =
-   eval_test
-    [ DLet (false, PVar "x", EOp (Less, EConst (CInt 3), EConst (CInt 2))) ]
-    "x -> false; "
-   ;;
-
-   (* Eval test 4 *)
-
-   (*
-   let x = (1, 2) < (1, 2, 3)
- *)
-   let%test _ =
-   eval_test
-    [ DLet
-        ( false
-        , PVar "x"
-        , EOp
-            ( Less
-            , ETuple [ EConst (CInt 1); EConst (CInt 2) ]
-            , ETuple [ EConst (CInt 1); EConst (CInt 2); EConst (CInt 3) ] ) )
-    ]
-    "Interpretation error: Cannot compare tuples of different size."
-   ;;
-
-   (* Eval test 5 *)
-
-   (*
-   let x =
-     let y = 5
-     in y
- *)
-   let%test _ =
-   eval_test
-    [ DLet (false, PVar "x", ELet ([ false, PVar "y", EConst (CInt 5) ], EVar "y")) ]
-    "x -> 5; "
-   ;;
-
-   (* Eval test 6 *)
-
-   (*
-   let x =
-     let y = 5 in
-     let z = 10 in
-     y + z
- *)
-   let%test _ =
-   eval_test
-    [ DLet
-        ( false
-        , PVar "x"
-        , ELet
-            ( [ false, PVar "y", EConst (CInt 5); false, PVar "z", EConst (CInt 10) ]
-            , EOp (Add, EVar "y", EVar "z") ) )
-    ]
-    "x -> 15; "
-   ;;
-
-   (* Eval test 7 *)
-
-   (*
-   let x =
-     let y = 5 in
-     let y = 10 in
-     y
- *)
-   let%test _ =
-   eval_test
-    [ DLet
-        ( false
-        , PVar "x"
-        , ELet
-            ( [ false, PVar "y", EConst (CInt 5); false, PVar "y", EConst (CInt 10) ]
-            , EVar "y" ) )
-    ]
-    "x -> 10; "
-   ;;
-
-   (* Eval test 8 *)
-
-   (*
-   let x =
-     let y =
-       let y = 10 in
-       5
-     in
-     y
- *)
-   let%test _ =
-   eval_test
-    [ DLet
-        ( false
-        , PVar "x"
-        , ELet
-            ( [ ( false
-                , PVar "y"
-                , ELet ([ false, PVar "y", EConst (CInt 10) ], EConst (CInt 5)) )
-              ]
-            , EVar "y" ) )
-    ]
-    "x -> 5; "
-   ;;
-
-   (* Eval test 9 *)
-
-   (*
-   let f x y = x + y
- *)
-   let%test _ =
-   eval_test
-    [ DLet
-        (false, PVar "f", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
-    ]
-    "f -> x; "
-   ;;
-
-   (* Eval test 10 *)
-
-   (*
-   let f x y = x + y
-   let a = f 1 2
- *)
-   let%test _ =
-   eval_test
-    [ DLet
-        (false, PVar "f", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
-    ; DLet (false, PVar "a", EApp (EApp (EVar "f", EConst (CInt 1)), EConst (CInt 2)))
-    ]
-    "a -> 3; f -> x; "
-   ;;
-
-   (* Eval test 11 *)
-
-   (*
-   let f x y = x + y
-   let kek = f 1
-   let lol = kek 2
- *)
-   let%test _ =
-   eval_test
-    [ DLet
-        (false, PVar "f", EFun (PVar "x", EFun (PVar "y", EOp (Add, EVar "x", EVar "y"))))
-    ; DLet (false, PVar "kek", EApp (EVar "f", EConst (CInt 1)))
-    ; DLet (false, PVar "lol", EApp (EVar "kek", EConst (CInt 2)))
-    ]
-    "f -> x; kek -> y; lol -> 3; "
-   ;;
-
-   (* Eval test 12 *)
-
-   (*
-   let rec fact n =
-   match n with
-   | 0 -> 1
-   | _ -> n * fact (n + -1)
-   let x = fact 3
- *)
-   let%test _ =
-   eval_test
-    [ DLet
-        ( true
-        , PVar "fact"
-        , EFun
-            ( PVar "n"
-            , EMatch
-                ( EVar "n"
-                , [ PConst (CInt 0), EConst (CInt 1)
-                  ; ( PWild
-                    , EOp
-                        ( Mul
-                        , EVar "n"
-                        , EApp
-                            ( EVar "fact"
-                            , EOp (Add, EVar "n", EUnOp (Minus, EConst (CInt 1))) ) ) )
-                  ] ) ) )
-    ; DLet (false, PVar "x", EApp (EVar "fact", EConst (CInt 3)))
-    ]
-    "fact -> n; x -> 6; "
-   ;;
-
-   (* Eval test 13 *)
-
-   (*
-   effect Failure: int -> int
-
-   let helper x = 1 + perform (Failure x)
-
-   let matcher x = match helper x with
-     | effect (Failure s) k -> continue k (1 + s)
-     | 3 -> 0 <- success if this one since both helper and effect perform did 1+
-     | _ -> 100
-
-   let y = matcher 1 <- must be 3 upon success
- *)
-   let%test _ =
-   eval_test
-    [ DEffect2 ("Failure", TInt, TInt)
-    ; DLet
-        ( false
-        , PVar "helper"
-        , EFun
-            ( PVar "x"
-            , EOp (Add, EConst (CInt 1), EPerform (EEffect2 ("Failure", EVar "x"))) ) )
-    ; DLet
-        ( false
-        , PVar "matcher"
-        , EFun
-            ( PVar "x"
-            , EMatch
-                ( EApp (EVar "helper", EVar "x")
-                , [ ( PEffectH (PEffect2 ("Failure", PVar "s"), "k")
-                    , EContinue ("k", EOp (Add, EConst (CInt 1), EVar "s")) )
-                  ; PConst (CInt 3), EConst (CInt 0)
-                  ; PWild, EConst (CInt 100)
-                  ] ) ) )
-    ; DLet (false, PVar "y", EApp (EVar "matcher", EConst (CInt 1)))
-    ]
-    "Failure -> Failure eff decl, 2 arg; helper -> x; matcher -> x; y -> 0; "
-   ;;
-
-   let%test _ =
-   test
+let%test _ =
+  test
     {|
    effect E1: int
 
@@ -637,10 +432,12 @@ let test code expected =
 
    |}
     "E1 -> E1 eff dec, 1 arg; helper -> x; res -> correct; y -> E1 eff; "
-   ;;
+;;
 
-   let%test _ =
-   test
+(* TODO: TEST NE KATAET, ZHDU NORM VIVOD ERRORA *)
+
+(* let%test _ =
+  test
     {|
    effect E: int -> int
 
@@ -653,4 +450,4 @@ let test code expected =
    | l -> helper l
    |}
     "E -> E eff decl, 2 arg; helper -> x; res -> 625; "
-   ;; *)
+;; *)

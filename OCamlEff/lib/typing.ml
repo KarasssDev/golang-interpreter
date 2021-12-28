@@ -6,6 +6,7 @@ type error =
   | UnificationFailed of tyexp * tyexp
   | Typing_failure_exp of exp
   | Typing_failure_decl of decl
+  | Typing_failure_pat of pat
 
 module R : sig
   open Base
@@ -276,7 +277,7 @@ let infer_pat =
       | TList _ ->
         let* s_uni = unify (TList t1) t2 in
         return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1), TypeContext.empty)
-      | _ -> failwith "typing failure")
+      | _ -> fail (Typing_failure_pat (PCons (pat1, pat2))))
     | PNil ->
       let* fresh = fresh_var in
       return (Subst.empty, TList fresh, TypeContext.empty)
@@ -333,7 +334,7 @@ let infer_exp =
         let* s_tl, t_tl = helper context (ETuple tl) in
         (match t_tl with
         | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
-        | _ -> failwith "typing failure")
+        | _ -> fail (Typing_failure_exp (ETuple exps)))
       | [] -> return (Subst.empty, TTuple []))
     | ENil ->
       let* fresh = fresh_var in
@@ -345,7 +346,7 @@ let infer_exp =
       | TList _ ->
         let* s_uni = unify (TList t1) t2 in
         return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
-      | _ -> failwith "typing failure")
+      | _ -> fail (Typing_failure_exp (ECons (exp1, exp2))))
     | EIf (exp1, exp2, exp3) ->
       let* s1, t1 = helper context exp1 in
       let* s2, t2 = helper context exp2 in
@@ -372,7 +373,7 @@ let infer_exp =
           let t2 = generalize context2 t1 in
           let* s2, t3 = helper (TypeContext.extend context2 x t2) (ELet (tl, in_exp)) in
           return (Subst.(s1 ++ s2), t3)
-        | _ -> failwith "typing error")
+        | _ -> fail (Typing_failure_exp (ELet (bindings, in_exp))))
       | [] ->
         let* s, t = helper context in_exp in
         return (s, t))
@@ -419,6 +420,7 @@ let error_to_st = function
     String.concat " " [ "uni fail:"; tyexp_to_st x; tyexp_to_st y ]
   | Typing_failure_exp _ -> "typing failure exp"
   | Typing_failure_decl _ -> "typing failure decl"
+  | Typing_failure_pat _ -> "typing failure pat"
 ;;
 
 let infer_prog prog =
@@ -457,7 +459,7 @@ let test code =
   | _ -> failwith "Parse error"
 ;;
 
-let%test _ =
+(* let%test _ =
   test
     {|
 let f1 = fun x y z -> x + y / z
@@ -482,4 +484,4 @@ let tuple = (1, 2, 2) < (1, 2, 3)
 let%test _ = test {|
 let id x y = x = y
 let to_int s = if s = "0" then 0 else 1
-|}
+|} *)

@@ -1,18 +1,29 @@
 open Ast
-open Env
+open Format
 
-(* module type MONAD_FAIL = sig
-  include Base.Monad.S2
+module EnvMap = struct
+  include Map.Make (String)
 
-  val fail : 'err -> ('a, 'err) t
-end *)
+  let pp pp_v ppf m =
+    Format.fprintf ppf "@[[@[";
+    iter (fun k v -> Format.fprintf ppf "@[\"%s\": %a@],@\n" k pp_v v) m;
+    Format.fprintf ppf "@]]@]"
+  ;;
 
-type state =
-  { env: exval Env.id_t
-  ; context: effhval Env.eff_t
-  }
+  let compare = compare
+end
 
-and effhval = EffHV of pat * ident * exp
+let empty_env_map = EnvMap.empty
+let extend_env_map id x = EnvMap.add id x
+
+exception Not_bound
+
+let lookup id env =
+  try EnvMap.find id env with
+  | Not_found -> raise Not_bound
+;;
+
+type effhval = EffHV of pat * ident * exp [@@deriving show { with_path = false }]
 
 and exval =
   | IntV of int
@@ -26,8 +37,9 @@ and exval =
   | EffDec1V of capitalized_ident * tyexp
   | EffDec2V of capitalized_ident * tyexp * tyexp
   | ContV of ident
+[@@deriving show { with_path = false }]
 
-type error =
+and error =
   | Match_fail of pat * exval
   | Tuple_compare of exval * exval
   | No_handler of capitalized_ident
@@ -39,6 +51,13 @@ type error =
   | Match_exhaust of exp
   | Not_cont_val of ident
   | Not_bound
+[@@deriving show { with_path = false }]
+
+and state =
+  { env: exval EnvMap.t
+  ; context: effhval EnvMap.t
+  }
+[@@deriving show { with_path = false }]
 
 module R : sig
   open Base
@@ -99,22 +118,22 @@ module Interpret = struct
     helper (return init) list
   ;;
 
-  let create_state () = { env = IdMap.empty; context = EffMap.empty }
+  let create_state () = { env = EnvMap.empty; context = EnvMap.empty }
 
   let lookup_in_env id state =
-    try return (lookup_id_map id state.env) with
+    try return (lookup id state.env) with
     | Not_bound -> fail Not_bound
   ;;
 
   let lookup_in_context id state =
-    try return (lookup_eff_map id state.context) with
+    try return (lookup id state.context) with
     | Not_bound -> fail Not_bound
   ;;
 
-  let extend_env id v state = { state with env = extend_id_map id v state.env }
+  let extend_env id v state = { state with env = extend_env_map id v state.env }
 
   let extend_context id v state =
-    { state with context = extend_eff_map id v state.context }
+    { state with context = extend_env_map id v state.context }
   ;;
 
   let rec match_pat pat var =
@@ -385,34 +404,20 @@ module Interpret = struct
     | EffDec1V (name, _) -> Printf.sprintf "%s eff dec, 1 arg" name
     | EffDec2V (name, _, _) -> Printf.sprintf "%s eff dec, 2 arg" name
   ;;
-
-  let compare_states st1 expected =
-    let res =
-      IdMap.fold
-        (fun k v ln ->
-          let new_res = ln ^ Printf.sprintf "%s -> %s; " k (exval_to_str v) in
-          new_res)
-        st1.env
-        ""
-    in
-    if res = expected
-    then true
-    else (
-      Printf.printf "%s" res;
-      false)
-  ;;
 end
 
 open Interpret
 open R
 
 let test code expected =
+  let open Format in
   match Parser.parse Parser.prog code with
   | Ok prog ->
-    (match Result.map (fun t -> t) (run (eval_prog (create_state ()) prog)) with
-    | Ok state -> compare_states state expected
-    (* TODO: SANEK, POFIKSI CHTOB NORM PRINTIL ERROR I STATE ITOGOVIY *)
-    | Error x -> failwith "Interp error")
+    (match run (eval_prog (create_state ()) prog) with
+    | Ok state -> show_state state = expected
+    | Error x ->
+      pp_error std_formatter x;
+      false)
   | _ -> failwith "Parse error"
 ;;
 
@@ -431,13 +436,23 @@ let%test _ =
    | _ -> "wrong"
 
    |}
-    "E1 -> E1 eff dec, 1 arg; helper -> x; res -> correct; y -> E1 eff; "
+  @@ {|{ env =
+  ["E1": (EffDec1V ("E1", TInt)),
+   "helper": (FunV ((PVar "x"),
+                (EOp (Add, (EConst (CInt 1)), (EPerform (EVar "y")))),
+                { env = ["E1": (EffDec1V ("E1", TInt)),
+                         "y": (Eff1V "E1"),
+                         ];
+                  context = [] }
+                )),
+   "res": (StringV "correct"),
+   "y": (Eff1V "E1"),
+   ];
+  context = [] }|}
 ;;
 
-(* TODO: TEST NE KATAET, ZHDU NORM VIVOD ERRORA *)
-
 (* let%test _ =
-  test
+   test
     {|
    effect E: int -> int
 
@@ -447,7 +462,7 @@ let%test _ =
 
    let res = match perform (E 5) with
    | effect (E s) k -> continue k s*s
-   | l -> helper l
+   | l -> helper l;;
    |}
     "E -> E eff decl, 2 arg; helper -> x; res -> 625; "
-;; *)
+   ;; *)

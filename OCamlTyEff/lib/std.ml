@@ -4,6 +4,12 @@ open Ast
 let native_prm = "x"
 let e_native_fun = e_fun native_prm (TVar "_")
 
+(**
+  [sneaky_eff f] returns a function calling [f] without exposing
+  some or all of the [f]'s side effects to the type system
+  (e.g. [(sneaky_eff println) "Debug info"] can be used to print
+  ["Debug info"] from a pure function)
+*)
 let stdlib =
   [ { name = "println"
     ; is_rec = false

@@ -38,6 +38,7 @@ let is_digit = function
   | _ -> false
 ;;
 
+(** @see <https://ocaml.org/manual/lex.html#sss:keywords> OCaml keywords *)
 let is_keyword = function
   | "and"
   | "as"

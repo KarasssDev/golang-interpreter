@@ -56,16 +56,21 @@ type subst =
   }
 [@@deriving show { with_path = false }]
 
-let empty_subst = { ty = BindMap.empty; effs = BindMap.empty }
-let ty_subst ty = { ty; effs = BindMap.empty }
-let single_ty_subst name ty = ty_subst (BindMap.singleton name ty)
-
-let double_ty_subst name1 name2 ty =
-  ty_subst (BindMap.add name2 ty (BindMap.singleton name1 ty))
+let equal_subst subst1 subst2 =
+  BindMap.equal equal_ty subst1.ty subst2.ty
+  && BindMap.equal equal_eff_set subst1.effs subst2.effs
 ;;
 
-let effs_subst effs = { ty = BindMap.empty; effs }
-let single_effs_subst name ty = effs_subst (BindMap.singleton name ty)
+let empty_subst = { ty = BindMap.empty; effs = BindMap.empty }
+
+let make_subst ty effs =
+  { ty = BindMap.of_seq (List.to_seq ty); effs = BindMap.of_seq (List.to_seq effs) }
+;;
+
+let ty_subst ty = make_subst ty []
+let single_ty_subst name ty = ty_subst [ name, ty ]
+let double_ty_subst name1 name2 ty = ty_subst [ name1, ty; name2, ty ]
+let effs_subst effs = make_subst [] effs
 let last_id = ref (-1)
 
 let fresh_name () =
@@ -77,71 +82,68 @@ let fresh_tvar () = TVar (fresh_name ())
 let fresh_eff_var () = EffVar (fresh_name ())
 
 let rec unify prm_ty arg_ty subst env =
-  match prm_ty, arg_ty with
-  | TInt, TInt | TString, TString | TBool, TBool | TTuple [], TTuple [] -> subst
-  | TExc prm_exc, TExc arg_exc when equal_exc prm_exc arg_exc -> subst
-  | TVar prm_bvar, TVar arg_bvar
-    when is_bound prm_bvar env.ty_bvars
-         && is_bound arg_bvar env.ty_bvars
-         && prm_bvar = arg_bvar -> subst
-  | TTuple prm_tys, TTuple arg_tys ->
-    mrg_substs
-      (List.map2 (fun prm_ty arg_ty -> unify prm_ty arg_ty subst env) prm_tys arg_tys)
-      env
-  | TList arg_ty, TList prm_ty | TRef arg_ty, TRef prm_ty -> unify prm_ty arg_ty subst env
-  | TFun (aa_ty, a_effs, ap_ty), TFun (pa_ty, p_effs, pp_ty) ->
-    mrg_substs
-      [ unify aa_ty pa_ty subst env
-      ; unify pp_ty ap_ty subst env
-      ; unify_effs p_effs a_effs subst env
-      ]
-      env
-  | TVar prm_var, TVar arg_var
-    when is_not_bound prm_var env.ty_bvars
-         && is_not_bound arg_var env.ty_bvars
-         && prm_var = arg_var -> subst
-  | TVar prm_var, TVar arg_var
-    when is_not_bound prm_var env.ty_bvars && is_not_bound arg_var env.ty_bvars ->
-    (match BindMap.find_opt prm_var subst.ty, BindMap.find_opt arg_var subst.ty with
-    | None, None -> mrg_subst subst (double_ty_subst prm_var arg_var (fresh_tvar ())) env
-    | Some ty, _ -> mrg_subst subst (single_ty_subst arg_var ty) env
-    | None, Some ty -> mrg_subst subst (single_ty_subst prm_var ty) env)
-  | TVar tvar, ty when is_not_bound tvar env.ty_bvars ->
-    mrg_subst subst (single_ty_subst tvar ty) env
-  | ty, TVar tvar when is_not_bound tvar env.ty_bvars ->
-    mrg_subst subst (single_ty_subst tvar ty) env
-  | _ -> raise Incorrect_ty
+  if equal_ty prm_ty arg_ty
+  then subst
+  else (
+    match prm_ty, arg_ty with
+    | TTuple prm_tys, TTuple arg_tys ->
+      mrg_substs
+        (List.map2 (fun prm_ty arg_ty -> unify prm_ty arg_ty subst env) prm_tys arg_tys)
+        env
+    | TList arg_ty, TList prm_ty | TRef arg_ty, TRef prm_ty ->
+      unify prm_ty arg_ty subst env
+    | TFun (aa_ty, a_effs, ap_ty), TFun (pa_ty, p_effs, pp_ty) ->
+      mrg_substs
+        [ unify aa_ty pa_ty subst env
+        ; unify pp_ty ap_ty subst env
+        ; unify_effs p_effs a_effs subst env
+        ]
+        env
+    | TVar prm_var, TVar arg_var
+      when is_not_bound prm_var env.ty_bvars && is_not_bound arg_var env.ty_bvars ->
+      (match BindMap.find_opt prm_var subst.ty, BindMap.find_opt arg_var subst.ty with
+      | None, None ->
+        mrg_subst subst (double_ty_subst prm_var arg_var (fresh_tvar ())) env
+      | Some ty, _ -> mrg_subst subst (single_ty_subst arg_var ty) env
+      | None, Some ty -> mrg_subst subst (single_ty_subst prm_var ty) env)
+    | TVar tvar, ty when is_not_bound tvar env.ty_bvars ->
+      mrg_subst subst (single_ty_subst tvar ty) env
+    | ty, TVar tvar when is_not_bound tvar env.ty_bvars ->
+      mrg_subst subst (single_ty_subst tvar ty) env
+    | _ -> raise Incorrect_ty)
 
 and unify_effs prm_effs arg_effs subst env =
-  let prm_effs, arg_effs = EffSet.diff prm_effs arg_effs, EffSet.diff arg_effs prm_effs in
-  let cp_effs, vp_effs = split_effs prm_effs env in
-  let ca_effs, va_effs = split_effs arg_effs env in
-  match vp_effs, va_effs with
-  | _ :: _, _ :: _ ->
-    let effs =
-      Option.value
-        ~default:(EffSet.singleton (fresh_eff_var ()))
-        (List.find_map (fun name -> BindMap.find_opt name subst.effs) (vp_effs @ va_effs))
+  if equal_eff_set prm_effs arg_effs
+  then subst
+  else (
+    let prm_effs, arg_effs =
+      EffSet.diff prm_effs arg_effs, EffSet.diff arg_effs prm_effs
     in
-    let effs = EffSet.union effs (EffSet.union cp_effs ca_effs) in
-    mrg_substs
-      [ subst
-      ; effs_subst
-          (BindMap.of_seq (List.to_seq (List.map (fun k -> k, effs) (vp_effs @ va_effs))))
-      ]
-      env
-  | [], _ when not (EffSet.is_empty ca_effs) -> raise Incorrect_ty
-  | _, [] when not (EffSet.is_empty cp_effs) -> raise Incorrect_ty
-  | _ ->
-    mrg_substs
-      [ subst
-      ; effs_subst
-          (BindMap.of_seq
-             (List.to_seq
-                (List.map (fun vp_eff -> vp_eff, ca_effs) vp_effs
-                @ List.map (fun va_eff -> va_eff, cp_effs) va_effs)))
-      ]
-      env
+    let cp_effs, vp_effs = split_effs prm_effs env in
+    let ca_effs, va_effs = split_effs arg_effs env in
+    match vp_effs, va_effs with
+    | _ :: _, _ :: _ ->
+      let effs =
+        Option.value
+          ~default:(EffSet.singleton (fresh_eff_var ()))
+          (List.find_map
+             (fun name -> BindMap.find_opt name subst.effs)
+             (vp_effs @ va_effs))
+      in
+      let effs = EffSet.union effs (EffSet.union cp_effs ca_effs) in
+      mrg_substs
+        [ subst; effs_subst (List.map (fun k -> k, effs) (vp_effs @ va_effs)) ]
+        env
+    | [], _ when not (EffSet.is_empty ca_effs) -> raise Incorrect_ty
+    | _, [] when not (EffSet.is_empty cp_effs) -> raise Incorrect_ty
+    | _ ->
+      mrg_substs
+        [ subst
+        ; effs_subst
+            (List.map (fun vp_eff -> vp_eff, ca_effs) vp_effs
+            @ List.map (fun va_eff -> va_eff, cp_effs) va_effs)
+        ]
+        env)
 
 and mrg_substs substs env =
   List.fold_left (fun acc subst -> mrg_subst acc subst env) empty_subst substs
@@ -207,10 +209,9 @@ let rec lookup_ty name subst env =
   match BindMap.find_opt name subst.ty with
   | None -> TVar name
   | Some (TVar name) when is_not_bound name env.ty_bvars -> lookup_ty name subst env
-  | Some ty -> ty
-;;
+  | Some ty -> apply_subst ty subst env
 
-let rec apply_subst ty subst env =
+and apply_subst ty subst env =
   match ty with
   | TInt | TString | TBool | TExc _ -> ty
   | TVar name when is_bound name env.ty_bvars -> ty
@@ -450,6 +451,48 @@ let check_program program =
 let stdlib_ty_chk_env = check_program []
 
 (* Tests *)
+
+(* mrg_subst tests *)
+
+let test_mrg_subst subst1 subst2 expected =
+  let actual = mrg_subst subst1 subst2 empty_ty_chk_env in
+  let is_eq = equal_subst expected actual in
+  if is_eq
+  then ()
+  else printf "Expected:\n%a\nActual:\n%a\n" pp_subst expected pp_subst actual;
+  is_eq
+;;
+
+let%test _ = test_mrg_subst empty_subst empty_subst empty_subst
+
+let%test _ =
+  test_mrg_subst
+    (make_subst [ "a", TInt ] [ "e", EffSet.singleton EffIO ])
+    (make_subst [ "b", TBool ] [ "f", EffSet.singleton EffAsgmt ])
+    (make_subst
+       [ "a", TInt; "b", TBool ]
+       [ "e", EffSet.singleton EffIO; "f", EffSet.singleton EffAsgmt ])
+;;
+
+let%test _ =
+  test_mrg_subst
+    (make_subst [ "x", TFun (TVar "a", EffSet.singleton (EffVar "e"), TVar "b") ] [])
+    (make_subst [ "x", TFun (TVar "a", EffSet.singleton EffIO, TVar "b") ] [])
+    (make_subst
+       [ "x", TFun (TVar "a", EffSet.singleton (EffVar "e"), TVar "b") ]
+       [ "e", EffSet.singleton EffIO ])
+;;
+
+let%test _ =
+  test_mrg_subst
+    (make_subst [ "a", TFun (TVar "b", EffSet.singleton (EffVar "e"), TVar "c") ] [])
+    (make_subst [] [ "e", EffSet.singleton EffIO ])
+    (make_subst
+       [ "a", TFun (TVar "b", EffSet.singleton (EffVar "e"), TVar "c") ]
+       [ "e", EffSet.singleton EffIO ])
+;;
+
+(* infer_tyeffs tests *)
 
 let test_infer_tyeffs str matcher =
   match

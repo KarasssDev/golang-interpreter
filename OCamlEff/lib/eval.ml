@@ -232,7 +232,7 @@ module Interpret = struct
 
   let rec eval_exp state
     = (* pp_state std_formatter state;
-    Printf.printf "\n"; *)
+         Printf.printf "\n"; *)
     function
     | ENil -> return (ListV [])
     | EConst x ->
@@ -391,10 +391,13 @@ let test code expected =
   match Parser.parse Parser.prog code with
   | Ok prog ->
     (match run (eval_prog (create_state ()) prog) with
-    | Ok state -> show_state state = expected
     | Error x ->
       Printf.printf "error incoming:\n";
       pp_error std_formatter x;
+      false
+    | Ok state when show_state state = expected -> true
+    | Ok state ->
+      pp_state std_formatter state;
       false)
   | _ ->
     Printf.printf "Parse error";
@@ -431,7 +434,7 @@ let%test _ =
   context = [] }|}
 ;;
 
-(* let%test _ =
+let%test _ =
   test
     {|
    effect E: int -> int
@@ -444,5 +447,18 @@ let%test _ =
    | effect (E s) k -> continue k s*s
    | l -> helper l;;
    |}
-    "E -> E eff decl, 2 arg; helper -> x; res -> 625; "
-;; *)
+    {|{ env =
+  ["E": (EffDec2V ("E", TInt, TInt)),
+   "helper": (FunV ((PVar "x"),
+                (EMatch ((EPerform (EEffect2 ("E", (EVar "x")))),
+                   [((PEffectH ((PEffect2 ("E", (PVar "s"))), "k")),
+                     (EOp (Mul, (EContinue ("k", (EVar "s"))), (EVar "s"))));
+                     ((PVar "l"), (EVar "l"))]
+                   )),
+                { env = ["E": (EffDec2V ("E", TInt, TInt)),
+                         ]; context = [] }
+                )),
+   "res": (IntV 625),
+   ];
+  context = [] }|}
+;;

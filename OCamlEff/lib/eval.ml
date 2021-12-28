@@ -51,6 +51,7 @@ and error =
   | Match_exhaust of exp
   | Not_cont_val of ident
   | Not_bound
+  | Internal_Error
 [@@deriving show { with_path = false }]
 
 and state =
@@ -81,23 +82,23 @@ end = struct
   type 'a t = int -> int * ('a, error) Result.t
 
   let ( >>= ) : 'a 'b. 'a t -> ('a -> 'b t) -> 'b t =
-   fun m f st ->
+    fun m f st ->
     let last, r = m st in
     match r with
     | Result.Error x -> last, Error x
     | Ok a -> f a last
- ;;
+  ;;
 
   let fail e st = st, Result.error e
   let return x last = last, Result.ok x
   let bind x ~f = x >>= f
 
   let ( >>| ) : 'a 'b. 'a t -> ('a -> 'b) -> 'b t =
-   fun x f st ->
+    fun x f st ->
     match x st with
     | st, Ok x -> st, Ok (f x)
     | st, Result.Error e -> st, Result.Error e
- ;;
+  ;;
 
   module Syntax = struct
     let ( let* ) x f = bind x ~f
@@ -142,10 +143,10 @@ module Interpret = struct
     | PVar name, v -> return [ name, v ]
     | PConst x, v ->
       (match x, v with
-      | CInt a, IntV b when a = b -> return []
-      | CString a, StringV b when a == b -> return []
-      | CBool a, BoolV b when a == b -> return []
-      | _ -> fail (Match_fail (PConst x, v)))
+       | CInt a, IntV b when a = b -> return []
+       | CString a, StringV b when a == b -> return []
+       | CBool a, BoolV b when a == b -> return []
+       | _ -> fail (Match_fail (PConst x, v)))
     | PCons (pat1, pat2), ListV (hd :: tl) ->
       let* hd_matched = match_pat pat1 hd in
       let* tl_matched = match_pat pat2 (ListV tl) in
@@ -153,12 +154,12 @@ module Interpret = struct
     | PNil, ListV [] -> return []
     | PTuple pats, TupleV vars ->
       (match pats, vars with
-      | hd_p :: tl_p, hd_v :: tl_v ->
-        let* bind_hd = match_pat hd_p hd_v in
-        let* bind_tl = match_pat (PTuple tl_p) (TupleV tl_v) in
-        return (bind_hd @ bind_tl)
-      | [], [] -> return []
-      | _ -> fail (Match_fail (PTuple pats, TupleV vars)))
+       | hd_p :: tl_p, hd_v :: tl_v ->
+         let* bind_hd = match_pat hd_p hd_v in
+         let* bind_tl = match_pat (PTuple tl_p) (TupleV tl_v) in
+         return (bind_hd @ bind_tl)
+       | [], [] -> return []
+       | _ -> fail (Match_fail (PTuple pats, TupleV vars)))
     | PEffect1 name_p, Eff1V name_exp when name_p == name_exp -> return []
     | PEffect2 (name_p, p), Eff2V (name_exp, v) when name_p == name_exp -> match_pat p v
     | PEffectH (pat, _), Eff1V name_exp -> match_pat pat (Eff1V name_exp)
@@ -221,11 +222,11 @@ module Interpret = struct
   let rec scan_cases = function
     | hd :: tl ->
       (match hd with
-      | PEffectH (PEffect1 name, cont), exp ->
-        (name, EffHV (PEffect1 name, cont, exp)) :: scan_cases tl
-      | PEffectH (PEffect2 (name, pat), cont), exp ->
-        (name, EffHV (PEffect2 (name, pat), cont, exp)) :: scan_cases tl
-      | _ -> scan_cases tl)
+       | PEffectH (PEffect1 name, cont), exp ->
+         (name, EffHV (PEffect1 name, cont, exp)) :: scan_cases tl
+       | PEffectH (PEffect2 (name, pat), cont), exp ->
+         (name, EffHV (PEffect2 (name, pat), cont, exp)) :: scan_cases tl
+       | _ -> scan_cases tl)
     | [] -> []
   ;;
 
@@ -233,13 +234,13 @@ module Interpret = struct
     | ENil -> return (ListV [])
     | EConst x ->
       (match x with
-      | CInt x -> return (IntV x)
-      | CBool x -> return (BoolV x)
-      | CString x -> return (StringV x))
+       | CInt x -> return (IntV x)
+       | CBool x -> return (BoolV x)
+       | CString x -> return (StringV x))
     | EVar x ->
       (match Result.map (fun t -> t) (run (lookup_in_env x state)) with
-      | Ok b -> return b
-      | Error _ -> fail (Undef_var x))
+       | Ok b -> return b
+       | Error _ -> fail (Undef_var x))
     | EOp (op, x, y) ->
       let* exp_x = eval_exp state x in
       let* exp_y = eval_exp state y in
@@ -249,25 +250,25 @@ module Interpret = struct
       apply_unary_op op exp_x
     | ETuple exps ->
       (match exps with
-      | hd :: tl ->
-        let* hd_evaled = eval_exp state hd in
-        let* tl_evaled = eval_exp state (ETuple tl) in
-        (match tl_evaled with
-        | TupleV exvals -> return (TupleV (hd_evaled :: exvals))
-        | _ -> fail (Interp_error (ETuple exps)))
-      | [] -> return (TupleV []))
+       | hd :: tl ->
+         let* hd_evaled = eval_exp state hd in
+         let* tl_evaled = eval_exp state (ETuple tl) in
+         (match tl_evaled with
+          | TupleV exvals -> return (TupleV (hd_evaled :: exvals))
+          | _ -> fail (Interp_error (ETuple exps)))
+       | [] -> return (TupleV []))
     | ECons (exp1, exp2) ->
       let* exp1_evaled = eval_exp state exp1 in
       let* exp2_evaled = eval_exp state exp2 in
       (match exp2_evaled with
-      | ListV list -> return (ListV (exp1_evaled :: list))
-      | x -> return (ListV [ exp1_evaled; x ]))
+       | ListV list -> return (ListV (exp1_evaled :: list))
+       | x -> return (ListV [ exp1_evaled; x ]))
     | EIf (exp1, exp2, exp3) ->
       let* evaled = eval_exp state exp1 in
       (match evaled with
-      | BoolV true -> eval_exp state exp2
-      | BoolV false -> eval_exp state exp3
-      | _ -> fail (Interp_error (EIf (exp1, exp2, exp3))))
+       | BoolV true -> eval_exp state exp2
+       | BoolV false -> eval_exp state exp3
+       | _ -> fail (Interp_error (EIf (exp1, exp2, exp3))))
     | ELet (bindings, exp1) ->
       let gen_state =
         fold bindings ~init:state ~f:(fun state binding ->
@@ -283,19 +284,19 @@ module Interpret = struct
     | EApp (exp1, exp2) ->
       let* evaled = eval_exp state exp1 in
       (match evaled with
-      | FunV (pat, exp, fstate) ->
-        let* evaled2 = eval_exp state exp2 in
-        let* binds = match_pat pat evaled2 in
-        let new_state =
-          List.fold_left (fun state (id, v) -> extend_env id v state) fstate binds
-        in
-        let very_new_state =
-          match exp1 with
-          | EVar x -> extend_env x evaled new_state
-          | _ -> new_state
-        in
-        eval_exp { very_new_state with context = state.context } exp
-      | _ -> fail (Interp_error (EApp (exp1, exp2))))
+       | FunV (pat, exp, fstate) ->
+         let* evaled2 = eval_exp state exp2 in
+         let* binds = match_pat pat evaled2 in
+         let new_state =
+           List.fold_left (fun state (id, v) -> extend_env id v state) fstate binds
+         in
+         let very_new_state =
+           match exp1 with
+           | EVar x -> extend_env x evaled new_state
+           | _ -> new_state
+         in
+         eval_exp { very_new_state with context = state.context } exp
+       | _ -> fail (Interp_error (EApp (exp1, exp2))))
     | EMatch (exp, mathchings) ->
       let effh = scan_cases mathchings in
       let exp_state =
@@ -306,42 +307,42 @@ module Interpret = struct
         | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
         | (pat, exp) :: tl ->
           (match Result.map (fun t -> t) (run (match_pat pat evaled)) with
-          | Ok binds ->
-            let state =
-              List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-            in
-            eval_exp state exp
-          | Error _ -> do_match tl)
+           | Ok binds ->
+             let state =
+               List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+             in
+             eval_exp state exp
+           | Error _ -> do_match tl)
       in
       do_match mathchings
     | EPerform exp ->
       let* eff = eval_exp state exp in
       (match eff with
-      | Eff1V name ->
-        let lookup = lookup_in_context name state in
-        (match Result.map (fun t -> t) (run lookup) with
-        | Error _ -> fail (No_handler name)
-        | Ok (EffHV (pat, cont_val, exph)) ->
-          (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
-          | Error _ -> fail (No_effect name)
-          | Ok _ ->
-            let _ = match_pat pat (Eff1V name) in
-            eval_exp (extend_env cont_val (ContV cont_val) state) exph))
-      | Eff2V (name, exval) ->
-        let lookup = lookup_in_context name state in
-        (match Result.map (fun t -> t) (run lookup) with
-        | Error _ -> fail (No_handler name)
-        | Ok (EffHV (pat, cont_val, exph)) ->
-          (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
-          | Error _ -> fail (No_effect name)
-          | Ok _ ->
-            let _ = match_pat pat (Eff2V (name, exval)) in
-            eval_exp (extend_env cont_val (ContV cont_val) state) exph))
-      | _ -> failwith "internal error")
+       | Eff1V name ->
+         let lookup = lookup_in_context name state in
+         (match Result.map (fun t -> t) (run lookup) with
+          | Error _ -> fail (No_handler name)
+          | Ok (EffHV (pat, cont_val, exph)) ->
+            (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
+             | Error _ -> fail (No_effect name)
+             | Ok _ ->
+               let _ = match_pat pat (Eff1V name) in
+               eval_exp (extend_env cont_val (ContV cont_val) state) exph))
+       | Eff2V (name, exval) ->
+         let lookup = lookup_in_context name state in
+         (match Result.map (fun t -> t) (run lookup) with
+          | Error _ -> fail (No_handler name)
+          | Ok (EffHV (pat, cont_val, exph)) ->
+            (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
+             | Error _ -> fail (No_effect name)
+             | Ok _ ->
+               let _ = match_pat pat (Eff2V (name, exval)) in
+               eval_exp (extend_env cont_val (ContV cont_val) state) exph))
+       | _ -> fail Internal_Error)
     | EContinue (cont_val, exp) ->
       let _ =
         try lookup_in_env cont_val state with
-        | Not_bound -> failwith "not a continuation value"
+        | Not_bound -> fail @@ Not_cont_val cont_val
       in
       eval_exp state exp
     | EEffect1 name -> return (Eff1V name)
@@ -352,13 +353,13 @@ module Interpret = struct
   let eval_dec state = function
     | DLet bindings ->
       (match bindings with
-      | _, pat, exp ->
-        let* evaled = eval_exp state exp in
-        let* binds = match_pat pat evaled in
-        let state =
-          List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-        in
-        return state)
+       | _, pat, exp ->
+         let* evaled = eval_exp state exp in
+         let* binds = match_pat pat evaled in
+         let state =
+           List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+         in
+         return state)
     | DEffect1 (name, tyexp) ->
       let state = extend_env name (EffDec1V (name, tyexp)) state in
       return state
@@ -370,8 +371,8 @@ module Interpret = struct
   let rec eval_prog state = function
     | hd :: tl ->
       (match Result.map (fun t -> t) (run (eval_dec state hd)) with
-      | Ok x -> eval_prog x tl
-      | Error x -> fail x)
+       | Ok x -> eval_prog x tl
+       | Error x -> fail x)
     | [] -> return state
   ;;
 end
@@ -384,11 +385,11 @@ let test code expected =
   match Parser.parse Parser.prog code with
   | Ok prog ->
     (match run (eval_prog (create_state ()) prog) with
-    | Ok state -> show_state state = expected
-    | Error x ->
-      pp_error std_formatter x;
-      false)
-  | _ -> failwith "Parse error"
+     | Ok state -> show_state state = expected
+     | Error x ->
+       pp_error std_formatter x;
+       false)
+  | _ -> Printf.printf "Parse error"; false
 ;;
 
 let%test _ =

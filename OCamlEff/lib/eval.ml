@@ -230,10 +230,7 @@ module Interpret = struct
     | [] -> []
   ;;
 
-  let rec eval_exp state
-    = (* pp_state std_formatter state;
-         Printf.printf "\n"; *)
-    function
+  let rec eval_exp state = function
     | ENil -> return (ListV [])
     | EConst x ->
       (match x with
@@ -392,7 +389,6 @@ let test ~code ~expected =
   | Ok prog ->
     (match run (eval_prog (create_state ()) prog) with
     | Error x ->
-      Printf.printf "error incoming:\n";
       pp_error std_formatter x;
       false
     | Ok state when show_state state = expected -> true

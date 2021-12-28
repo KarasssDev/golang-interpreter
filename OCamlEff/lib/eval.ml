@@ -175,25 +175,22 @@ module Interpret = struct
     (* "<" block *)
     | Less, IntV x, IntV y -> return (BoolV (x < y))
     | Less, StringV x, StringV y -> return (BoolV (x < y))
-    | Less, TupleV x, TupleV y when List.length x = List.length y ->
-      return (BoolV (x < y))
+    | Less, TupleV x, TupleV y -> return (BoolV (x < y))
     | Less, ListV x, ListV y -> return (BoolV (x < y))
     (* "<=" block *)
     | Leq, IntV x, IntV y -> return (BoolV (x <= y))
     | Leq, StringV x, StringV y -> return (BoolV (x <= y))
-    | Leq, TupleV x, TupleV y when List.length x = List.length y ->
-      return (BoolV (x <= y))
+    | Leq, TupleV x, TupleV y -> return (BoolV (x <= y))
     | Leq, ListV x, ListV y -> return (BoolV (x <= y))
     (* ">" block *)
     | Gre, IntV x, IntV y -> return (BoolV (x > y))
     | Gre, StringV x, StringV y -> return (BoolV (x > y))
-    | Gre, TupleV x, TupleV y when List.length x = List.length y -> return (BoolV (x > y))
+    | Gre, TupleV x, TupleV y -> return (BoolV (x > y))
     | Gre, ListV x, ListV y -> return (BoolV (x > y))
     (* ">=" block *)
     | Geq, IntV x, IntV y -> return (BoolV (x >= y))
     | Geq, StringV x, StringV y -> return (BoolV (x >= y))
-    | Geq, TupleV x, TupleV y when List.length x = List.length y ->
-      return (BoolV (x >= y))
+    | Geq, TupleV x, TupleV y -> return (BoolV (x >= y))
     | Geq, ListV x, ListV y -> return (BoolV (x >= y))
     (* "=" block *)
     | Eq, IntV x, IntV y -> return (BoolV (x == y))
@@ -211,8 +208,6 @@ module Interpret = struct
     | And, BoolV x, BoolV y -> return (BoolV (x && y))
     | Or, BoolV x, BoolV y -> return (BoolV (x || y))
     (* failures *)
-    | _, TupleV x, TupleV y when List.length x != List.length y ->
-      fail (Tuple_compare (TupleV x, TupleV y))
     | a, b, c -> fail (Wrong_infix_op (a, b, c))
   ;;
 

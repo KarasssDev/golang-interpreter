@@ -7,6 +7,7 @@ type error =
   | Typing_failure_exp of exp
   | Typing_failure_decl of decl
   | Typing_failure_pat of pat
+[@@deriving show { with_path = false }]
 
 module R : sig
   open Base
@@ -188,14 +189,14 @@ let unify l r =
     match l, r with
     | TInt, TInt | TBool, TBool | TString, TString -> return Subst.empty
     | TList tyexp_1, tyexp_2 | tyexp_1, TList tyexp_2 -> helper tyexp_1 tyexp_2
-    | TTuple tyexp_l_1, TTuple tyexp_l_2
-      when List.length tyexp_l_1 = List.length tyexp_l_2 ->
+    | TTuple tyexp_l_1, TTuple tyexp_l_2 ->
       (match tyexp_l_1, tyexp_l_2 with
       | hd1 :: tl1, hd2 :: tl2 ->
         let* subst_hd = helper hd1 hd2 in
         let* subst_tl = helper (TTuple tl1) (TTuple tl2) in
         return (Subst.compose subst_hd subst_tl)
-      | _ -> return Subst.empty)
+      | [], [] -> return Subst.empty
+      | _ -> fail (UnificationFailed (l, r)))
     | TVar _, TVar _ -> return Subst.empty
     | TVar b, t when Type.occurs_in b t -> fail Occurs_check
     | TVar b, t | t, TVar b -> return (Subst.singleton b t)
@@ -232,27 +233,11 @@ let lookup_context e xs =
 
 let fresh_var = fresh >>| fun n -> TVar n
 
-let rec tyexp_to_st = function
-  | TInt -> "int"
-  | TString -> "string"
-  | TBool -> "bool"
-  | TList tyexp -> String.concat " " [ tyexp_to_st tyexp; "list" ]
-  | TArrow (tyexp1, tyexp2) ->
-    String.concat " " [ tyexp_to_st tyexp1; "->"; tyexp_to_st tyexp2 ]
-  | TVar x -> string_of_int x
-  | TTuple l ->
-    let line = List.fold_left (fun ln tyexp -> ln ^ ";" ^ tyexp_to_st tyexp) "" l in
-    String.concat "" [ "("; line; ")" ]
-  | _ -> failwith "unimpl"
-;;
-
 let print_subst s =
   let res =
     SubstMap.fold
       (fun k v ln ->
-        let new_res =
-          ln ^ Printf.sprintf "%s -> %s\n" (string_of_int k) (tyexp_to_st v)
-        in
+        let new_res = ln ^ Printf.sprintf "%s -> %s\n" (string_of_int k) (show_tyexp v) in
         new_res)
       s
       ""
@@ -413,23 +398,13 @@ let infer_decl context = function
   | _ -> failwith "unimpl"
 ;;
 
-let error_to_st = function
-  | Occurs_check -> "oc check"
-  | NoVariable x -> String.concat " " [ "no var"; x ]
-  | UnificationFailed (x, y) ->
-    String.concat " " [ "uni fail:"; tyexp_to_st x; tyexp_to_st y ]
-  | Typing_failure_exp _ -> "typing failure exp"
-  | Typing_failure_decl _ -> "typing failure decl"
-  | Typing_failure_pat _ -> "typing failure pat"
-;;
-
 let infer_prog prog =
   let context1 =
     List.fold_left
       (fun context decl ->
         match Result.map (fun t -> t) (run (infer_decl context decl)) with
         | Error x ->
-          Printf.printf "%s\n" (error_to_st x);
+          Printf.printf "%s\n" (show_error x);
           failwith "error"
         | Ok x -> x)
       TypeContext.empty
@@ -446,8 +421,8 @@ let test_infer prog =
   TypeMap.iter
     (fun k v ->
       match Result.map (fun t -> t) (run (instantiate v)) with
-      | Ok x -> Printf.printf "%s -> %s\n" k (tyexp_to_st x)
-      | Error x -> Printf.printf "Some error???: %s\n" (error_to_st x))
+      | Ok x -> Printf.printf "%s -> %s\n" k (show_tyexp x)
+      | Error x -> Printf.printf "Some error???: %s\n" (show_error x))
     context;
   Printf.printf "-----\n";
   true
@@ -460,28 +435,28 @@ let test code =
 ;;
 
 (* let%test _ =
-  test
+   test
     {|
-let f1 = fun x y z -> x + y / z
-let f2 = fun x -> x / x
-let f3 = fun x y -> 1 + x + y
-|}
-;;
+   let f1 = fun x y z -> x + y / z
+   let f2 = fun x -> x / x
+   let f3 = fun x y -> 1 + x + y
+   |}
+   ;;
 
-let%test _ =
-  test
+   let%test _ =
+   test
     {|
-let x =
+   let x =
      let y =
        let y = 10 in
        5
      in
      y
-let tuple = (1, 2, 2) < (1, 2, 3)     
-|}
-;;
+   let tuple = (1, 2, 2) < (1, 2, 3)     
+   |}
+   ;;
 
-let%test _ = test {|
-let id x y = x = y
-let to_int s = if s = "0" then 0 else 1
-|} *)
+   let%test _ = test {|
+   let id x y = x = y
+   let to_int s = if s = "0" then 0 else 1
+   |} *)

@@ -420,7 +420,7 @@ let%test _ =
     let fac f n = if n <= 1 then 1 else f (n - 1) * n
     let fact = fix fac
     let res = fact 10
-  
+
   |}
     [ DLet
         ( true

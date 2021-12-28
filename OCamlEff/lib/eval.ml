@@ -386,7 +386,7 @@ end
 open Interpret
 open R
 
-let test code expected =
+let test ~code ~expected =
   let open Format in
   match Parser.parse Parser.prog code with
   | Ok prog ->
@@ -406,7 +406,8 @@ let test code expected =
 
 let%test _ =
   test
-    {|
+    ~code:
+      {|
    effect E1: int
 
    let y = E1
@@ -419,7 +420,8 @@ let%test _ =
    | _ -> "wrong"
 
    |}
-  @@ {|{ env =
+    ~expected:
+      {|{ env =
   ["E1": (EffDec1V ("E1", TInt)),
    "helper": (FunV ((PVar "x"),
                 (EOp (Add, (EConst (CInt 1)), (EPerform (EVar "y")))),
@@ -436,7 +438,8 @@ let%test _ =
 
 let%test _ =
   test
-    {|
+    ~code:
+      {|
    effect E: int -> int
 
    let helper x = match perform (E x) with
@@ -447,7 +450,8 @@ let%test _ =
    | effect (E s) k -> continue k s*s
    | l -> helper l;;
    |}
-    {|{ env =
+    ~expected:
+      {|{ env =
   ["E": (EffDec2V ("E", TInt, TInt)),
    "helper": (FunV ((PVar "x"),
                 (EMatch ((EPerform (EEffect2 ("E", (EVar "x")))),
@@ -459,6 +463,116 @@ let%test _ =
                          ]; context = [] }
                 )),
    "res": (IntV 625),
+   ];
+  context = [] }|}
+;;
+
+let%test _ =
+  test
+    ~code:
+      {|
+
+    effect E: string -> int 
+
+    let to_int = function 
+    | "0" -> 0
+    | "1" -> 1
+    | s -> perform (E s)
+
+    let sum = 
+      let rec helper acc = function 
+      | [] -> acc 
+      | hd :: tl -> helper (to_int hd + acc) tl
+      in helper 0
+
+    let result = match sum ["1"; "1"; "not_int"; "smth"; "1"] with 
+    | effect (E s) k -> continue k 0
+    | res -> res
+
+    |}
+    ~expected:
+      {|{ env =
+  ["E": (EffDec2V ("E", TString, TInt)),
+   "result": (IntV 3),
+   "sum": (FunV ((PVar "match"),
+             (EMatch ((EVar "match"),
+                [(PNil, (EVar "acc"));
+                  ((PCons ((PVar "hd"), (PVar "tl"))),
+                   (EApp (
+                      (EApp ((EVar "helper"),
+                         (EOp (Add, (EApp ((EVar "to_int"), (EVar "hd"))),
+                            (EVar "acc")))
+                         )),
+                      (EVar "tl"))))
+                  ]
+                )),
+             { env =
+               ["E": (EffDec2V ("E", TString, TInt)),
+                "acc": (IntV 0),
+                "helper": (FunV ((PVar "acc"),
+                             (EFun ((PVar "match"),
+                                (EMatch ((EVar "match"),
+                                   [(PNil, (EVar "acc"));
+                                     ((PCons ((PVar "hd"), (PVar "tl"))),
+                                      (EApp (
+                                         (EApp ((EVar "helper"),
+                                            (EOp (Add,
+                                               (EApp ((EVar "to_int"),
+                                                  (EVar "hd"))),
+                                               (EVar "acc")))
+                                            )),
+                                         (EVar "tl"))))
+                                     ]
+                                   ))
+                                )),
+                             { env =
+                               ["E": (EffDec2V ("E", TString, TInt)),
+                                "to_int": (FunV ((PVar "match"),
+                                             (EMatch ((EVar "match"),
+                                                [((PConst (CString "0")),
+                                                  (EConst (CInt 0)));
+                                                  ((PConst (CString "1")),
+                                                   (EConst (CInt 1)));
+                                                  ((PVar "s"),
+                                                   (EPerform
+                                                      (EEffect2 ("E",
+                                                         (EVar "s")))))
+                                                  ]
+                                                )),
+                                             { env =
+                                               ["E": (EffDec2V ("E", TString,
+                                                        TInt)),
+                                                ];
+                                               context = [] }
+                                             )),
+                                ];
+                               context = [] }
+                             )),
+                "to_int": (FunV ((PVar "match"),
+                             (EMatch ((EVar "match"),
+                                [((PConst (CString "0")), (EConst (CInt 0)));
+                                  ((PConst (CString "1")), (EConst (CInt 1)));
+                                  ((PVar "s"),
+                                   (EPerform (EEffect2 ("E", (EVar "s")))))
+                                  ]
+                                )),
+                             { env = ["E": (EffDec2V ("E", TString, TInt)),
+                                      ];
+                               context = [] }
+                             )),
+                ];
+               context = [] }
+             )),
+   "to_int": (FunV ((PVar "match"),
+                (EMatch ((EVar "match"),
+                   [((PConst (CString "0")), (EConst (CInt 0)));
+                     ((PConst (CString "1")), (EConst (CInt 1)));
+                     ((PVar "s"), (EPerform (EEffect2 ("E", (EVar "s")))))]
+                   )),
+                { env = ["E": (EffDec2V ("E", TString, TInt)),
+                         ];
+                  context = [] }
+                )),
    ];
   context = [] }|}
 ;;

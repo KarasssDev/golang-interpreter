@@ -379,31 +379,6 @@ module Interpret = struct
       | Error x -> fail x)
     | [] -> return state
   ;;
-
-  let str_converter = function
-    | IntV x -> string_of_int x
-    | BoolV x -> string_of_bool x
-    | StringV x -> x
-    | _ -> failwith "Interpretation error: not basic type."
-  ;;
-
-  let rec exval_to_str = function
-    | IntV x -> str_converter (IntV x)
-    | BoolV x -> str_converter (BoolV x)
-    | StringV x -> str_converter (StringV x)
-    | TupleV x -> Printf.sprintf "(%s)" (String.concat "," (List.map str_converter x))
-    | ListV x -> Printf.sprintf "[%s]" (String.concat ";" (List.map str_converter x))
-    | FunV (pat, _, _) ->
-      (match pat with
-      | PVar x -> x
-      | _ -> "error")
-    | Eff1V name -> Printf.sprintf "%s eff" name
-    | Eff2V (name, exval) ->
-      Printf.sprintf "%s eff with %s inside" name (exval_to_str exval)
-    | ContV name -> Printf.sprintf "%s cont" name
-    | EffDec1V (name, _) -> Printf.sprintf "%s eff dec, 1 arg" name
-    | EffDec2V (name, _, _) -> Printf.sprintf "%s eff dec, 2 arg" name
-  ;;
 end
 
 open Interpret

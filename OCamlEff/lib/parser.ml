@@ -154,6 +154,17 @@ let dlet isrec p e = DLet (isrec, p, e)
 let deff1 id t1 = DEffect1 (id, t1)
 let deff2 id t1 t2 = DEffect2 (id, t1, t2)
 
+(*-------------- Ty ctors --------------*)
+
+let tint = TInt
+let tbool = TBool
+let tstring = TString
+let tlist t = TList t
+let ttuple l = TTuple l
+let tvar b = TVar b
+let tarrow t1 t2 = TArrow (t1, t2)
+let teffect t = TEffect t
+
 (*-------------- Plain parsers --------------*)
 
 let choice_op ops =
@@ -371,24 +382,22 @@ let pack =
     let basic =
       trim
       @@ choice
-           [ token "int" *> return TInt
-           ; token "string" *> return TString
-           ; token "bool" *> return TBool
-           ; (uns >>| fun bind -> TVar (Base.Int.of_string bind))
+           [ token "int" *> return tint
+           ; token "string" *> return tstring
+           ; token "bool" *> return tbool
+           ; (uns >>| fun b -> tvar @@ Base.Int.of_string b)
            ; parens @@ d.tyexp d
            ]
     in
-    let list =
-      let* lst_ty = basic in
-      let* l = many1 @@ (empty *> token "list") in
-      let rec wrap acc n =
-        match n with
-        | 0 -> acc
-        | _ -> wrap (TList acc) (n - 1)
+    let list_or_eff =
+      let* ty = basic in
+      let* l =
+        many1
+        @@ (empty *> (token "list" *> return tlist <|> token "eff" *> return teffect))
       in
-      return @@ wrap lst_ty (List.length l)
+      return @@ List.fold_left ~init:ty ~f:( |> ) l
     in
-    sep_by1 (token "*" *> empty) (list <|> basic)
+    sep_by1 (token "*" *> empty) (list_or_eff <|> basic)
     >>| function
     | [ a ] -> a
     | tup -> TTuple tup
@@ -403,7 +412,6 @@ let pack =
 
 let tyexp = pack.tyexp pack
 let ty1 = pack.prim pack
-let ty2 = lift2 (fun t1 t2 -> t1, t2) (ty1 <* arrow) ty1
 
 (*-------------- Decl parsing --------------*)
 

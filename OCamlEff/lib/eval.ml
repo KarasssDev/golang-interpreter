@@ -238,7 +238,7 @@ module Interpret = struct
       | CBool x -> return (BoolV x)
       | CString x -> return (StringV x))
     | EVar x ->
-      (match Result.map (fun t -> t) (run (lookup_in_env x state)) with
+      (match R.run (lookup_in_env x state) with
       | Ok b -> return b
       | Error _ -> fail (Undef_var x))
     | EOp (op, x, y) ->
@@ -306,7 +306,7 @@ module Interpret = struct
       let rec do_match = function
         | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
         | (pat, exp) :: tl ->
-          (match Result.map (fun t -> t) (run (match_pat pat evaled)) with
+          (match R.run (match_pat pat evaled) with
           | Ok binds ->
             let state =
               List.fold_left (fun state (id, v) -> extend_env id v state) state binds
@@ -320,10 +320,10 @@ module Interpret = struct
       (match eff with
       | Eff1V name ->
         let lookup = lookup_in_context name state in
-        (match Result.map (fun t -> t) (run lookup) with
+        (match R.run lookup with
         | Error _ -> fail (No_handler name)
         | Ok (EffHV (pat, cont_val, exph)) ->
-          (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
+          (match R.run (lookup_in_env name state) with
           | Error _ -> fail (No_effect name)
           | Ok _ ->
             let _ = match_pat pat (Eff1V name) in
@@ -333,7 +333,7 @@ module Interpret = struct
         (match Result.map (fun t -> t) (run lookup) with
         | Error _ -> fail (No_handler name)
         | Ok (EffHV (pat, cont_val, exph)) ->
-          (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
+          (match R.run (lookup_in_env name state) with
           | Error _ -> fail (No_effect name)
           | Ok _ ->
             let* binds = match_pat pat (Eff2V (name, exval)) in
@@ -373,7 +373,7 @@ module Interpret = struct
 
   let rec eval_prog state = function
     | hd :: tl ->
-      (match Result.map (fun t -> t) (run (eval_dec state hd)) with
+      (match R.run (eval_dec state hd) with
       | Ok x -> eval_prog x tl
       | Error x -> fail x)
     | [] -> return state

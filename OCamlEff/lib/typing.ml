@@ -1,4 +1,5 @@
 open Ast
+open Format
 
 type error =
   | Occurs_check
@@ -260,6 +261,12 @@ let print_subst s =
 
 (***  я тут если чо*)
 
+let rec contains_pat = function
+  | PVar x, PVar y :: _ when x = y -> return true
+  | PVar x, PVar y :: tl when x != y -> contains_pat (PVar x, tl)
+  | _, _ -> return false
+;;
+
 let infer_pat =
   let rec (helper : TypeContext.t -> pat -> (Subst.t * tyexp * TypeContext.t) R.t) =
    fun context -> function
@@ -277,7 +284,13 @@ let infer_pat =
         let* s_uni = unify (TList t1) t2 in
         return
           ( Subst.(s_uni ++ s1 ++ s2)
-          , TList (Subst.apply s_uni t1)
+          , TList (Subst.apply Subst.(s_uni ++ s2 ++ s1) t1)
+          , TypeMap.union (fun _ _ v2 -> Some v2) context1 context2 )
+      | TVar _ ->
+        let* s_uni = unify (TList t1) (TList t2) in
+        return
+          ( Subst.(s_uni ++ s1 ++ s2)
+          , TList (Subst.apply Subst.(s_uni ++ s2 ++ s1) t1)
           , TypeMap.union (fun _ _ v2 -> Some v2) context1 context2 )
       | _ -> fail (Typing_failure_pat (PCons (pat1, pat2))))
     | PNil ->
@@ -293,11 +306,15 @@ let infer_pat =
     | PTuple pats ->
       (match pats with
       | hd :: tl ->
-        let* s1, t1, context1 = helper context hd in
-        let* s_tl, t_tl, context2 = helper context1 (PTuple tl) in
-        (match t_tl with
-        | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps), context2)
-        | _ -> fail (Typing_failure_pat (PTuple pats)))
+        let* oc_check = contains_pat (hd, tl) in
+        if oc_check
+        then fail Occurs_check
+        else
+          let* s1, t1, context1 = helper context hd in
+          let* s_tl, t_tl, context2 = helper context1 (PTuple tl) in
+          (match t_tl with
+          | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps), context2)
+          | _ -> fail (Typing_failure_pat (PTuple pats)))
       | [] -> return (Subst.empty, TTuple [], context))
     | PEffect1 name ->
       let* s, t = lookup_context name context in
@@ -319,28 +336,6 @@ let return_with_debug exp res =
   let () = Printf.printf "Expression: %s\n" (show_exp exp) in
   let () = Printf.printf "Type: %s\n\n" (show_tyexp t) in
   return res
-;;
-
-let rec contains_pat = function
-  | PVar x, PVar y :: tl -> if x = y then return true else contains_pat (PVar x, tl)
-  | _, _ -> return false
-;;
-
-let rec match_pat context = function
-  | PVar x, tyexp -> return (TypeContext.extend context x tyexp)
-  | PTuple pats, TTuple tyexps ->
-    (match pats, tyexps with
-    | hd_p :: tl_p, hd_t :: tl_t ->
-      let* oc_check = contains_pat (hd_p, tl_p) in
-      if oc_check
-      then fail Occurs_check
-      else
-        let* new_context = match_pat context (hd_p, hd_t) in
-        match_pat new_context (PTuple tl_p, TTuple tl_t)
-    | [], [] -> return context
-    | _ -> fail (Match_fail (PTuple pats, TTuple tyexps)))
-  | PWild, _ -> return context
-  | a, b -> fail (Match_fail (a, b))
 ;;
 
 let infer_exp =
@@ -466,8 +461,34 @@ let infer_exp =
       let* s1, t1 = helper context exp1 in
       let* s2, t2 = helper (TypeContext.apply s1 context) exp2 in
       let* s3 = unify (Subst.apply s2 t1) (TArrow (t2, tv)) in
-      let trez = Subst.apply s3 tv in
+      let trez = Subst.apply Subst.(s3 ++ s2) tv in
       return_with_debug expr (Subst.(s3 ++ s2 ++ s1), trez)
+    | EMatch (exp_main, cases) ->
+      let* s0, t0 = helper context exp_main in
+      let l =
+        List.map
+          (fun (pat, exp) ->
+            let* s1, t1, context1 = infer_pat context pat in
+            match R.run (unify t0 t1) with
+            | Ok x ->
+              let* s2, t2 = helper context1 exp in
+              return (Subst.(x ++ s1), s2, Subst.apply Subst.(x ++ s1) t2)
+            | Error _ -> fail (Typing_failure_exp (EMatch (exp_main, cases))))
+          cases
+      in
+      let rec mega_helper = function
+        | s0, hd1 :: hd2 :: tl ->
+          let* s01, s1, l1 = hd1 in
+          let* s02, s2, l2 = hd2 in
+          (match R.run (unify (Subst.apply s0 l1) (Subst.apply s0 l2)) with
+          | Ok x -> mega_helper (Subst.(s2 ++ s1 ++ s0 ++ s01 ++ s02 ++ x), hd2 :: tl)
+          | Error x -> fail x)
+        | s0, [ hd1 ] ->
+          let* s01, s1, l1 = hd1 in
+          return (Subst.(s1 ++ s0 ++ s01), Subst.apply s0 l1)
+        | _ -> fail (Typing_failure_exp (EMatch (exp_main, cases)))
+      in
+      mega_helper (s0, l)
     | _ -> fail Not_Implemented
   in
   helper
@@ -494,33 +515,20 @@ let infer_decl context = function
 ;;
 
 let infer_prog prog =
+  let context_empty = return TypeContext.empty in
   let context1 =
     List.fold_left
       (fun context decl ->
-        match Result.map (fun t -> t) (run (infer_decl context decl)) with
-        | Error x ->
-          Printf.printf "%s\n" (show_error x);
-          TypeContext.empty
-        | Ok x -> x)
-      TypeContext.empty
+        let* context = context in
+        infer_decl context decl)
+      context_empty
       prog
   in
-  context1
-;;
-
-let w e = Result.map (fun (_, t) -> t) (run (infer_exp TypeContext.empty e))
-
-let test_infer prog =
-  (* try *)
-  let context = infer_prog prog in
-  TypeMap.iter
-    (fun k v ->
-      match run (instantiate v) with
-      | Ok x -> Printf.printf "%s -> %s\n" k (show_tyexp x)
-      | Error x -> Printf.printf "Some error???: %s\n" (show_error x))
-    context;
-  Printf.printf "-----\n";
-  true
+  match R.run context1 with
+  | Ok _ -> true
+  | Error x ->
+    pp_error std_formatter x;
+    false
 ;;
 
 let test_infer exp =
@@ -542,8 +550,6 @@ let test code =
     false
 ;;
 
-(* let%test _ = test_infer (EOp (Add, EConst (CInt 1), EConst (CInt 2))) *)
-
 (* let%test _ = test {|
 
    let f x y = x y + x 1 in f
@@ -552,12 +558,12 @@ let test code =
 (* let%test _ = test {|
 let rec fix f x = f (fix f) x in fix|} *)
 
-let kek =
-  let rec fix f = f (fix f) in
-  fix
-;;
-
-let%test _ = test {|let f x y = x 1 || x y in f|}
+(* let%test _ = test {|
+function
+| a :: b :: c -> a * b
+| [a] -> a
+| _ -> 0
+|} *)
 
 (* let%expect_test _ =
    let _ =

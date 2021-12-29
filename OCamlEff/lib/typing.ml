@@ -7,6 +7,7 @@ type error =
   | Typing_failure_exp of exp
   | Typing_failure_decl of decl
   | Typing_failure_pat of pat
+  | Match_fail of pat * tyexp
   | Not_Implemented (* to be removed *)
 [@@deriving show { with_path = false }]
 
@@ -206,9 +207,8 @@ let unify l r =
       | [], [] -> return Subst.empty
       | _ -> fail (UnificationFailed (l, r)))
     | TEffect t1, TEffect t2 -> helper t1 t2
-    | TVar a, TVar b when a = b -> return Subst.empty
     | TVar b, t when Type.occurs_in b t -> fail Occurs_check
-    | t, TVar b when Type.occurs_in b t -> fail Occurs_check
+    | TVar a, TVar b when a = b -> return Subst.empty
     | TVar b, t | t, TVar b -> return (Subst.singleton b t)
     | TArrow (l1, r1), TArrow (l2, r2) ->
       let* subs1 = helper l1 l2 in
@@ -266,47 +266,49 @@ let infer_pat =
     | PConst x ->
       return
         (match x with
-        | CInt _ -> Subst.empty, TInt, TypeContext.empty
-        | CBool _ -> Subst.empty, TBool, TypeContext.empty
-        | CString _ -> Subst.empty, TString, TypeContext.empty)
+        | CInt _ -> Subst.empty, TInt, context
+        | CBool _ -> Subst.empty, TBool, context
+        | CString _ -> Subst.empty, TString, context)
     | PCons (pat1, pat2) ->
-      let* s1, t1, _ = helper context pat1 in
-      let* s2, t2, _ = helper context pat2 in
+      let* s1, t1, context1 = helper context pat1 in
+      let* s2, t2, context2 = helper context pat2 in
       (match t2 with
       | TList _ ->
         let* s_uni = unify (TList t1) t2 in
-        return (Subst.(s_uni ++ s1 ++ s2), TList (Subst.apply s_uni t1), TypeContext.empty)
+        return
+          ( Subst.(s_uni ++ s1 ++ s2)
+          , TList (Subst.apply s_uni t1)
+          , TypeMap.union (fun _ _ v2 -> Some v2) context1 context2 )
       | _ -> fail (Typing_failure_pat (PCons (pat1, pat2))))
     | PNil ->
       let* fresh = fresh_var in
-      return (Subst.empty, TList fresh, TypeContext.empty)
+      return (Subst.empty, TList fresh, context)
     | PVar x ->
       let* fresh = fresh_var in
       let context2 = TypeContext.extend context x (S (VarSet.empty, fresh)) in
       return (Subst.empty, fresh, context2)
     | PWild ->
       let* fresh = fresh_var in
-      return (Subst.empty, fresh, TypeContext.empty)
+      return (Subst.empty, fresh, context)
     | PTuple pats ->
       (match pats with
       | hd :: tl ->
-        let* s1, t1, _ = helper context hd in
-        let* s_tl, t_tl, _ = helper context (PTuple tl) in
+        let* s1, t1, context1 = helper context hd in
+        let* s_tl, t_tl, context2 = helper context1 (PTuple tl) in
         (match t_tl with
-        | TTuple tyexps ->
-          return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps), TypeContext.empty)
+        | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps), context2)
         | _ -> fail (Typing_failure_pat (PTuple pats)))
-      | [] -> return (Subst.empty, TTuple [], TypeContext.empty))
+      | [] -> return (Subst.empty, TTuple [], context))
     | PEffect1 name ->
       let* s, t = lookup_context name context in
-      return (s, TEffect t, TypeContext.empty)
+      return (s, TEffect t, context)
     | PEffect2 (name, pat) ->
       let* s1, t1 = lookup_context name context in
-      let* s2, t2, _ = helper context pat in
-      return (Subst.(s1 ++ s2), TArrow (t1, t2), TypeContext.empty)
+      let* s2, t2, context1 = helper context pat in
+      return (Subst.(s1 ++ s2), TArrow (t1, t2), context1)
     | PEffectH (_, _) ->
       let* fresh = fresh_var in
-      return (Subst.empty, fresh, TypeContext.empty)
+      return (Subst.empty, fresh, context)
   in
   helper
 ;;
@@ -317,6 +319,28 @@ let return_with_debug exp res =
   let () = Printf.printf "Expression: %s\n" (show_exp exp) in
   let () = Printf.printf "Type: %s\n\n" (show_tyexp t) in
   return res
+;;
+
+let rec contains_pat = function
+  | PVar x, PVar y :: tl -> if x = y then return true else contains_pat (PVar x, tl)
+  | _, _ -> return false
+;;
+
+let rec match_pat context = function
+  | PVar x, tyexp -> return (TypeContext.extend context x tyexp)
+  | PTuple pats, TTuple tyexps ->
+    (match pats, tyexps with
+    | hd_p :: tl_p, hd_t :: tl_t ->
+      let* oc_check = contains_pat (hd_p, tl_p) in
+      if oc_check
+      then fail Occurs_check
+      else
+        let* new_context = match_pat context (hd_p, hd_t) in
+        match_pat new_context (PTuple tl_p, TTuple tl_t)
+    | [], [] -> return context
+    | _ -> fail (Match_fail (PTuple pats, TTuple tyexps)))
+  | PWild, _ -> return context
+  | a, b -> fail (Match_fail (a, b))
 ;;
 
 let infer_exp =
@@ -330,19 +354,47 @@ let infer_exp =
         | CBool _ -> Subst.empty, TBool
         | CString _ -> Subst.empty, TString)
     | EOp (op, exp1, exp2) ->
-      let* s1, t1 = helper context exp1 in
-      let* s2, t2 = helper context exp2 in
-      let* s3 = unify t1 t2 in
       (match op with
       | Add | Sub | Mul | Div ->
-        let* s1_int = unify t1 TInt in
-        let* s2_int = unify t2 TInt in
-        return_with_debug expr (Subst.(s2_int ++ s1_int ++ s3 ++ s2 ++ s1), TInt)
+        let* tv1 = fresh_var in
+        let t1 = TArrow (TInt, TArrow (TInt, TInt)) in
+        let* s2, t2 = helper context exp1 in
+        let* s3 = unify (Subst.apply s2 t1) (TArrow (t2, tv1)) in
+        let trez1 = Subst.apply s3 tv1 in
+        let s4 = Subst.(s3 ++ s2) in
+        let* tv2 = fresh_var in
+        let* s5, t3 = helper (TypeContext.apply s4 context) exp2 in
+        let* s6 = unify (Subst.apply s5 trez1) (TArrow (t3, tv2)) in
+        let trez2 = Subst.apply s6 tv2 in
+        let s7 = Subst.(s6 ++ s5 ++ s4) in
+        return_with_debug expr (s7, trez2)
       | And | Or ->
-        let* s1_bool = unify t1 TBool in
-        let* s2_bool = unify t2 TBool in
-        return_with_debug expr (Subst.(s2_bool ++ s1_bool ++ s3 ++ s2 ++ s1), TBool)
-      | _ -> return_with_debug expr (Subst.(s3 ++ s2 ++ s1), TBool))
+        let* tv1 = fresh_var in
+        let t1 = TArrow (TBool, TArrow (TBool, TBool)) in
+        let* s2, t2 = helper context exp1 in
+        let* s3 = unify (Subst.apply s2 t1) (TArrow (t2, tv1)) in
+        let trez1 = Subst.apply s3 tv1 in
+        let s4 = Subst.(s3 ++ s2) in
+        let* tv2 = fresh_var in
+        let* s5, t3 = helper (TypeContext.apply s4 context) exp2 in
+        let* s6 = unify (Subst.apply s5 trez1) (TArrow (t3, tv2)) in
+        let trez2 = Subst.apply s6 tv2 in
+        let s7 = Subst.(s6 ++ s5 ++ s4) in
+        return_with_debug expr (s7, trez2)
+      | _ ->
+        let* tv0 = fresh_var in
+        let* tv1 = fresh_var in
+        let t1 = TArrow (tv0, TArrow (tv0, TBool)) in
+        let* s2, t2 = helper context exp1 in
+        let* s3 = unify (Subst.apply s2 t1) (TArrow (t2, tv1)) in
+        let trez1 = Subst.apply s3 tv1 in
+        let s4 = Subst.(s3 ++ s2) in
+        let* tv2 = fresh_var in
+        let* s5, t3 = helper (TypeContext.apply s4 context) exp2 in
+        let* s6 = unify (Subst.apply s5 trez1) (TArrow (t3, tv2)) in
+        let trez2 = Subst.apply s6 tv2 in
+        let s7 = Subst.(s6 ++ s5 ++ s4) in
+        return_with_debug expr (s7, trez2))
     | EUnOp (op, exp) ->
       let* s, t = helper context exp in
       (match op with
@@ -405,11 +457,10 @@ let infer_exp =
         let* s, t = helper context in_exp in
         return_with_debug expr (s, t))
     | EFun (pat, exp) ->
-      let* s1, t1, context1 = infer_pat context pat in
-      let new_context = TypeMap.union (fun _ v1 _ -> Some v1) context1 context in
-      let* s2, t2 = helper new_context exp in
-      let s_comp = Subst.(s2 ++ s1) in
-      return_with_debug expr (s_comp, arrow (Subst.apply s_comp t1) t2)
+      let* _, t1, context1 = infer_pat context pat in
+      let* s2, t2 = helper context1 exp in
+      let trez = TArrow (Subst.apply s2 t1, t2) in
+      return_with_debug expr (s2, trez)
     | EApp (exp1, exp2) ->
       let* tv = fresh_var in
       let* s1, t1 = helper context exp1 in
@@ -491,10 +542,22 @@ let test code =
     false
 ;;
 
+(* let%test _ = test_infer (EOp (Add, EConst (CInt 1), EConst (CInt 2))) *)
+
 (* let%test _ = test {|
 
    let f x y = x y + x 1 in f
    |} *)
+
+(* let%test _ = test {|
+let rec fix f x = f (fix f) x in fix|} *)
+
+let kek =
+  let rec fix f = f (fix f) in
+  fix
+;;
+
+let%test _ = test {|let f x y = x 1 || x y in f|}
 
 (* let%expect_test _ =
    let _ =

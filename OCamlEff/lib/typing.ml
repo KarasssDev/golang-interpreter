@@ -287,7 +287,7 @@ let infer_pat =
           , TList (Subst.apply Subst.(s_uni ++ s2 ++ s1) t1)
           , TypeMap.union (fun _ _ v2 -> Some v2) context1 context2 )
       | TVar _ ->
-        let* s_uni = unify (TList t1) (TList t2) in
+        let* s_uni = unify (TList t1) t2 in
         return
           ( Subst.(s_uni ++ s1 ++ s2)
           , TList (Subst.apply Subst.(s_uni ++ s2 ++ s1) t1)
@@ -420,6 +420,9 @@ let infer_exp =
       | TList _ ->
         let* s_uni = unify (TList t1) t2 in
         return_with_debug expr (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
+      | TVar _ ->
+        let* s_uni = unify (TList t1) t2 in
+        return_with_debug expr (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
       | _ -> fail (Typing_failure_exp (ECons (exp1, exp2))))
     | EIf (exp1, exp2, exp3) ->
       let* s1, t1 = helper context exp1 in
@@ -452,10 +455,11 @@ let infer_exp =
         let* s, t = helper context in_exp in
         return_with_debug expr (s, t))
     | EFun (pat, exp) ->
-      let* _, t1, context1 = infer_pat context pat in
+      let* s1, t1, context1 = infer_pat context pat in
       let* s2, t2 = helper context1 exp in
+      let s = Subst.(s1 ++ s2) in
       let trez = TArrow (Subst.apply s2 t1, t2) in
-      return_with_debug expr (s2, trez)
+      return_with_debug expr (s, trez)
     | EApp (exp1, exp2) ->
       let* tv = fresh_var in
       let* s1, t1 = helper context exp1 in
@@ -559,10 +563,7 @@ let test code =
 let rec fix f x = f (fix f) x in fix|} *)
 
 (* let%test _ = test {|
-function
-| a :: b :: c -> a * b
-| [a] -> a
-| _ -> 0
+fun x y -> x :: y
 |} *)
 
 (* let%expect_test _ =

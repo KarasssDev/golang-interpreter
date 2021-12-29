@@ -188,6 +188,7 @@ module TypeContext = struct
       VarSet.empty
   ;;
 
+  let pp = TypeMap.iter (fun k v -> Printf.printf "%s == %s\n" k (show_scheme v))
   let apply s context = TypeMap.map (Scheme.apply s) context
 end
 
@@ -208,8 +209,9 @@ let unify l r =
       | [], [] -> return Subst.empty
       | _ -> fail (UnificationFailed (l, r)))
     | TEffect t1, TEffect t2 -> helper t1 t2
-    | TVar b, t when Type.occurs_in b t -> fail Occurs_check
     | TVar a, TVar b when a = b -> return Subst.empty
+    | TVar b, t when Type.occurs_in b t -> fail Occurs_check
+    | t, TVar b when Type.occurs_in b t -> fail Occurs_check
     | TVar b, t | t, TVar b -> return (Subst.singleton b t)
     | TArrow (l1, r1), TArrow (l2, r2) ->
       let* subs1 = helper l1 l2 in
@@ -245,21 +247,6 @@ let lookup_context e xs =
 ;;
 
 let fresh_var = fresh >>| fun n -> TVar n
-
-let print_subst s =
-  let res =
-    SubstMap.fold
-      (fun k v ln ->
-        let new_res = ln ^ Printf.sprintf "%s -> %s\n" (string_of_int k) (show_tyexp v) in
-        new_res)
-      s
-      ""
-  in
-  Printf.printf "%s" res;
-  Printf.printf "Size: %s\n" (string_of_int (SubstMap.cardinal s))
-;;
-
-(***  я тут если чо*)
 
 let rec contains_pat = function
   | PVar x, PVar y :: _ when x = y -> return true
@@ -330,8 +317,9 @@ let infer_pat =
   helper
 ;;
 
-let return_with_debug exp res =
+let return_with_debug ctx exp res =
   let s, t = res in
+  let () = TypeContext.pp ctx in
   let () = Subst.pp s in
   let () = Printf.printf "Expression: %s\n" (show_exp exp) in
   let () = Printf.printf "Type: %s\n\n" (show_tyexp t) in
@@ -343,6 +331,7 @@ let infer_exp =
     match expr with
     | EConst x ->
       return_with_debug
+        context
         expr
         (match x with
         | CInt _ -> Subst.empty, TInt
@@ -362,7 +351,7 @@ let infer_exp =
         let* s6 = unify (Subst.apply s5 trez1) (TArrow (t3, tv2)) in
         let trez2 = Subst.apply s6 tv2 in
         let s7 = Subst.(s6 ++ s5 ++ s4) in
-        return_with_debug expr (s7, trez2)
+        return_with_debug context expr (s7, trez2)
       | And | Or ->
         let* tv1 = fresh_var in
         let t1 = TArrow (TBool, TArrow (TBool, TBool)) in
@@ -375,7 +364,7 @@ let infer_exp =
         let* s6 = unify (Subst.apply s5 trez1) (TArrow (t3, tv2)) in
         let trez2 = Subst.apply s6 tv2 in
         let s7 = Subst.(s6 ++ s5 ++ s4) in
-        return_with_debug expr (s7, trez2)
+        return_with_debug context expr (s7, trez2)
       | _ ->
         let* tv0 = fresh_var in
         let* tv1 = fresh_var in
@@ -389,16 +378,16 @@ let infer_exp =
         let* s6 = unify (Subst.apply s5 trez1) (TArrow (t3, tv2)) in
         let trez2 = Subst.apply s6 tv2 in
         let s7 = Subst.(s6 ++ s5 ++ s4) in
-        return_with_debug expr (s7, trez2))
+        return_with_debug context expr (s7, trez2))
     | EUnOp (op, exp) ->
       let* s, t = helper context exp in
       (match op with
       | Minus ->
         let* s_int = unify t TInt in
-        return_with_debug expr (Subst.(s_int ++ s), TInt)
+        return_with_debug context expr (Subst.(s_int ++ s), TInt)
       | Not ->
         let* s_bool = unify t TBool in
-        return_with_debug expr (Subst.(s_bool ++ s), TBool))
+        return_with_debug context expr (Subst.(s_bool ++ s), TBool))
     | EVar x -> lookup_context x context
     | ETuple exps ->
       (match exps with
@@ -407,22 +396,28 @@ let infer_exp =
         let* s_tl, t_tl = helper context (ETuple tl) in
         (match t_tl with
         | TTuple tyexps ->
-          return_with_debug expr (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
+          return_with_debug context expr (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
         | _ -> fail (Typing_failure_exp (ETuple exps)))
-      | [] -> return_with_debug expr (Subst.empty, TTuple []))
+      | [] -> return_with_debug context expr (Subst.empty, TTuple []))
     | ENil ->
       let* fresh = fresh_var in
-      return_with_debug expr (Subst.empty, TList fresh)
+      return_with_debug context expr (Subst.empty, TList fresh)
     | ECons (exp1, exp2) ->
       let* s1, t1 = helper context exp1 in
       let* s2, t2 = helper context exp2 in
       (match t2 with
       | TList _ ->
         let* s_uni = unify (TList t1) t2 in
-        return_with_debug expr (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
+        return_with_debug
+          context
+          expr
+          (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
       | TVar _ ->
         let* s_uni = unify (TList t1) t2 in
-        return_with_debug expr (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
+        return_with_debug
+          context
+          expr
+          (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
       | _ -> fail (Typing_failure_exp (ECons (exp1, exp2))))
     | EIf (exp1, exp2, exp3) ->
       let* s1, t1 = helper context exp1 in
@@ -430,7 +425,10 @@ let infer_exp =
       let* s3, t3 = helper context exp3 in
       let* s4 = unify t1 TBool in
       let* s5 = unify t2 t3 in
-      return_with_debug expr (Subst.(s5 ++ s4 ++ s3 ++ s2 ++ s1), Subst.apply s5 t2)
+      return_with_debug
+        context
+        expr
+        (Subst.(s5 ++ s4 ++ s3 ++ s2 ++ s1), Subst.apply s5 t2)
     | ELet (bindings, in_exp) ->
       (match bindings with
       | hd :: tl ->
@@ -440,7 +438,7 @@ let infer_exp =
           let context2 = TypeContext.apply s1 context in
           let t2 = generalize context2 t1 in
           let* s2, t3 = helper (TypeContext.extend context2 x t2) (ELet (tl, in_exp)) in
-          return_with_debug expr (Subst.(s1 ++ s2), t3)
+          return_with_debug context expr (Subst.(s1 ++ s2), t3)
         | true, PVar x, exp ->
           let* fresh = fresh_var in
           let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
@@ -449,24 +447,24 @@ let infer_exp =
           let context2 = TypeContext.apply s1 context in
           let t2 = generalize context2 t1 in
           let* s2, t3 = helper (TypeContext.extend context2 x t2) (ELet (tl, in_exp)) in
-          return_with_debug expr (Subst.(s1 ++ s2), t3)
+          return_with_debug context expr (Subst.(s1 ++ s2), t3)
         | _ -> fail (Typing_failure_exp (ELet (bindings, in_exp))))
       | [] ->
         let* s, t = helper context in_exp in
-        return_with_debug expr (s, t))
+        return_with_debug context expr (s, t))
     | EFun (pat, exp) ->
       let* s1, t1, context1 = infer_pat context pat in
       let* s2, t2 = helper context1 exp in
       let s = Subst.(s1 ++ s2) in
       let trez = TArrow (Subst.apply s2 t1, t2) in
-      return_with_debug expr (s, trez)
+      return_with_debug context expr (s, trez)
     | EApp (exp1, exp2) ->
       let* tv = fresh_var in
       let* s1, t1 = helper context exp1 in
       let* s2, t2 = helper (TypeContext.apply s1 context) exp2 in
       let* s3 = unify (Subst.apply s2 t1) (TArrow (t2, tv)) in
       let trez = Subst.apply Subst.(s3 ++ s2) tv in
-      return_with_debug expr (Subst.(s3 ++ s2 ++ s1), trez)
+      return_with_debug context expr (Subst.(s3 ++ s2 ++ s1), trez)
     | EMatch (exp_main, cases) ->
       let* s0, t0 = helper context exp_main in
       let l =
@@ -556,15 +554,19 @@ let test code =
 
 (* let%test _ = test {|
 
-   let f x y = x y + x 1 in f
+   let rec fold f init l = match l with 
+   | [] -> init
+   | hd :: tl -> fold f (f init hd) tl
+   in fold
+
    |} *)
 
 (* let%test _ = test {|
-let rec fix f x = f (fix f) x in fix|} *)
+   let rec fix f x = f (fix f) x in fix|} *)
 
 (* let%test _ = test {|
-fun x y -> x :: y
-|} *)
+   fun x y -> x :: y
+   |} *)
 
 (* let%expect_test _ =
    let _ =

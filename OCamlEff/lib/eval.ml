@@ -1,5 +1,4 @@
 open Ast
-open Format
 
 module EnvMap = struct
   include Map.Make (String)
@@ -10,6 +9,7 @@ module EnvMap = struct
     Format.fprintf ppf "@]]@]"
   ;;
 
+  let pp_vars p = iter (fun k v -> p k v)
   let compare = compare
 end
 
@@ -59,6 +59,30 @@ and state =
   ; context: effhval EnvMap.t
   }
 [@@deriving show { with_path = false }]
+
+(* for pp to console *)
+let pp_value k =
+  let open Format in
+  let () = fprintf std_formatter "val %s = " k in
+  let rec helper fmt = function
+    | IntV n -> fprintf fmt "%d" n
+    | StringV s -> fprintf fmt "%S" s
+    | BoolV b -> fprintf fmt "%b" b
+    | TupleV l ->
+      fprintf fmt "(%a)" (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt ", ") helper) l
+    | ListV l ->
+      fprintf fmt "[%a]" (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "; ") helper) l
+    | FunV (_, _, _) -> fprintf fmt "<fun>"
+    | Eff1V _ | Eff2V _ -> ()
+    | ContV _ -> fprintf fmt "continuation"
+    | _ -> ()
+  in
+  fun v ->
+    let () = helper std_formatter v in
+    print_newline ()
+;;
+
+let pp_env = EnvMap.pp_vars pp_value
 
 module R : sig
   open Base
@@ -238,7 +262,7 @@ module Interpret = struct
       | CBool x -> return (BoolV x)
       | CString x -> return (StringV x))
     | EVar x ->
-      (match R.run (lookup_in_env x state) with
+      (match run (lookup_in_env x state) with
       | Ok b -> return b
       | Error _ -> fail (Undef_var x))
     | EOp (op, x, y) ->
@@ -306,7 +330,7 @@ module Interpret = struct
       let rec do_match = function
         | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
         | (pat, exp) :: tl ->
-          (match R.run (match_pat pat evaled) with
+          (match Result.map (fun t -> t) (run (match_pat pat evaled)) with
           | Ok binds ->
             let state =
               List.fold_left (fun state (id, v) -> extend_env id v state) state binds
@@ -320,10 +344,10 @@ module Interpret = struct
       (match eff with
       | Eff1V name ->
         let lookup = lookup_in_context name state in
-        (match R.run lookup with
+        (match Result.map (fun t -> t) (run lookup) with
         | Error _ -> fail (No_handler name)
         | Ok (EffHV (pat, cont_val, exph)) ->
-          (match R.run (lookup_in_env name state) with
+          (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
           | Error _ -> fail (No_effect name)
           | Ok _ ->
             let _ = match_pat pat (Eff1V name) in
@@ -333,7 +357,7 @@ module Interpret = struct
         (match Result.map (fun t -> t) (run lookup) with
         | Error _ -> fail (No_handler name)
         | Ok (EffHV (pat, cont_val, exph)) ->
-          (match R.run (lookup_in_env name state) with
+          (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
           | Error _ -> fail (No_effect name)
           | Ok _ ->
             let* binds = match_pat pat (Eff2V (name, exval)) in
@@ -373,7 +397,7 @@ module Interpret = struct
 
   let rec eval_prog state = function
     | hd :: tl ->
-      (match R.run (eval_dec state hd) with
+      (match Result.map (fun t -> t) (run (eval_dec state hd)) with
       | Ok x -> eval_prog x tl
       | Error x -> fail x)
     | [] -> return state
@@ -383,7 +407,7 @@ end
 open Interpret
 open R
 
-let test ~code ~expected =
+let test ~code =
   let open Format in
   match Parser.parse Parser.prog code with
   | Ok prog ->
@@ -391,10 +415,10 @@ let test ~code ~expected =
     | Error x ->
       pp_error std_formatter x;
       false
-    | Ok state when show_state state = expected -> true
     | Ok state ->
-      pp_state std_formatter state;
-      false)
+      pp_env state.env;
+      (* pp_state std_formatter state;  *)
+      true)
   | _ ->
     Printf.printf "Parse error";
     false
@@ -404,174 +428,30 @@ let%test _ =
   test
     ~code:
       {|
-   effect E1: int;;
 
-   let y = E1;;
-
-   let helper x = 1 + perform (y);;
-
-   let res = match helper 1 with
-   | effect (E1) k -> continue k (100)
-   | 101 -> "correct"
-   | _ -> "wrong"
-
-   |}
-    ~expected:
-      {|{ env =
-  ["E1": (EffDec1V ("E1", TInt)),
-   "helper": (FunV ((PVar "x"),
-                (EOp (Add, (EConst (CInt 1)), (EPerform (EVar "y")))),
-                { env = ["E1": (EffDec1V ("E1", TInt)),
-                         "y": (Eff1V "E1"),
-                         ];
-                  context = [] }
-                )),
-   "res": (StringV "correct"),
-   "y": (Eff1V "E1"),
-   ];
-  context = [] }|}
-;;
-
-let%test _ =
-  test
-    ~code:
-      {|
-   effect E: int -> int
-   ;;
-
-   let helper x = match perform (E x) with
-   | effect (E s) k -> continue k s*s
-   | l -> l;;
-
-   let res = match perform (E 5) with
-   | effect (E s) k -> continue k s*s
-   | l -> helper l;;
-   |}
-    ~expected:
-      {|{ env =
-  ["E": (EffDec2V ("E", TInt, TInt)),
-   "helper": (FunV ((PVar "x"),
-                (EMatch ((EPerform (EEffect2 ("E", (EVar "x")))),
-                   [((PEffectH ((PEffect2 ("E", (PVar "s"))), "k")),
-                     (EOp (Mul, (EContinue ("k", (EVar "s"))), (EVar "s"))));
-                     ((PVar "l"), (EVar "l"))]
-                   )),
-                { env = ["E": (EffDec2V ("E", TInt, TInt)),
-                         ]; context = [] }
-                )),
-   "res": (IntV 625),
-   ];
-  context = [] }|}
-;;
-
-let%test _ =
-  test
-    ~code:
-      {|
-
-    effect E: string -> int ;;
-
-    let to_int = function 
-    | "0" -> 0
-    | "1" -> 1
-    | s -> perform (E s)
+      let rec fix f x = f (fix f) x
     ;;
 
-    let sum = 
-      let rec helper acc = function 
-      | [] -> acc 
-      | hd :: tl -> helper (to_int hd + acc) tl
-      in helper 0
-      ;;
+    let rec fac self n = if n <= 1 then n else n * self ( n - 1);;
 
-    let result = match sum ["1"; "1"; "not_int"; "smth"; "1"] with 
-    | effect (E s) k -> continue k 0
-    | res -> res
+    let res = fix fac 100000
 
-    |}
-    ~expected:
-      {|{ env =
-  ["E": (EffDec2V ("E", TString, TInt)),
-   "result": (IntV 3),
-   "sum": (FunV ((PVar "match"),
-             (EMatch ((EVar "match"),
-                [(PNil, (EVar "acc"));
-                  ((PCons ((PVar "hd"), (PVar "tl"))),
-                   (EApp (
-                      (EApp ((EVar "helper"),
-                         (EOp (Add, (EApp ((EVar "to_int"), (EVar "hd"))),
-                            (EVar "acc")))
-                         )),
-                      (EVar "tl"))))
-                  ]
-                )),
-             { env =
-               ["E": (EffDec2V ("E", TString, TInt)),
-                "acc": (IntV 0),
-                "helper": (FunV ((PVar "acc"),
-                             (EFun ((PVar "match"),
-                                (EMatch ((EVar "match"),
-                                   [(PNil, (EVar "acc"));
-                                     ((PCons ((PVar "hd"), (PVar "tl"))),
-                                      (EApp (
-                                         (EApp ((EVar "helper"),
-                                            (EOp (Add,
-                                               (EApp ((EVar "to_int"),
-                                                  (EVar "hd"))),
-                                               (EVar "acc")))
-                                            )),
-                                         (EVar "tl"))))
-                                     ]
-                                   ))
-                                )),
-                             { env =
-                               ["E": (EffDec2V ("E", TString, TInt)),
-                                "to_int": (FunV ((PVar "match"),
-                                             (EMatch ((EVar "match"),
-                                                [((PConst (CString "0")),
-                                                  (EConst (CInt 0)));
-                                                  ((PConst (CString "1")),
-                                                   (EConst (CInt 1)));
-                                                  ((PVar "s"),
-                                                   (EPerform
-                                                      (EEffect2 ("E",
-                                                         (EVar "s")))))
-                                                  ]
-                                                )),
-                                             { env =
-                                               ["E": (EffDec2V ("E", TString,
-                                                        TInt)),
-                                                ];
-                                               context = [] }
-                                             )),
-                                ];
-                               context = [] }
-                             )),
-                "to_int": (FunV ((PVar "match"),
-                             (EMatch ((EVar "match"),
-                                [((PConst (CString "0")), (EConst (CInt 0)));
-                                  ((PConst (CString "1")), (EConst (CInt 1)));
-                                  ((PVar "s"),
-                                   (EPerform (EEffect2 ("E", (EVar "s")))))
-                                  ]
-                                )),
-                             { env = ["E": (EffDec2V ("E", TString, TInt)),
-                                      ];
-                               context = [] }
-                             )),
-                ];
-               context = [] }
-             )),
-   "to_int": (FunV ((PVar "match"),
-                (EMatch ((EVar "match"),
-                   [((PConst (CString "0")), (EConst (CInt 0)));
-                     ((PConst (CString "1")), (EConst (CInt 1)));
-                     ((PVar "s"), (EPerform (EEffect2 ("E", (EVar "s")))))]
-                   )),
-                { env = ["E": (EffDec2V ("E", TString, TInt)),
-                         ];
-                  context = [] }
-                )),
-   ];
-  context = [] }|}
+   |}
 ;;
+
+(* let%test _ =
+   test
+    ~code:
+      {|
+   let sum = 
+    let rec fold f init = function 
+    | [] -> init 
+    | hd :: tl -> fold (f init hd) tl
+    in 
+    fold (fun x y -> x + y) 0 
+    ;;
+
+    let result = sum [2; 3; 4; -1]
+
+   |}
+   ;; *)

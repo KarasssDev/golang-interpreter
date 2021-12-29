@@ -382,9 +382,9 @@ let pack =
     let basic =
       trim
       @@ choice
-           [ token "int" *> return tint
-           ; token "string" *> return tstring
-           ; token "bool" *> return tbool
+           [ kwd "int" *> return tint
+           ; kwd "string" *> return tstring
+           ; kwd "bool" *> return tbool
            ; (uns >>| fun b -> tvar @@ Base.Int.of_string b)
            ; parens @@ d.tyexp d
            ]
@@ -392,12 +392,11 @@ let pack =
     let list_or_eff =
       let* ty = basic in
       let* l =
-        many1
-        @@ (empty *> (token "list" *> return tlist <|> token "eff" *> return teffect))
+        many @@ (empty *> (kwd "list" *> return tlist <|> kwd "eff" *> return teffect))
       in
       return @@ List.fold_left ~init:ty ~f:( |> ) l
     in
-    sep_by1 (token "*" *> empty) (list_or_eff <|> basic)
+    trim @@ sep_by1 (token "*" *> empty) list_or_eff
     >>| function
     | [ a ] -> a
     | tup -> TTuple tup
@@ -433,4 +432,4 @@ let decl =
 (*-------------- Prog parsing --------------*)
 
 let pprog (l : decl list) : prog = l
-let prog = many1 (trim @@ decl <* trim @@ option "" semisemi) >>| pprog
+let prog = sep_by1 semisemi decl <* option "" @@ trim semisemi >>| pprog

@@ -404,11 +404,11 @@ let%test _ =
   test
     ~code:
       {|
-   effect E1: int
+   effect E1: int;;
 
-   let y = E1
+   let y = E1;;
 
-   let helper x = 1 + perform (y)
+   let helper x = 1 + perform (y);;
 
    let res = match helper 1 with
    | effect (E1) k -> continue k (100)
@@ -437,10 +437,11 @@ let%test _ =
     ~code:
       {|
    effect E: int -> int
+   ;;
 
    let helper x = match perform (E x) with
    | effect (E s) k -> continue k s*s
-   | l -> l
+   | l -> l;;
 
    let res = match perform (E 5) with
    | effect (E s) k -> continue k s*s
@@ -468,18 +469,20 @@ let%test _ =
     ~code:
       {|
 
-    effect E: string -> int 
+    effect E: string -> int ;;
 
     let to_int = function 
     | "0" -> 0
     | "1" -> 1
     | s -> perform (E s)
+    ;;
 
     let sum = 
       let rec helper acc = function 
       | [] -> acc 
       | hd :: tl -> helper (to_int hd + acc) tl
       in helper 0
+      ;;
 
     let result = match sum ["1"; "1"; "not_int"; "smth"; "1"] with 
     | effect (E s) k -> continue k 0

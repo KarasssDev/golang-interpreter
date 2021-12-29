@@ -319,9 +319,7 @@ let infer_pat =
 
 let return_with_debug ctx exp res =
   let s, t = res in
-  let () = Printf.printf "Context:\n" in
   let () = TypeContext.pp ctx in
-  let () = Printf.printf "Subst:\n" in
   let () = Subst.pp s in
   let () = Printf.printf "Expression: %s\n" (show_exp exp) in
   let () = Printf.printf "Type: %s\n\n" (show_tyexp t) in
@@ -390,9 +388,7 @@ let infer_exp =
       | Not ->
         let* s_bool = unify t TBool in
         return_with_debug context expr (Subst.(s_bool ++ s), TBool))
-    | EVar x ->
-      let* s, t = lookup_context x context in
-      return_with_debug context expr (s, t)
+    | EVar x -> lookup_context x context
     | ETuple exps ->
       (match exps with
       | hd :: tl ->

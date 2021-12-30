@@ -3,4 +3,4 @@
   
   val E = effect
   val helper = <fun>
-  val res = 5
+  val res = 625

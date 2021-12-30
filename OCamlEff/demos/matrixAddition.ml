@@ -3,7 +3,7 @@ open Format
 
 let _ =
   let () = Printf.printf "Matrix addition test\n\n" in
-  test
+  eval_pp
     ~code:
       {|
 

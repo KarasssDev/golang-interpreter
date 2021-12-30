@@ -3,7 +3,7 @@ open Format
 
 let _ =
   let () = Printf.printf "Double handling test\n\n" in
-  test
+  eval_pp
     ~code:
       {|
 

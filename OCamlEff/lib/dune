@@ -1,7 +1,7 @@
 (library
  (name ocamlEff_lib)
  (public_name OCamlEff.Lib)
- (modules Ast Parser Typing Eval Tester ParserTests TypingTests)
+ (modules Ast Parser Typing Eval ParserTests TypingTests)
  (libraries base angstrom)
  (inline_tests)
  (preprocess

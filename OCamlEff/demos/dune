@@ -1,44 +1,8 @@
 (executable
- (name fixpoint)
- (modules fixpoint)
- (public_name fixpoint)
- (libraries OCamlEff.Lib stdio))
-
-(executable
- (name tailrecFold)
- (modules tailrecFold)
- (public_name tailrecFold)
- (libraries OCamlEff.Lib stdio))
-
-(executable
- (name matrixAddition)
- (modules matrixAddition)
- (public_name matrixAddition)
- (libraries OCamlEff.Lib stdio))
-
-(executable
- (name failureEffect)
- (modules failureEffect)
- (public_name failureEffect)
- (libraries OCamlEff.Lib stdio))
-
-(executable
- (name doubleHandling)
- (modules doubleHandling)
- (public_name doubleHandling)
- (libraries OCamlEff.Lib stdio))
-
-(executable
- (name exceptionImitation)
- (modules exceptionImitation)
- (public_name exceptionImitation)
+ (name interpreterTests)
+ (modules interpreterTests)
+ (public_name interpreterTests)
  (libraries OCamlEff.Lib stdio))
 
 (cram
- (deps
-  ./fixpoint.exe
-  ./tailrecFold.exe
-  ./matrixAddition.exe
-  ./failureEffect.exe
-  ./doubleHandling.exe
-  ./exceptionImitation.exe))
+ (deps ./interpreterTests.exe))

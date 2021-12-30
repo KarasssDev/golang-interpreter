@@ -465,14 +465,7 @@ let eval_pp ~code =
   match Parser.parse Parser.prog code with
   | Ok prog ->
     (match run (eval_prog (create_state ()) prog) with
-    | Error x ->
-      pp_error std_formatter x;
-      false
-    | Ok state ->
-      pp_env state.env;
-      (* pp_state std_formatter state;  *)
-      true)
-  | _ ->
-    Printf.printf "Parse error";
-    false
+    | Error x -> pp_error std_formatter x
+    | Ok state -> pp_env state.env)
+  | _ -> Printf.printf "Parse error"
 ;;

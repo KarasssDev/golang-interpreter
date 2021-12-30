@@ -1,5 +1,4 @@
 open OcamlEff_lib.Eval
-open Format
 
 let _ =
   let () = Printf.printf "Double handling test\n\n" in

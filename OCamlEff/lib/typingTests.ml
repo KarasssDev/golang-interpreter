@@ -106,3 +106,21 @@ let%test _ =
   |}
     ~expected:(TArrow (TInt, TBool))
 ;;
+
+let%test _ =
+  test_type
+    ~label:"Lambda with perform"
+    ~code:{|
+     fun x -> perform x
+  |}
+    ~expected:(TArrow (TEffect (TVar 1), TVar 1))
+;;
+
+let%test _ =
+  test_type
+    ~label:"Effect handling"
+    ~code:{|
+     fun x -> match x with effect y k -> continue k x | _ -> 0
+  |}
+    ~expected:(TArrow (TVar 3, TInt))
+;;

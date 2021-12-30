@@ -10,6 +10,8 @@ type error =
   | Typing_failure_pat of pat
   | Match_fail of pat * tyexp
   | Not_Implemented (* to be removed *)
+  | Invalid_Constructor
+  | Not_effect_perform
 [@@deriving show { with_path = false }]
 
 module R : sig
@@ -309,9 +311,11 @@ let infer_pat =
       let* s1, t1 = lookup_context name context in
       let* s2, t2, context1 = helper context pat in
       return (Subst.(s1 ++ s2), TArrow (t1, t2), context1)
-    | PEffectH (_, _) ->
+    | PEffectH (effpat, k) ->
+      let* s1, _, ctx1 = helper context (PVar k) in
+      let* s2, _, ctx2 = helper ctx1 effpat in
       let* fresh = fresh_var in
-      return (Subst.empty, fresh, context)
+      return (Subst.(s2 ++ s1), fresh, ctx2)
   in
   helper
 ;;
@@ -459,7 +463,28 @@ let infer_exp =
         | [] -> fail (Typing_failure_exp (EMatch (exp_main, cases)))
       in
       mega_helper cases
-    | _ -> fail Not_Implemented
+    | EEffect1 id -> lookup_context id context
+    | EEffect2 (id, exp) ->
+      let* _, effty = lookup_context id context in
+      (match effty with
+      | TArrow (a, b) ->
+        let* s1, tyexp = helper context exp in
+        let* s2 = unify a tyexp in
+        return (Subst.(s2 ++ s1), b)
+      | _ -> fail Invalid_Constructor)
+    | EPerform exp ->
+      let* s1, tyexp = helper context exp in
+      (match tyexp with
+      | TEffect t -> return (s1, t)
+      | t ->
+        let* tv = fresh_var in
+        let* s = unify t (TEffect tv) in
+        return (s, tv))
+    (* temp *)
+    | EContinue (k, _) ->
+      let* _ = lookup_context k context in
+      let* tv = fresh_var in
+      return (Subst.empty, tv)
   in
   helper
 ;;
@@ -481,7 +506,10 @@ let infer_decl context = function
       let t2 = generalize context2 t1 in
       return (TypeContext.extend context2 x t2)
     | _ -> fail (Typing_failure_decl (DLet binding)))
-  | _ -> fail Not_Implemented
+  | DEffect1 (id, ty) ->
+    return @@ TypeContext.extend context id (S (VarSet.empty, TEffect ty))
+  | DEffect2 (id, ty1, ty2) ->
+    return @@ TypeContext.extend context id (S (VarSet.empty, TArrow (ty1, TEffect ty2)))
 ;;
 
 let infer_prog prog =
@@ -530,8 +558,8 @@ let test code =
    |} *)
 
 (* let rec fold f init l = match l with 
-  | [] -> init
-  | hd :: tl -> fold f (f init hd) tl *)
+   | [] -> init
+   | hd :: tl -> fold f (f init hd) tl *)
 
 (* let%test _ = test {|
    let rec fix f x = f (fix f) x in fix|} *)
@@ -542,7 +570,7 @@ let test code =
 
 (* let%test _ = test {|
    function
-| a :: b :: c -> a * b
-| [a] -> a
-| _ -> 0
-|} *)
+   | a :: b :: c -> a * b
+   | [a] -> a
+   | _ -> 0
+   |} *)

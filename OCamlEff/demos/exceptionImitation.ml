@@ -1,9 +1,9 @@
 (* open OcamlEff_lib.Eval
-open Format
+   open Format
 
-let _ =
-  let () = Printf.printf "Exception imitation\n\n" in
-  test
+   let _ =
+   let () = Printf.printf "Exception imitation\n\n" in
+   test
     ~code:
       {|
 
@@ -27,4 +27,4 @@ let _ =
       let non_empty_hd = safe_list_hd non_empty;;
 
     |}
-;; *)
+   ;; *)

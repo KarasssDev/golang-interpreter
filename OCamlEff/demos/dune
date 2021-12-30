@@ -1,6 +1,44 @@
 (executable
- (name parseDemo)
- (modules parseDemo)
- (libraries OCamlEff.Lib)
- (preprocess
-  (pps ppx_deriving.show ppx_deriving.eq)))
+ (name fixpoint)
+ (modules fixpoint)
+ (public_name fixpoint)
+ (libraries OCamlEff.Lib))
+
+(executable
+ (name tailrecFold)
+ (modules tailrecFold)
+ (public_name tailrecFold)
+ (libraries OCamlEff.Lib))
+
+(executable
+ (name matrixAddition)
+ (modules matrixAddition)
+ (public_name matrixAddition)
+ (libraries OCamlEff.Lib))
+
+(executable
+ (name failureEffect)
+ (modules failureEffect)
+ (public_name failureEffect)
+ (libraries OCamlEff.Lib))
+
+(executable
+ (name doubleHandling)
+ (modules doubleHandling)
+ (public_name doubleHandling)
+ (libraries OCamlEff.Lib))
+
+(executable
+ (name exceptionImitation)
+ (modules exceptionImitation)
+ (public_name exceptionImitation)
+ (libraries OCamlEff.Lib))
+
+(cram
+ (deps
+  ./fixpoint.exe
+  ./tailrecFold.exe
+  ./matrixAddition.exe
+  ./failureEffect.exe
+  ./doubleHandling.exe
+  ./exceptionImitation.exe))

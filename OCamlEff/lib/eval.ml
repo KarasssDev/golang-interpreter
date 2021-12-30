@@ -73,9 +73,8 @@ let pp_value k =
     | ListV l ->
       fprintf fmt "[%a]" (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "; ") helper) l
     | FunV (_, _, _) -> fprintf fmt "<fun>"
-    | Eff1V _ | Eff2V _ -> ()
     | ContV _ -> fprintf fmt "continuation"
-    | _ -> ()
+    | _ -> fprintf fmt "effect"
   in
   fun v ->
     let () = helper std_formatter v in
@@ -423,35 +422,3 @@ let test ~code =
     Printf.printf "Parse error";
     false
 ;;
-
-let%test _ =
-  test
-    ~code:
-      {|
-
-      let rec fix f x = f (fix f) x
-    ;;
-
-    let rec fac self n = if n <= 1 then n else n * self ( n - 1);;
-
-    let res = fix fac 100000
-
-   |}
-;;
-
-(* let%test _ =
-   test
-    ~code:
-      {|
-   let sum = 
-    let rec fold f init = function 
-    | [] -> init 
-    | hd :: tl -> fold (f init hd) tl
-    in 
-    fold (fun x y -> x + y) 0 
-    ;;
-
-    let result = sum [2; 3; 4; -1]
-
-   |}
-   ;; *)

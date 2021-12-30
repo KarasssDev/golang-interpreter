@@ -9,6 +9,7 @@ type error =
   | Typing_failure_decl of decl
   | Typing_failure_pat of pat
   | Match_fail of pat * tyexp
+  | Binging_error of pat * exp
   | Not_Implemented (* to be removed *)
   | Invalid_Constructor
   | Not_effect_perform
@@ -406,22 +407,42 @@ let infer_exp =
     | ELet (bindings, in_exp) ->
       (match bindings with
       | hd :: tl ->
+        let rec match_pat = function
+          | PVar p, exp ->
+            let* s1, t1 = helper context exp in
+            let context2 = TypeContext.apply s1 context in
+            let t2 = generalize context2 t1 in
+            return (s1, TypeContext.extend context2 p t2)
+          | PTuple (hd_p :: tl_p), ETuple (hd_e :: tl_e) ->
+            let* oc_check = contains_pat (hd_p, tl_p) in
+            if oc_check
+            then fail Occurs_check
+            else
+              let* s1, context1 = match_pat (hd_p, hd_e) in
+              let* s2, context2 = match_pat (PTuple tl_p, ETuple tl_e) in
+              let context_uni = TypeMap.union (fun _ v1 _ -> Some v1) context1 context2 in
+              return (Subst.(s2 ++ s1), context_uni)
+          | PTuple [], ETuple [] -> return (Subst.empty, context)
+          | PWild, exp ->
+            let* s1, _ = helper context exp in
+            let context2 = TypeContext.apply s1 context in
+            return (s1, context2)
+          | a, b -> fail (Binging_error (a, b))
+        in
         (match hd with
-        | false, PVar x, exp ->
-          let* s1, t1 = helper context exp in
-          let context2 = TypeContext.apply s1 context in
-          let t2 = generalize context2 t1 in
-          let* s2, t3 = helper (TypeContext.extend context2 x t2) (ELet (tl, in_exp)) in
+        | false, pat, exp ->
+          let* s1, context2 = match_pat (pat, exp) in
+          let* s2, t3 = helper context2 (ELet (tl, in_exp)) in
           return (Subst.(s1 ++ s2), t3)
         | true, PVar x, exp ->
           let* fresh = fresh_var in
           let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
           let* s1, t1 = helper context exp in
-          let* _ = unify fresh t1 in
-          let context2 = TypeContext.apply s1 context in
-          let t2 = generalize context2 t1 in
-          let* s2, t3 = helper (TypeContext.extend context2 x t2) (ELet (tl, in_exp)) in
-          return (Subst.(s1 ++ s2), t3)
+          let* s2 = unify (Subst.apply s1 fresh) t1 in
+          let s = Subst.(s2 ++ s1) in
+          let context2 = TypeContext.apply s context in
+          let t2 = generalize context2 (Subst.apply s fresh) in
+          helper TypeContext.(extend (apply s context2) x t2) (ELet (tl, in_exp))
         | _ -> fail (Typing_failure_exp (ELet (bindings, in_exp))))
       | [] ->
         let* s, t = helper context in_exp in
@@ -433,11 +454,11 @@ let infer_exp =
       let trez = TArrow (Subst.apply s2 t1, t2) in
       return (s, trez)
     | EApp (exp1, exp2) ->
-      let* tv = fresh_var in
       let* s1, t1 = helper context exp1 in
       let* s2, t2 = helper (TypeContext.apply s1 context) exp2 in
+      let* tv = fresh_var in
       let* s3 = unify (Subst.apply s2 t1) (TArrow (t2, tv)) in
-      let trez = Subst.apply Subst.(s3 ++ s2) tv in
+      let trez = Subst.apply s3 tv in
       return (Subst.(s3 ++ s2 ++ s1), trez)
     | EMatch (exp_main, cases) ->
       let* s0, t0 = helper context exp_main in
@@ -491,19 +512,39 @@ let infer_exp =
 
 let infer_decl context = function
   | DLet binding ->
+    let rec match_pat = function
+      | PVar p, exp ->
+        let* s1, t1 = infer_exp context exp in
+        let context2 = TypeContext.apply s1 context in
+        let t2 = generalize context2 t1 in
+        return (s1, TypeContext.extend context2 p t2)
+      | PTuple (hd_p :: tl_p), ETuple (hd_e :: tl_e) ->
+        let* oc_check = contains_pat (hd_p, tl_p) in
+        if oc_check
+        then fail Occurs_check
+        else
+          let* s1, context1 = match_pat (hd_p, hd_e) in
+          let* s2, context2 = match_pat (PTuple tl_p, ETuple tl_e) in
+          let context_uni = TypeMap.union (fun _ v1 _ -> Some v1) context1 context2 in
+          return (Subst.(s2 ++ s1), context_uni)
+      | PWild, exp ->
+        let* s1, _ = infer_exp context exp in
+        let context2 = TypeContext.apply s1 context in
+        return (s1, context2)
+      | a, b -> fail (Binging_error (a, b))
+    in
     (match binding with
-    | false, PVar x, exp ->
-      let* s1, t1 = infer_exp context exp in
-      let context2 = TypeContext.apply s1 context in
-      let t2 = generalize context2 t1 in
-      return (TypeContext.extend context2 x t2)
+    | false, pat, exp ->
+      let* _, context1 = match_pat (pat, exp) in
+      return context1
     | true, PVar x, exp ->
       let* fresh = fresh_var in
       let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
       let* s1, t1 = infer_exp context exp in
-      let* _ = unify fresh t1 in
-      let context2 = TypeContext.apply s1 context in
-      let t2 = generalize context2 t1 in
+      let* s2 = unify (Subst.apply s1 fresh) t1 in
+      let s = Subst.(s2 ++ s1) in
+      let context2 = TypeContext.apply s context in
+      let t2 = generalize context2 (Subst.apply s fresh) in
       return (TypeContext.extend context2 x t2)
     | _ -> fail (Typing_failure_decl (DLet binding)))
   | DEffect1 (id, ty) ->
@@ -574,3 +615,7 @@ let test code =
    | [a] -> a
    | _ -> 0
    |} *)
+
+(* let%test _ = test {|
+ let (a,b) = (1,[2]) in a :: b
+ |} *)

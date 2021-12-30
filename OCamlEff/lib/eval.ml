@@ -9,8 +9,7 @@ module EnvMap = struct
     Format.fprintf ppf "@]]@]"
   ;;
 
-  let pp_vars p = iter (fun k v -> p k v)
-  let compare = compare
+  let pp_vars printer = iter (fun k v -> printer k v)
 end
 
 let empty_env_map = EnvMap.empty
@@ -100,10 +99,8 @@ module R : sig
     val ( let* ) : 'a t -> ('a -> 'b t) -> 'b t
   end
 
-  (** Running a transformer: getting the inner result value *)
   val run : 'a t -> ('a, error) Result.t
 end = struct
-  (* A compositon: State monad after Result monad *)
   type 'a t = int -> int * ('a, error) Result.t
 
   let ( >>= ) : 'a 'b. 'a t -> ('a -> 'b t) -> 'b t =
@@ -462,7 +459,7 @@ end
 open Interpret
 open R
 
-let test ~code =
+let eval_pp ~code =
   let open Format in
   match Parser.parse Parser.prog code with
   | Ok prog ->

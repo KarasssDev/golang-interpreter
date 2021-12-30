@@ -1,9 +1,8 @@
 open OcamlEff_lib.Eval
-open Format
 
 let _ =
   let () = Printf.printf "Fixpoint test\n\n" in
-  test
+  eval_pp
     ~code:
       {|
 

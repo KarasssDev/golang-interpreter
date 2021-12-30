@@ -242,12 +242,6 @@ let cstring =
 let const = trim @@ choice [ cint; cbool; cstring ]
 let uns_const = trim @@ choice [ cunsint; cbool; cstring ]
 
-(*-------------- Continuation and effect parsing --------------*)
-let pure_or_parens p =
-  let helper = fix @@ fun helper -> parens helper <|> p in
-  helper
-;;
-
 (*-------------- Pattern parsing --------------*)
 
 let pvar = ident >>| pvar
@@ -392,7 +386,7 @@ let pack =
     let list_or_eff =
       let* ty = basic in
       let* l =
-        many @@ (empty *> (kwd "list" *> return tlist <|> kwd "eff" *> return teffect))
+        many (empty *> (kwd "list" *> return tlist <|> kwd "eff" *> return teffect))
       in
       return @@ List.fold_left ~init:ty ~f:( |> ) l
     in

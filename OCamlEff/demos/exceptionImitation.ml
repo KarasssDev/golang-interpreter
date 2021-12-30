@@ -1,4 +1,4 @@
-(* open OcamlEff_lib.Eval
+open OcamlEff_lib.Eval
    open Format
 
    let _ =
@@ -27,4 +27,4 @@
       let non_empty_hd = safe_list_hd non_empty;;
 
     |}
-   ;; *)
+   ;;

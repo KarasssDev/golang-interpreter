@@ -242,15 +242,16 @@ module Interpret = struct
     | a, b -> fail (Wrong_unary_op (a, b))
   ;;
 
-  let rec scan_cases = function
-    | hd :: tl ->
-      (match hd with
-      | PEffectH (PEffect1 name, cont), exp ->
-        (name, EffHV (PEffect1 name, cont, exp)) :: scan_cases tl
-      | PEffectH (PEffect2 (name, pat), cont), exp ->
-        (name, EffHV (PEffect2 (name, pat), cont, exp)) :: scan_cases tl
-      | _ -> scan_cases tl)
-    | [] -> []
+  let scan_cases cases =
+    List.filter_map
+      (fun (pat, exp) ->
+        match pat, exp with
+        | PEffectH (PEffect1 name, cont), exp ->
+          Some (name, EffHV (PEffect1 name, cont, exp))
+        | PEffectH (PEffect2 (name, pat), cont), exp ->
+          Some (name, EffHV (PEffect2 (name, pat), cont, exp))
+        | _ -> None)
+      cases
   ;;
 
   let rec eval_exp state = function

@@ -53,6 +53,7 @@ and error =
   | Not_bound
   | Internal_Error
   | Catapulted of exval
+  | Not_single_continue of exp
 [@@deriving show { with_path = false }]
 
 and state =
@@ -254,6 +255,24 @@ module Interpret = struct
       cases
   ;;
 
+  let rec count_continues = function
+    | ENil | EConst _ | EVar _ | EEffect1 _ -> 0
+    | EOp (_, exp1, exp2) | ECons (exp1, exp2) ->
+      count_continues exp1 + count_continues exp2
+    | EUnOp (_, exp) | EFun (_, exp) | EApp (_, exp) | EPerform exp | EEffect2 (_, exp) ->
+      count_continues exp
+    | ETuple exps -> List.fold_left (fun acc exp -> acc + count_continues exp) 0 exps
+    | EIf (exp1, exp2, exp3) ->
+      count_continues exp1 + count_continues exp2 + count_continues exp3
+    | ELet (bindings, exp) ->
+      count_continues exp
+      + List.fold_left (fun acc (_, _, exp) -> acc + count_continues exp) 0 bindings
+    | EMatch (exp, cases) ->
+      count_continues exp
+      + List.fold_left (fun acc (_, exp) -> acc + count_continues exp) 0 cases
+    | EContinue (_, exp) -> 1 + count_continues exp
+  ;;
+
   let rec eval_exp state = function
     | ENil -> return (ListV [], false)
     | EConst x ->
@@ -387,7 +406,7 @@ module Interpret = struct
         let lookup = lookup_in_context name state in
         (match Result.map (fun t -> t) (run lookup) with
         | Error _ -> fail (No_handler name)
-        | Ok (EffHV (pat, cont_val, exph)) ->
+        | Ok (EffHV (pat, cont_val, exph)) when count_continues exph < 2 ->
           (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
           | Error _ -> fail (No_effect name)
           | Ok _ ->
@@ -395,7 +414,8 @@ module Interpret = struct
             let* evaled, flag =
               eval_exp (extend_env cont_val (ContV cont_val) state) exph
             in
-            if flag then return (evaled, false) else return (EffH pat, false)))
+            if flag then return (evaled, false) else return (EffH pat, false))
+        | Ok (EffHV (_, _, exph)) -> fail (Not_single_continue exph))
       | Eff2V (name, exval) ->
         let lookup = lookup_in_context name state in
         (match run lookup with

@@ -13,7 +13,7 @@ end
 module type MONAD_FAIL = sig
   include Base.Monad.S2
 
-  val run : ('a, 'e) t -> ('a, 'e) result
+  val run : ('a, 'e) t -> ok:('a -> ('b, 'e) t) -> err:('e -> ('b, 'e) t) -> ('b, 'e) t
   val fail : 'e -> ('a, 'e) t
   val ( let* ) : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
 end
@@ -231,6 +231,8 @@ module Interpret (M : MONAD_FAIL) = struct
     | EContinue (_, exp) -> 1 + count_continues exp
   ;;
 
+  let tf x = return (x, false)
+
   let rec eval_exp state = function
     | ENil -> return (ListV [], false)
     | EConst x ->
@@ -238,10 +240,7 @@ module Interpret (M : MONAD_FAIL) = struct
       | CInt x -> return (IntV x, false)
       | CBool x -> return (BoolV x, false)
       | CString x -> return (StringV x, false))
-    | EVar x ->
-      (match run (lookup_in_env x state) with
-      | Ok b -> return (b, false)
-      | Error _ -> fail (Undef_var x))
+    | EVar x -> run (lookup_in_env x state) ~ok:tf ~err:fail
     | EOp (op, x, y) ->
       let* exp_x, flag1 = eval_exp state x in
       (match exp_x with
@@ -252,19 +251,13 @@ module Interpret (M : MONAD_FAIL) = struct
         (match exp_y with
         | EffH p -> return (EffH p, false)
         | a when flag2 -> return (a, true)
-        | _ ->
-          (match run (apply_infix_op op exp_x exp_y) with
-          | Ok x -> return (x, false)
-          | Error x -> fail x)))
+        | _ -> run (apply_infix_op op exp_x exp_y) ~ok:tf ~err:fail))
     | EUnOp (op, x) ->
       let* exp_x, flag1 = eval_exp state x in
       (match exp_x with
       | EffH p -> return (EffH p, false)
       | a when flag1 -> return (a, true)
-      | _ ->
-        (match run (apply_unary_op op exp_x) with
-        | Ok x -> return (x, false)
-        | Error x -> fail x))
+      | _ -> run (apply_unary_op op exp_x) ~ok:tf ~err:fail)
     | ETuple exps ->
       (match exps with
       | hd :: tl ->
@@ -313,9 +306,7 @@ module Interpret (M : MONAD_FAIL) = struct
               fold binds ~init:state ~f:(fun state (id, v) ->
                   return @@ extend_env id v state))
       in
-      (match run gen_state with
-      | Ok x -> eval_exp x exp1
-      | Error x -> fail x)
+      run gen_state ~ok:(fun s -> eval_exp s exp1) ~err:fail
     | EFun (pat, exp) -> return (FunV (pat, exp, state), false)
     | EApp (exp1, exp2) ->
       let* evaled, flag1 = eval_exp state exp1 in
@@ -350,66 +341,70 @@ module Interpret (M : MONAD_FAIL) = struct
         in
         mega_helper effh
       in
-      (match run check with
-      | Error x -> fail x
-      | Ok _ ->
-        let exp_state =
-          List.fold_left (fun state (id, v) -> extend_context id v state) state effh
-        in
-        let* evaled, _ = eval_exp exp_state exp in
-        let rec do_match = function
-          | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
-          | (pat, exp) :: tl ->
-            (match run (match_pat pat evaled) with
-            | Ok binds ->
-              let state =
-                List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-              in
-              eval_exp state exp
-            | Error _ -> do_match tl)
-        in
-        do_match mathchings)
+      run check ~err:fail ~ok:(fun _ ->
+          let exp_state =
+            List.fold_left (fun state (id, v) -> extend_context id v state) state effh
+          in
+          let* evaled, _ = eval_exp exp_state exp in
+          let rec do_match = function
+            | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
+            | (pat, exp) :: tl ->
+              run
+                (match_pat pat evaled)
+                ~ok:(fun binds ->
+                  let state =
+                    List.fold_left
+                      (fun state (id, v) -> extend_env id v state)
+                      state
+                      binds
+                  in
+                  eval_exp state exp)
+                ~err:(fun _ -> do_match tl)
+          in
+          do_match mathchings)
     | EPerform exp ->
       let* eff, _ = eval_exp state exp in
       (match eff with
       | Eff1V name ->
         let lookup = lookup_in_context name state in
-        (match run lookup with
-        | Error _ -> fail (No_handler name)
-        | Ok (EffHV (pat, cont_val, exph)) ->
-          (match run (lookup_in_env name state) with
-          | Error _ -> fail (No_effect name)
-          | Ok _ ->
-            let _ = match_pat pat (Eff1V name) in
-            let* evaled, flag =
-              eval_exp (extend_env cont_val (ContV cont_val) state) exph
-            in
-            if flag then return (evaled, false) else return (EffH pat, false)))
+        run
+          lookup
+          ~err:(fun _ -> fail (No_handler name))
+          ~ok:(fun (EffHV (pat, cont_val, exph)) ->
+            run
+              (lookup_in_env name state)
+              ~err:(fun _ -> fail (No_effect name))
+              ~ok:(fun _ ->
+                let _ = match_pat pat (Eff1V name) in
+                let* evaled, flag =
+                  eval_exp (extend_env cont_val (ContV cont_val) state) exph
+                in
+                if flag then return (evaled, false) else return (EffH pat, false)))
       | Eff2V (name, exval) ->
         let lookup = lookup_in_context name state in
-        (match run lookup with
-        | Error _ -> fail (No_handler name)
-        | Ok (EffHV (pat, cont_val, exph)) ->
-          (match run (lookup_in_env name state) with
-          | Error _ -> fail (No_effect name)
-          | Ok _ ->
-            let* binds = match_pat pat (Eff2V (name, exval)) in
-            let state =
-              List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-            in
-            let* evaled, flag =
-              eval_exp (extend_env cont_val (ContV cont_val) state) exph
-            in
-            if flag then return (evaled, false) else return (EffH pat, false)))
+        run
+          lookup
+          ~err:(fun _ -> fail (No_handler name))
+          ~ok:(fun (EffHV (pat, cont_val, exph)) ->
+            run
+              (lookup_in_env name state)
+              ~err:(fun _ -> fail (No_effect name))
+              ~ok:(fun _ ->
+                let* binds = match_pat pat (Eff2V (name, exval)) in
+                let state =
+                  List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+                in
+                let* evaled, flag =
+                  eval_exp (extend_env cont_val (ContV cont_val) state) exph
+                in
+                if flag then return (evaled, false) else return (EffH pat, false)))
       | _ -> fail Internal_Error)
     | EContinue (cont_val, exp) ->
       let _ =
         try lookup_in_env cont_val state with
         | Not_bound -> fail @@ Not_cont_val cont_val
       in
-      (match run (eval_exp state exp) with
-      | Ok (x, _) -> return (x, true)
-      | Error x -> fail x)
+      run (eval_exp state exp) ~err:fail ~ok:(fun (x, _) -> return (x, true))
     | EEffect1 name -> return (Eff1V name, false)
     | EEffect2 (name, exp) ->
       let* evaled, flag1 = eval_exp state exp in
@@ -436,10 +431,7 @@ module Interpret (M : MONAD_FAIL) = struct
   ;;
 
   let rec eval_prog state = function
-    | hd :: tl ->
-      (match run (eval_dec state hd) with
-      | Ok x -> eval_prog x tl
-      | Error x -> fail x)
+    | hd :: tl -> run (eval_dec state hd) ~err:fail ~ok:(fun x -> eval_prog x tl)
     | [] -> return state
   ;;
 end
@@ -447,7 +439,12 @@ end
 module InterpreterResult = struct
   include Base.Result
 
-  let run = Fun.id
+  let run x ~ok ~err =
+    match x with
+    | Ok v -> ok v
+    | Error e -> err e
+  ;;
+
   let ( let* ) x f = x >>= f
 end
 
@@ -456,8 +453,9 @@ let eval_pp ~code =
   let open Interpret (InterpreterResult) in
   match Parser.parse Parser.prog code with
   | Ok prog ->
-    (match InterpreterResult.run (eval_prog (create_state ()) prog) with
-    | Error x -> pp_error std_formatter x
-    | Ok state -> EnvMap.iter pp_value state.env)
+    InterpreterResult.run
+      (eval_prog (create_state ()) prog)
+      ~err:(fun x -> pp_error std_formatter x)
+      ~ok:(fun state -> EnvMap.iter pp_value state.env)
   | _ -> Printf.printf "Parse error"
 ;;

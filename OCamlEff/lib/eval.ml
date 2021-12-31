@@ -8,8 +8,6 @@ module EnvMap = struct
     iter (fun k v -> Format.fprintf ppf "@[\"%s\": %a@],@\n" k pp_v v) m;
     Format.fprintf ppf "@]]@]"
   ;;
-
-  let pp_vars printer = iter (fun k v -> printer k v)
 end
 
 let empty_env_map = EnvMap.empty
@@ -82,8 +80,6 @@ let pp_value k =
     let () = helper std_formatter v in
     print_newline ()
 ;;
-
-let pp_env = EnvMap.pp_vars pp_value
 
 module R : sig
   open Base
@@ -451,15 +447,13 @@ module Interpret = struct
   ;;
 
   let eval_dec state = function
-    | DLet bindings ->
-      (match bindings with
-      | _, pat, exp ->
-        let* evaled, _ = eval_exp state exp in
-        let* binds = match_pat pat evaled in
-        let state =
-          List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-        in
-        return state)
+    | DLet (_, pat, exp) ->
+      let* evaled, _ = eval_exp state exp in
+      let* binds = match_pat pat evaled in
+      let state =
+        List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+      in
+      return state
     | DEffect1 (name, tyexp) ->
       let state = extend_env name (EffDec1V (name, tyexp)) state in
       return state
@@ -470,7 +464,7 @@ module Interpret = struct
 
   let rec eval_prog state = function
     | hd :: tl ->
-      (match Result.map (fun t -> t) (run (eval_dec state hd)) with
+      (match run (eval_dec state hd) with
       | Ok x -> eval_prog x tl
       | Error x -> fail x)
     | [] -> return state
@@ -485,14 +479,7 @@ let eval_pp ~code =
   match Parser.parse Parser.prog code with
   | Ok prog ->
     (match run (eval_prog (create_state ()) prog) with
-    | Error x ->
-      pp_error std_formatter x;
-      false
-    | Ok state ->
-      pp_env state.env;
-      (* pp_state std_formatter state;  *)
-      true)
-  | _ ->
-    Printf.printf "Parse error";
-    false
+    | Error x -> pp_error std_formatter x
+    | Ok state -> EnvMap.iter pp_value state.env)
+  | _ -> Printf.printf "Parse error"
 ;;

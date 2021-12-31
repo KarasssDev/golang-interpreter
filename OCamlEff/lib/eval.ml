@@ -10,6 +10,14 @@ module EnvMap = struct
   ;;
 end
 
+module type MONAD_FAIL = sig
+  include Base.Monad.S2
+
+  val run : ('a, 'e) t -> ('a, 'e) result
+  val fail : 'e -> ('a, 'e) t
+  val ( let* ) : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
+end
+
 let empty_env_map = EnvMap.empty
 let extend_env_map id x = EnvMap.add id x
 
@@ -81,54 +89,8 @@ let pp_value k =
     print_newline ()
 ;;
 
-module R : sig
-  open Base
-
-  type 'a t
-
-  val bind : 'a t -> f:('a -> 'b t) -> 'b t
-  val return : 'a -> 'a t
-  val fail : error -> 'a t
-
-  include Monad.Infix with type 'a t := 'a t
-
-  module Syntax : sig
-    val ( let* ) : 'a t -> ('a -> 'b t) -> 'b t
-  end
-
-  val run : 'a t -> ('a, error) Result.t
-end = struct
-  type 'a t = int -> int * ('a, error) Result.t
-
-  let ( >>= ) : 'a 'b. 'a t -> ('a -> 'b t) -> 'b t =
-   fun m f st ->
-    let last, r = m st in
-    match r with
-    | Result.Error x -> last, Error x
-    | Ok a -> f a last
- ;;
-
-  let fail e st = st, Result.error e
-  let return x last = last, Result.ok x
-  let bind x ~f = x >>= f
-
-  let ( >>| ) : 'a 'b. 'a t -> ('a -> 'b) -> 'b t =
-   fun x f st ->
-    match x st with
-    | st, Ok x -> st, Ok (f x)
-    | st, Result.Error e -> st, Result.Error e
- ;;
-
-  module Syntax = struct
-    let ( let* ) x f = bind x ~f
-  end
-
-  let run m = snd (m 0)
-end
-
-module Interpret = struct
-  open R
-  open Syntax
+module Interpret (M : MONAD_FAIL) = struct
+  open M
 
   let fold list ~f ~init =
     let rec helper acc = function
@@ -412,10 +374,10 @@ module Interpret = struct
       (match eff with
       | Eff1V name ->
         let lookup = lookup_in_context name state in
-        (match Result.map (fun t -> t) (run lookup) with
+        (match run lookup with
         | Error _ -> fail (No_handler name)
         | Ok (EffHV (pat, cont_val, exph)) ->
-          (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
+          (match run (lookup_in_env name state) with
           | Error _ -> fail (No_effect name)
           | Ok _ ->
             let _ = match_pat pat (Eff1V name) in
@@ -482,14 +444,19 @@ module Interpret = struct
   ;;
 end
 
-open Interpret
-open R
+module InterpreterResult = struct
+  include Base.Result
+
+  let run = Fun.id
+  let ( let* ) x f = x >>= f
+end
 
 let eval_pp ~code =
   let open Format in
+  let open Interpret (InterpreterResult) in
   match Parser.parse Parser.prog code with
   | Ok prog ->
-    (match run (eval_prog (create_state ()) prog) with
+    (match InterpreterResult.run (eval_prog (create_state ()) prog) with
     | Error x -> pp_error std_formatter x
     | Ok state -> EnvMap.iter pp_value state.env)
   | _ -> Printf.printf "Parse error"

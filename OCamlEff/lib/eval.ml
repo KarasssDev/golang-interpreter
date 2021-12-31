@@ -379,22 +379,34 @@ module Interpret = struct
       | _ -> fail (Interp_error (EApp (exp1, exp2))))
     | EMatch (exp, mathchings) ->
       let effh = scan_cases mathchings in
-      let exp_state =
-        List.fold_left (fun state (id, v) -> extend_context id v state) state effh
+      let check =
+        let rec mega_helper = function
+          | (_, EffHV (_, _, exp)) :: _ when count_continues exp > 1 ->
+            fail (Not_single_continue exp)
+          | _ :: tl -> mega_helper tl
+          | [] -> return 1
+        in
+        mega_helper effh
       in
-      let* evaled, _ = eval_exp exp_state exp in
-      let rec do_match = function
-        | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
-        | (pat, exp) :: tl ->
-          (match run (match_pat pat evaled) with
-          | Ok binds ->
-            let state =
-              List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-            in
-            eval_exp state exp
-          | Error _ -> do_match tl)
-      in
-      do_match mathchings
+      (match run check with
+      | Error x -> fail x
+      | Ok _ ->
+        let exp_state =
+          List.fold_left (fun state (id, v) -> extend_context id v state) state effh
+        in
+        let* evaled, _ = eval_exp exp_state exp in
+        let rec do_match = function
+          | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
+          | (pat, exp) :: tl ->
+            (match run (match_pat pat evaled) with
+            | Ok binds ->
+              let state =
+                List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+              in
+              eval_exp state exp
+            | Error _ -> do_match tl)
+        in
+        do_match mathchings)
     | EPerform exp ->
       let* eff, _ = eval_exp state exp in
       (match eff with
@@ -402,7 +414,7 @@ module Interpret = struct
         let lookup = lookup_in_context name state in
         (match Result.map (fun t -> t) (run lookup) with
         | Error _ -> fail (No_handler name)
-        | Ok (EffHV (pat, cont_val, exph)) when count_continues exph < 2 ->
+        | Ok (EffHV (pat, cont_val, exph)) ->
           (match Result.map (fun t -> t) (run (lookup_in_env name state)) with
           | Error _ -> fail (No_effect name)
           | Ok _ ->
@@ -410,8 +422,7 @@ module Interpret = struct
             let* evaled, flag =
               eval_exp (extend_env cont_val (ContV cont_val) state) exph
             in
-            if flag then return (evaled, false) else return (EffH pat, false))
-        | Ok (EffHV (_, _, exph)) -> fail (Not_single_continue exph))
+            if flag then return (evaled, false) else return (EffH pat, false)))
       | Eff2V (name, exval) ->
         let lookup = lookup_in_context name state in
         (match run lookup with

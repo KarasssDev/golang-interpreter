@@ -1,7 +1,7 @@
-(** [a-z_][0-9a-zA-Z_] *)
+(**  [a-z_][0-9a-zA-Z_]*  *)
 type ident = string [@@deriving show { with_path = false }]
 
-(** [A-Z][0-9a-zA-Z_] *)
+(**  [A-Z][0-9a-zA-Z_]*  *)
 type capitalized_ident = string [@@deriving show { with_path = false }]
 
 (**  1  *)

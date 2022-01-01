@@ -413,46 +413,22 @@ module Interpret (M : MONAD_FAIL) = struct
       | _ -> return (Eff2V (name, evaled), false))
   ;;
 
-  let rec flatten = function
-    | PWild -> []
-    | PVar x -> [ x ]
-    | PConst _ -> []
-    | PCons (p1, p2) -> flatten p1 @ flatten p2
-    | PNil -> []
-    | PTuple l -> List.fold_right (fun p acc -> flatten p @ acc) l []
-    | PEffect1 x -> [ x ]
-    | PEffect2 (x, p) -> x :: flatten p
-    | PEffectH (p, x) -> flatten p @ [ x ]
-  ;;
-
-  let eval_dec state decl =
-    let* vars, new_state =
-      match decl with
-      | DLet (_, pat, exp) ->
-        let* evaled, _ = eval_exp state exp in
-        let* binds = match_pat pat evaled in
-        let state =
-          List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-        in
-        return (flatten pat, state)
-      | DEffect1 (name, tyexp) ->
-        let state = extend_env name (EffDec1V (name, tyexp)) state in
-        return ([ name ], state)
-      | DEffect2 (name, tyexp1, tyexp2) ->
-        let state = extend_env name (EffDec2V (name, tyexp1, tyexp2)) state in
-        return ([ name ], state)
-    in
-    let* bindings =
-      fold
-        ~f:(fun acc x ->
-          run
-            (lookup_in_env x new_state)
-            ~ok:(fun v -> return ((x, v) :: acc))
-            ~err:(fun _ -> return acc))
-        ~init:[]
-        vars
-    in
-    return (List.rev bindings, new_state)
+  let eval_dec state = function
+    | DLet (_, pat, exp) ->
+      let* evaled, _ = eval_exp state exp in
+      let* binds = match_pat pat evaled in
+      let state =
+        List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+      in
+      return (binds, state)
+    | DEffect1 (name, tyexp) ->
+      let ev = EffDec1V (name, tyexp) in
+      let state = extend_env name ev state in
+      return ([ name, ev ], state)
+    | DEffect2 (name, tyexp1, tyexp2) ->
+      let ev = EffDec2V (name, tyexp1, tyexp2) in
+      let state = extend_env name ev state in
+      return ([ name, ev ], state)
   ;;
 
   let eval_prog prog =

@@ -459,3 +459,15 @@ let eval_pp ~code =
       ~ok:(fun state -> EnvMap.iter pp_value state.env)
   | _ -> Printf.printf "Parse error"
 ;;
+
+(* let%test _ = () = eval_pp ~code:{|
+
+  effect E : int ;;
+
+  let f e1 e2 = match e1, e2 with 
+  | E, E -> E
+  | _ -> E;;
+
+  let res = f E;;
+
+|} *)

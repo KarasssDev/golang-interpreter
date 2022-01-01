@@ -1,7 +1,7 @@
-(** var_name  *)
+(** [a-z_][0-9a-zA-Z_] *)
 type ident = string [@@deriving show { with_path = false }]
 
-(** Choice  *)
+(** [A-Z][0-9a-zA-Z_] *)
 type capitalized_ident = string [@@deriving show { with_path = false }]
 
 (**  1  *)

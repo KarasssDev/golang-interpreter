@@ -33,12 +33,12 @@
   >    let non_empty_hd = safe_list_hd non_empty
   >  ;;
   val EmptyListException = effect
-  val empty = []
-  val empty_hd = (0, false)
   val list_hd = <fun>
+  val empty = []
   val non_empty = [1; 2; 3]
-  val non_empty_hd = (1, true)
   val safe_list_hd = <fun>
+  val empty_hd = (0, false)
+  val non_empty_hd = (1, true)
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  effect Failure : string -> int
@@ -59,9 +59,9 @@
   >  ;; 
   val Failure = effect
   val binary_int_of_str = <fun>
+  val sum_up = <fun>
   val lst = ["0"; "hope"; "1"; "it"; "0"; "works"; "1"]
   val result = 2
-  val sum_up = <fun>
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  let rec fix f x = f (fix f) x
@@ -69,9 +69,9 @@
   >  let f self n = if n <= 1 then n else self (n - 1) * n
   >  ;;
   >  let fact10 = fix f 10
+  val fix = <fun>
   val f = <fun>
   val fact10 = 3628800
-  val fix = <fun>
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  let mtx1 = [[1; 2; 3; 4];[1; 2; 3; 4];[1; 2; 3; 4]]
@@ -89,9 +89,9 @@
   >  let mtx3 = sum_up_matrix (mtx1, mtx2)
   val mtx1 = [[1; 2; 3; 4]; [1; 2; 3; 4]; [1; 2; 3; 4]]
   val mtx2 = [[0; 1; 0; 8]; [0; 0; 1; 3]; [1; 0; 1; 2]]
-  val mtx3 = [[1; 3; 3; 12]; [1; 2; 4; 7]; [2; 2; 4; 6]]
-  val sum_up_matrix = <fun>
   val sum_up_row = <fun>
+  val sum_up_matrix = <fun>
+  val mtx3 = [[1; 3; 3; 12]; [1; 2; 4; 7]; [2; 2; 4; 6]]
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  let rec fold f init = function 

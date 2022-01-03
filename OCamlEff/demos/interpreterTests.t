@@ -1,3 +1,25 @@
+# Why no type error (missing rec);
+  $ ./interpreterTests.exe <<-EOF
+  >  let fib n k = if n < 2 then n else fib (n-1) (fun l -> fib (n-2) (fun r -> k (l+r)));;
+  =====================================
+# Next program should not hang !!
+  $ ./interpreterTests.exe <<-EOF
+  >  let rec fib n k = if n < 2 then k n else fib (n-1) (fun l -> fib (n-2) (fun r -> k (l+r)));;
+  >  let ans = fib 6 (fun x -> x);;
+  =====================================
+  $ ./interpreterTests.exe <<-EOF
+  >  effect E: (int -> int -> int list -> bool) -> int
+  >  ;;
+  >  let helper x = match perform (E x) with
+  >     | effect (E s) k -> continue k (s*s)
+  >     | l -> l
+  >  ;;
+  >  let res = match perform (E 5) with
+  >     | effect (E s) k -> continue k (s*s)
+  >     | l -> helper l
+  >  ;;
+  Type error expected ???
+  =====================================
   $ ./interpreterTests.exe <<-EOF
   >  effect E: int -> int
   >  ;;

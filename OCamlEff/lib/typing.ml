@@ -479,31 +479,29 @@ let infer_exp =
     | EMatch (exp_main, cases) ->
       let* s0, t0 = helper context exp_main in
       let rec mega_helper = function
+        | [ (_, exp1) ] when count_continues exp1 > 1 ->
+          fail (Multishot_continuation exp1)
         | [ (pat, exp) ] ->
-          if count_continues exp > 1
-          then fail (Multishot_continuation exp)
-          else
-            let* s1, t1, context1 = infer_pat context pat in
-            let* s2 = unify t0 t1 in
-            let* s3, t3 = helper context1 exp in
-            let s = Subst.(s3 ++ s2 ++ s1 ++ s0) in
-            return (s, t3)
+          let* s1, t1, context1 = infer_pat context pat in
+          let* s2 = unify t0 t1 in
+          let* s3, t3 = helper context1 exp in
+          let s = Subst.(s3 ++ s2 ++ s1 ++ s0) in
+          return (s, t3)
+        | (_, exp1) :: (_, _) :: _ when count_continues exp1 > 1 ->
+          fail (Multishot_continuation exp1)
         | (pat1, exp1) :: (pat2, exp2) :: tl ->
-          if count_continues exp1 > 1
-          then fail (Multishot_continuation exp1)
-          else
-            let* s1, t1, context1 = infer_pat context pat1 in
-            let* s2, t2, context2 = infer_pat context pat2 in
-            let* s3 = unify t0 t1 in
-            let* s4 = unify t0 t2 in
-            let* s5, t5 = helper context1 exp1 in
-            let* s6, t6 = helper context2 exp2 in
-            let* s7 = unify t5 t6 in
-            (* Я провел за этим 12 часов подряд, я ""искренне"" сожалею что это не тейлрек *)
-            let* s8, t8 = mega_helper ((pat2, exp2) :: tl) in
-            let* s9 = unify t6 t8 in
-            let s = Subst.(s9 ++ s8 ++ s7 ++ s6 ++ s5 ++ s4 ++ s3 ++ s2 ++ s1) in
-            return (s, t8)
+          let* s1, t1, context1 = infer_pat context pat1 in
+          let* s2, t2, context2 = infer_pat context pat2 in
+          let* s3 = unify t0 t1 in
+          let* s4 = unify t0 t2 in
+          let* s5, t5 = helper context1 exp1 in
+          let* s6, t6 = helper context2 exp2 in
+          let* s7 = unify t5 t6 in
+          (* Я провел за этим 12 часов подряд, я ""искренне"" сожалею что это не тейлрек *)
+          let* s8, t8 = mega_helper ((pat2, exp2) :: tl) in
+          let* s9 = unify t6 t8 in
+          let s = Subst.(s9 ++ s8 ++ s7 ++ s6 ++ s5 ++ s4 ++ s3 ++ s2 ++ s1) in
+          return (s, t8)
         | [] -> fail (Typing_failure_exp (EMatch (exp_main, cases)))
       in
       mega_helper cases

@@ -59,6 +59,8 @@ and error =
   | Not_bound
   | Internal_Error
   | Catapulted of exval
+  | Catapulted_cont of exval
+  | Not_single_continue of exp
 [@@deriving show { with_path = false }]
 
 and state =
@@ -211,111 +213,80 @@ module Interpret (M : MONAD_FAIL) = struct
       cases
   ;;
 
-  let tf x = return (x, false)
+  let tf x = return x
 
   let rec eval_exp state = function
-    | ENil -> return (ListV [], false)
+    | ENil -> return (ListV [])
     | EConst x ->
       (match x with
-      | CInt x -> return (IntV x, false)
-      | CBool x -> return (BoolV x, false)
-      | CString x -> return (StringV x, false))
+      | CInt x -> return (IntV x)
+      | CBool x -> return (BoolV x)
+      | CString x -> return (StringV x))
     | EVar x -> run (lookup_in_env x state) ~ok:tf ~err:fail
     | EOp (op, x, y) ->
-      let* exp_x, flag1 = eval_exp state x in
-      (match exp_x with
-      | EffH p -> return (EffH p, false)
-      | a when flag1 -> return (a, true)
-      | _ ->
-        let* exp_y, flag2 = eval_exp state y in
-        (match exp_y with
-        | EffH p -> return (EffH p, false)
-        | a when flag2 -> return (a, true)
-        | _ -> run (apply_infix_op op exp_x exp_y) ~ok:tf ~err:fail))
+      let* exp_x = eval_exp state x in
+      let* exp_y = eval_exp state y in
+      run (apply_infix_op op exp_x exp_y) ~ok:tf ~err:fail
     | EUnOp (op, x) ->
-      let* exp_x, flag1 = eval_exp state x in
-      (match exp_x with
-      | EffH p -> return (EffH p, false)
-      | a when flag1 -> return (a, true)
-      | _ -> run (apply_unary_op op exp_x) ~ok:tf ~err:fail)
+      let* exp_x = eval_exp state x in
+      run (apply_unary_op op exp_x) ~ok:tf ~err:fail
     | ETuple exps ->
       (match exps with
       | hd :: tl ->
-        let* hd_evaled, flag1 = eval_exp state hd in
-        (match hd_evaled with
-        | EffH p -> return (EffH p, false)
-        | a when flag1 -> return (a, true)
-        | _ ->
-          let* tl_evaled, flag2 = eval_exp state (ETuple tl) in
-          (match tl_evaled with
-          | EffH p -> return (EffH p, false)
-          | a when flag2 -> return (a, true)
-          | TupleV exvals -> return (TupleV (hd_evaled :: exvals), false)
-          | _ -> fail (Interp_error (ETuple exps))))
-      | [] -> return (TupleV [], false))
+        let* hd_evaled = eval_exp state hd in
+        let* tl_evaled = eval_exp state (ETuple tl) in
+        (match tl_evaled with
+        | TupleV exvals -> return (TupleV (hd_evaled :: exvals))
+        | _ -> fail (Interp_error (ETuple exps)))
+      | [] -> return (TupleV []))
     | ECons (exp1, exp2) ->
-      let* exp1_evaled, flag1 = eval_exp state exp1 in
-      (match exp1_evaled with
-      | EffH p -> return (EffH p, false)
-      | a when flag1 -> return (a, true)
-      | _ ->
-        let* exp2_evaled, flag2 = eval_exp state exp2 in
-        (match exp2_evaled with
-        | EffH p -> return (EffH p, false)
-        | a when flag2 -> return (a, true)
-        | ListV list -> return (ListV (exp1_evaled :: list), false)
-        | x -> return (ListV [ exp1_evaled; x ], false)))
+      let* exp1_evaled = eval_exp state exp1 in
+      let* exp2_evaled = eval_exp state exp2 in
+      (match exp2_evaled with
+      | ListV list -> return (ListV (exp1_evaled :: list))
+      | x -> return (ListV [ exp1_evaled; x ]))
     | EIf (exp1, exp2, exp3) ->
-      let* evaled, flag1 = eval_exp state exp1 in
-      (match evaled with
-      | EffH p -> return (EffH p, false)
-      | a when flag1 -> return (a, true)
-      | BoolV true -> eval_exp state exp2
-      | BoolV false -> eval_exp state exp3
-      | _ -> fail (Interp_error (EIf (exp1, exp2, exp3))))
+      run
+        (eval_exp state exp1)
+        ~ok:(fun x ->
+          match x with
+          | BoolV true -> eval_exp state exp2
+          | BoolV false -> eval_exp state exp3
+          | _ -> fail (Interp_error (EIf (exp1, exp2, exp3))))
+        ~err:fail
     | ELet (bindings, exp1) ->
       let gen_state =
         fold bindings ~init:state ~f:(fun state binding ->
             let _, pat, exp = binding in
-            let* evaled, flag1 = eval_exp state exp in
-            match evaled with
-            | EffH p -> fail (Catapulted (EffH p))
-            | a when flag1 -> fail (Catapulted a)
-            | _ ->
-              let* binds = match_pat pat evaled in
-              fold binds ~init:state ~f:(fun state (id, v) ->
-                  return @@ extend_env id v state))
+            let* evaled = eval_exp state exp in
+            let* binds = match_pat pat evaled in
+            fold binds ~init:state ~f:(fun state (id, v) ->
+                return @@ extend_env id v state))
       in
       run gen_state ~ok:(fun s -> eval_exp s exp1) ~err:fail
-    | EFun (pat, exp) -> return (FunV (pat, exp, state), false)
+    | EFun (pat, exp) -> return (FunV (pat, exp, state))
     | EApp (exp1, exp2) ->
-      let* evaled, flag1 = eval_exp state exp1 in
+      let* evaled = eval_exp state exp1 in
       (match evaled with
-      | EffH p -> return (EffH p, false)
-      | a when flag1 -> return (a, true)
       | FunV (pat, exp, fstate) ->
-        let* evaled2, flag2 = eval_exp state exp2 in
-        (match evaled2 with
-        | EffH p -> return (EffH p, false)
-        | a when flag2 -> return (a, true)
-        | _ ->
-          let* binds = match_pat pat evaled2 in
-          let new_state =
-            List.fold_left (fun state (id, v) -> extend_env id v state) fstate binds
-          in
-          let very_new_state =
-            match exp1 with
-            | EVar x -> extend_env x evaled new_state
-            | _ -> new_state
-          in
-          eval_exp { very_new_state with context = state.context } exp)
+        let* evaled2 = eval_exp state exp2 in
+        let* binds = match_pat pat evaled2 in
+        let new_state =
+          List.fold_left (fun state (id, v) -> extend_env id v state) fstate binds
+        in
+        let very_new_state =
+          match exp1 with
+          | EVar x -> extend_env x evaled new_state
+          | _ -> new_state
+        in
+        eval_exp { very_new_state with context = state.context } exp
       | _ -> fail (Interp_error (EApp (exp1, exp2))))
     | EMatch (exp, mathchings) ->
       let effh = scan_cases mathchings in
       let exp_state =
         List.fold_left (fun state (id, v) -> extend_context id v state) state effh
       in
-      let* evaled, _ = eval_exp exp_state exp in
+      let* evaled = eval_exp exp_state exp in
       let rec do_match = function
         | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
         | (pat, exp) :: tl ->
@@ -330,7 +301,7 @@ module Interpret (M : MONAD_FAIL) = struct
       in
       do_match mathchings
     | EPerform exp ->
-      let* eff, _ = eval_exp state exp in
+      let* eff = eval_exp state exp in
       (match eff with
       | Eff1V name ->
         let lookup = lookup_in_context name state in
@@ -343,10 +314,13 @@ module Interpret (M : MONAD_FAIL) = struct
               ~err:(fun _ -> fail (No_effect name))
               ~ok:(fun _ ->
                 let _ = match_pat pat (Eff1V name) in
-                let* evaled, flag =
-                  eval_exp (extend_env cont_val (ContV cont_val) state) exph
-                in
-                if flag then return (evaled, false) else return (EffH pat, false)))
+                run
+                  (eval_exp (extend_env cont_val (ContV cont_val) state) exph)
+                  ~ok:(fun _ -> return (EffH pat))
+                  ~err:(fun x ->
+                    match x with
+                    | Catapulted_cont exval -> return exval
+                    | a -> fail a)))
       | Eff2V (name, exval) ->
         let lookup = lookup_in_context name state in
         run
@@ -361,29 +335,29 @@ module Interpret (M : MONAD_FAIL) = struct
                 let state =
                   List.fold_left (fun state (id, v) -> extend_env id v state) state binds
                 in
-                let* evaled, flag =
-                  eval_exp (extend_env cont_val (ContV cont_val) state) exph
-                in
-                if flag then return (evaled, false) else return (EffH pat, false)))
+                run
+                  (eval_exp (extend_env cont_val (ContV cont_val) state) exph)
+                  ~ok:(fun _ -> return (EffH pat))
+                  ~err:(fun x ->
+                    match x with
+                    | Catapulted_cont exval -> return exval
+                    | a -> fail a)))
       | _ -> fail Internal_Error)
     | EContinue (cont_val, exp) ->
       let _ =
         try lookup_in_env cont_val state with
         | Not_bound -> fail @@ Not_cont_val cont_val
       in
-      run (eval_exp state exp) ~err:fail ~ok:(fun (x, _) -> return (x, true))
-    | EEffect1 name -> return (Eff1V name, false)
+      run (eval_exp state exp) ~err:fail ~ok:(fun x -> fail (Catapulted_cont x))
+    | EEffect1 name -> return (Eff1V name)
     | EEffect2 (name, exp) ->
-      let* evaled, flag1 = eval_exp state exp in
-      (match evaled with
-      | EffH p -> return (EffH p, false)
-      | a when flag1 -> return (a, true)
-      | _ -> return (Eff2V (name, evaled), false))
+      let* evaled = eval_exp state exp in
+      return (Eff2V (name, evaled))
   ;;
 
   let eval_dec state = function
     | DLet (_, pat, exp) ->
-      let* evaled, _ = eval_exp state exp in
+      let* evaled = eval_exp state exp in
       let* binds = match_pat pat evaled in
       let state =
         List.fold_left (fun state (id, v) -> extend_env id v state) state binds
@@ -447,3 +421,20 @@ let eval_pp ~code =
    let res = f E;;
 
    |} *)
+
+let%test _ =
+  ()
+  = eval_pp
+      ~code:
+        {|
+
+ effect E: int -> int;;
+  
+ let helper x = match perform (E x) with
+      | effect (E s) k -> continue k (s*s)
+      | l -> l;;
+  let res = match perform (E 5) with
+    | effect (E s) k -> continue k (s*s)
+    | l -> helper l;;
+|}
+;;

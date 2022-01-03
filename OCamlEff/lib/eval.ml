@@ -59,7 +59,6 @@ and error =
   | Not_bound
   | Internal_Error
   | Catapulted of exval
-  | Not_single_continue of exp
 [@@deriving show { with_path = false }]
 
 and state =
@@ -212,24 +211,6 @@ module Interpret (M : MONAD_FAIL) = struct
       cases
   ;;
 
-  let rec count_continues = function
-    | ENil | EConst _ | EVar _ | EEffect1 _ -> 0
-    | EOp (_, exp1, exp2) | ECons (exp1, exp2) ->
-      count_continues exp1 + count_continues exp2
-    | EUnOp (_, exp) | EFun (_, exp) | EApp (_, exp) | EPerform exp | EEffect2 (_, exp) ->
-      count_continues exp
-    | ETuple exps -> List.fold_left (fun acc exp -> acc + count_continues exp) 0 exps
-    | EIf (exp1, exp2, exp3) ->
-      count_continues exp1 + count_continues exp2 + count_continues exp3
-    | ELet (bindings, exp) ->
-      count_continues exp
-      + List.fold_left (fun acc (_, _, exp) -> acc + count_continues exp) 0 bindings
-    | EMatch (exp, cases) ->
-      count_continues exp
-      + List.fold_left (fun acc (_, exp) -> acc + count_continues exp) 0 cases
-    | EContinue (_, exp) -> 1 + count_continues exp
-  ;;
-
   let tf x = return (x, false)
 
   let rec eval_exp state = function
@@ -331,36 +312,23 @@ module Interpret (M : MONAD_FAIL) = struct
       | _ -> fail (Interp_error (EApp (exp1, exp2))))
     | EMatch (exp, mathchings) ->
       let effh = scan_cases mathchings in
-      let check =
-        let rec mega_helper = function
-          | (_, EffHV (_, _, exp)) :: _ when count_continues exp > 1 ->
-            fail (Not_single_continue exp)
-          | _ :: tl -> mega_helper tl
-          | [] -> return 1
-        in
-        mega_helper effh
+      let exp_state =
+        List.fold_left (fun state (id, v) -> extend_context id v state) state effh
       in
-      run check ~err:fail ~ok:(fun _ ->
-          let exp_state =
-            List.fold_left (fun state (id, v) -> extend_context id v state) state effh
-          in
-          let* evaled, _ = eval_exp exp_state exp in
-          let rec do_match = function
-            | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
-            | (pat, exp) :: tl ->
-              run
-                (match_pat pat evaled)
-                ~ok:(fun binds ->
-                  let state =
-                    List.fold_left
-                      (fun state (id, v) -> extend_env id v state)
-                      state
-                      binds
-                  in
-                  eval_exp state exp)
-                ~err:(fun _ -> do_match tl)
-          in
-          do_match mathchings)
+      let* evaled, _ = eval_exp exp_state exp in
+      let rec do_match = function
+        | [] -> fail (Match_exhaust (EMatch (exp, mathchings)))
+        | (pat, exp) :: tl ->
+          run
+            (match_pat pat evaled)
+            ~ok:(fun binds ->
+              let state =
+                List.fold_left (fun state (id, v) -> extend_env id v state) state binds
+              in
+              eval_exp state exp)
+            ~err:(fun _ -> do_match tl)
+      in
+      do_match mathchings
     | EPerform exp ->
       let* eff, _ = eval_exp state exp in
       (match eff with

@@ -70,14 +70,14 @@ and state =
 (* for pp to console *)
 let pp_value (k, v) =
   let open Format in
-  let rec helper fmt = function
+  let rec helper _ = function
     | IntV n -> printf "%d" n
     | StringV s -> printf "%S" s
     | BoolV b -> printf "%b" b
     | TupleV l -> printf "(%a)" (pp_print_list ~pp_sep:(fun _ _ -> printf ", ") helper) l
     | ListV l -> printf "[%a]" (pp_print_list ~pp_sep:(fun _ _ -> printf "; ") helper) l
-    | FunV (_, _, _) -> fprintf fmt "<fun>"
-    | ContV _ -> fprintf fmt "continuation"
+    | FunV (_, _, _) -> printf "<fun>"
+    | ContV _ -> printf "continuation"
     | _ -> printf "effect"
   in
   printf "val %s = %a\n%!" k helper v
@@ -234,8 +234,7 @@ module Interpret (M : MONAD_FAIL) = struct
     | EIf (exp1, exp2, exp3) ->
       run
         (eval_exp state exp1)
-        ~ok:(fun x ->
-          match x with
+        ~ok:(function
           | BoolV true -> eval_exp state exp2
           | BoolV false -> eval_exp state exp3
           | _ -> fail (Interp_error (EIf (exp1, exp2, exp3))))
@@ -291,8 +290,7 @@ module Interpret (M : MONAD_FAIL) = struct
                 run
                   (eval_exp (extend_env cont_val (ContV cont_val) state) exph)
                   ~ok:(fun _ -> return (EffH pat))
-                  ~err:(fun x ->
-                    match x with
+                  ~err:(function
                     | Catapulted_cont exval -> return exval
                     | a -> fail a)))
       | Eff2V (name, exval) ->
@@ -310,8 +308,7 @@ module Interpret (M : MONAD_FAIL) = struct
                 run
                   (eval_exp (extend_env cont_val (ContV cont_val) state) exph)
                   ~ok:(fun _ -> return (EffH pat))
-                  ~err:(fun x ->
-                    match x with
+                  ~err:(function
                     | Catapulted_cont exval -> return exval
                     | a -> fail a)))
       | _ -> fail Internal_Error)

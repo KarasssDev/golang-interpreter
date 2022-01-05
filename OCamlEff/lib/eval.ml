@@ -18,9 +18,6 @@ module type MONAD_FAIL = sig
   val ( let* ) : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
 end
 
-let empty_env_map = EnvMap.empty
-let extend_env_map id x = EnvMap.add id x
-
 exception Not_bound
 
 let lookup id env =
@@ -36,7 +33,7 @@ and exval =
   | StringV of string
   | TupleV of exval list
   | ListV of exval list
-  | FunV of pat * exp * state
+  | FunV of pat * exp * state Lazy.t
   | Eff1V of capitalized_ident
   | Eff2V of capitalized_ident * exval
   | EffDec1V of capitalized_ident * tyexp
@@ -56,11 +53,12 @@ and error =
   | Interp_error of exp
   | Match_exhaust of exp
   | Not_cont_val of ident
-  | Not_bound
+  | Not_bound of ident
   | Internal_Error
   | Catapulted of exval
   | Catapulted_cont of exval
   | Not_single_continue of exp
+  | Let_rec_only_vars of pat
 [@@deriving show { with_path = false }]
 
 and state =
@@ -72,21 +70,17 @@ and state =
 (* for pp to console *)
 let pp_value (k, v) =
   let open Format in
-  let () = fprintf std_formatter "val %s = " k in
   let rec helper fmt = function
-    | IntV n -> fprintf fmt "%d" n
-    | StringV s -> fprintf fmt "%S" s
-    | BoolV b -> fprintf fmt "%b" b
-    | TupleV l ->
-      fprintf fmt "(%a)" (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt ", ") helper) l
-    | ListV l ->
-      fprintf fmt "[%a]" (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "; ") helper) l
+    | IntV n -> printf "%d" n
+    | StringV s -> printf "%S" s
+    | BoolV b -> printf "%b" b
+    | TupleV l -> printf "(%a)" (pp_print_list ~pp_sep:(fun _ _ -> printf ", ") helper) l
+    | ListV l -> printf "[%a]" (pp_print_list ~pp_sep:(fun _ _ -> printf "; ") helper) l
     | FunV (_, _, _) -> fprintf fmt "<fun>"
     | ContV _ -> fprintf fmt "continuation"
-    | _ -> fprintf fmt "effect"
+    | _ -> printf "effect"
   in
-  let () = helper std_formatter v in
-  print_newline ()
+  printf "val %s = %a\n%!" k helper v
 ;;
 
 module Interpret (M : MONAD_FAIL) = struct
@@ -102,20 +96,21 @@ module Interpret (M : MONAD_FAIL) = struct
 
   let empty_state = { env = EnvMap.empty; context = EnvMap.empty }
 
-  let lookup_in_env id state =
+  let lookup_env id state =
     try return (lookup id state.env) with
-    | Not_bound -> fail Not_bound
+    | Not_bound -> fail @@ Not_bound id
   ;;
 
-  let lookup_in_context id state =
+  let lookup_ctx id state =
     try return (lookup id state.context) with
-    | Not_bound -> fail Not_bound
+    | Not_bound -> fail @@ Not_bound id
   ;;
 
-  let extend_env id v state = { state with env = extend_env_map id v state.env }
+  let extend_env id v state = { state with env = EnvMap.add id v state.env }
+  let extend_ctx id v state = { state with context = EnvMap.add id v state.context }
 
-  let extend_context id v state =
-    { state with context = extend_env_map id v state.context }
+  let extend_state state binds =
+    List.fold_left (fun state (id, v) -> extend_env id v state) state binds
   ;;
 
   let rec match_pat pat var =
@@ -213,8 +208,6 @@ module Interpret (M : MONAD_FAIL) = struct
       cases
   ;;
 
-  let tf x = return x
-
   let rec eval_exp state = function
     | ENil -> return (ListV [])
     | EConst x ->
@@ -222,23 +215,16 @@ module Interpret (M : MONAD_FAIL) = struct
       | CInt x -> return (IntV x)
       | CBool x -> return (BoolV x)
       | CString x -> return (StringV x))
-    | EVar x -> run (lookup_in_env x state) ~ok:tf ~err:fail
+    | EVar x -> run (lookup_env x state) ~ok:return ~err:fail
     | EOp (op, x, y) ->
       let* exp_x = eval_exp state x in
       let* exp_y = eval_exp state y in
-      run (apply_infix_op op exp_x exp_y) ~ok:tf ~err:fail
+      run (apply_infix_op op exp_x exp_y) ~ok:return ~err:fail
     | EUnOp (op, x) ->
       let* exp_x = eval_exp state x in
-      run (apply_unary_op op exp_x) ~ok:tf ~err:fail
+      run (apply_unary_op op exp_x) ~ok:return ~err:fail
     | ETuple exps ->
-      (match exps with
-      | hd :: tl ->
-        let* hd_evaled = eval_exp state hd in
-        let* tl_evaled = eval_exp state (ETuple tl) in
-        (match tl_evaled with
-        | TupleV exvals -> return (TupleV (hd_evaled :: exvals))
-        | _ -> fail (Interp_error (ETuple exps)))
-      | [] -> return (TupleV []))
+      M.all (List.map (eval_exp state) exps) >>= fun x -> return @@ TupleV x
     | ECons (exp1, exp2) ->
       let* exp1_evaled = eval_exp state exp1 in
       let* exp2_evaled = eval_exp state exp2 in
@@ -257,34 +243,24 @@ module Interpret (M : MONAD_FAIL) = struct
     | ELet (bindings, exp1) ->
       let gen_state =
         fold bindings ~init:state ~f:(fun state binding ->
-            let _, pat, exp = binding in
-            let* evaled = eval_exp state exp in
-            let* binds = match_pat pat evaled in
-            fold binds ~init:state ~f:(fun state (id, v) ->
-                return @@ extend_env id v state))
+            let* _, st = eval_binding state binding in
+            return st)
       in
       run gen_state ~ok:(fun s -> eval_exp s exp1) ~err:fail
-    | EFun (pat, exp) -> return (FunV (pat, exp, state))
+    | EFun (pat, exp) -> return (FunV (pat, exp, lazy state))
     | EApp (exp1, exp2) ->
       let* evaled = eval_exp state exp1 in
       (match evaled with
-      | FunV (pat, exp, fstate) ->
+      | FunV (pat, body, fstate) ->
         let* evaled2 = eval_exp state exp2 in
         let* binds = match_pat pat evaled2 in
-        let new_state =
-          List.fold_left (fun state (id, v) -> extend_env id v state) fstate binds
-        in
-        let very_new_state =
-          match exp1 with
-          | EVar x -> extend_env x evaled new_state
-          | _ -> new_state
-        in
-        eval_exp { very_new_state with context = state.context } exp
+        let new_state = extend_state { state with env = (Lazy.force fstate).env } binds in
+        eval_exp new_state body
       | _ -> fail (Interp_error (EApp (exp1, exp2))))
     | EMatch (exp, mathchings) ->
       let effh = scan_cases mathchings in
       let exp_state =
-        List.fold_left (fun state (id, v) -> extend_context id v state) state effh
+        List.fold_left (fun state (id, v) -> extend_ctx id v state) state effh
       in
       let* evaled = eval_exp exp_state exp in
       let rec do_match = function
@@ -293,9 +269,7 @@ module Interpret (M : MONAD_FAIL) = struct
           run
             (match_pat pat evaled)
             ~ok:(fun binds ->
-              let state =
-                List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-              in
+              let state = extend_state state binds in
               eval_exp state exp)
             ~err:(fun _ -> do_match tl)
       in
@@ -304,13 +278,13 @@ module Interpret (M : MONAD_FAIL) = struct
       let* eff = eval_exp state exp in
       (match eff with
       | Eff1V name ->
-        let lookup = lookup_in_context name state in
+        let lookup = lookup_ctx name state in
         run
           lookup
           ~err:(fun _ -> fail (No_handler name))
           ~ok:(fun (EffHV (pat, cont_val, exph)) ->
             run
-              (lookup_in_env name state)
+              (lookup_env name state)
               ~err:(fun _ -> fail (No_effect name))
               ~ok:(fun _ ->
                 let _ = match_pat pat (Eff1V name) in
@@ -322,19 +296,17 @@ module Interpret (M : MONAD_FAIL) = struct
                     | Catapulted_cont exval -> return exval
                     | a -> fail a)))
       | Eff2V (name, exval) ->
-        let lookup = lookup_in_context name state in
+        let lookup = lookup_ctx name state in
         run
           lookup
           ~err:(fun _ -> fail (No_handler name))
           ~ok:(fun (EffHV (pat, cont_val, exph)) ->
             run
-              (lookup_in_env name state)
+              (lookup_env name state)
               ~err:(fun _ -> fail (No_effect name))
               ~ok:(fun _ ->
                 let* binds = match_pat pat (Eff2V (name, exval)) in
-                let state =
-                  List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-                in
+                let state = extend_state state binds in
                 run
                   (eval_exp (extend_env cont_val (ContV cont_val) state) exph)
                   ~ok:(fun _ -> return (EffH pat))
@@ -345,7 +317,7 @@ module Interpret (M : MONAD_FAIL) = struct
       | _ -> fail Internal_Error)
     | EContinue (cont_val, exp) ->
       let _ =
-        try lookup_in_env cont_val state with
+        try lookup_env cont_val state with
         | Not_bound -> fail @@ Not_cont_val cont_val
       in
       run (eval_exp state exp) ~err:fail ~ok:(fun x -> fail (Catapulted_cont x))
@@ -353,24 +325,42 @@ module Interpret (M : MONAD_FAIL) = struct
     | EEffect2 (name, exp) ->
       let* evaled = eval_exp state exp in
       return (Eff2V (name, evaled))
+
+  and eval_binding state (is_rec, pat, exp) =
+    if not is_rec
+    then
+      let* evaled = eval_exp state exp in
+      let* binds = match_pat pat evaled in
+      let extended = extend_state state binds in
+      return (binds, extended)
+    else
+      let* id =
+        match pat with
+        | PVar id -> return id
+        | other -> fail (Let_rec_only_vars other)
+      in
+      let* dummy =
+        match exp with
+        | EFun (pat, body) ->
+          let rec new_env = lazy (extend_env id (FunV (pat, body, new_env)) state) in
+          return @@ FunV (pat, body, new_env)
+        | other -> eval_exp state other
+      in
+      let extended = extend_env id dummy state in
+      let* evaled = eval_exp extended exp in
+      return ([ id, evaled ], extend_env id evaled extended)
   ;;
 
   let eval_dec state = function
-    | DLet (_, pat, exp) ->
-      let* evaled = eval_exp state exp in
-      let* binds = match_pat pat evaled in
-      let state =
-        List.fold_left (fun state (id, v) -> extend_env id v state) state binds
-      in
-      return (binds, state)
+    | DLet binding -> eval_binding state binding
     | DEffect1 (name, tyexp) ->
       let ev = EffDec1V (name, tyexp) in
-      let state = extend_env name ev state in
-      return ([ name, ev ], state)
+      let extended = extend_env name ev state in
+      return ([ name, ev ], extended)
     | DEffect2 (name, tyexp1, tyexp2) ->
       let ev = EffDec2V (name, tyexp1, tyexp2) in
-      let state = extend_env name ev state in
-      return ([ name, ev ], state)
+      let extended = extend_env name ev state in
+      return ([ name, ev ], extended)
   ;;
 
   let eval_prog prog =
@@ -408,33 +398,4 @@ let eval_pp ~code =
       ~err:(fun x -> pp_error std_formatter x)
       ~ok:(fun binds -> List.iter pp_value binds)
   | _ -> Printf.printf "Parse error"
-;;
-
-(* let%test _ = () = eval_pp ~code:{|
-
-   effect E : int ;;
-
-   let f e1 e2 = match e1, e2 with 
-   | E, E -> E
-   | _ -> E;;
-
-   let res = f E;;
-
-   |} *)
-
-let%test _ =
-  ()
-  = eval_pp
-      ~code:
-        {|
-
- effect E: int -> int;;
-  
- let helper x = match perform (E x) with
-      | effect (E s) k -> continue k (s*s)
-      | l -> l;;
-  let res = match perform (E 5) with
-    | effect (E s) k -> continue k (s*s)
-    | l -> helper l;;
-|}
 ;;

@@ -268,20 +268,12 @@ let infer_pat =
         | CString _ -> Subst.empty, TString, context)
     | PCons (pat1, pat2) ->
       let* s1, t1, context1 = helper context pat1 in
-      let* s2, t2, context2 = helper context pat2 in
-      (match t2 with
-      | TList _ ->
-        let* s_uni = unify (TList t1) t2 in
-        return
-          ( Subst.(s_uni ++ s1 ++ s2)
-          , TList t1
-          , TypeMap.union (fun _ _ v2 -> Some v2) context1 context2 )
-      | TVar _ ->
-        return
-          ( Subst.(s1 ++ s2)
-          , TList t1
-          , TypeMap.union (fun _ _ v2 -> Some v2) context1 context2 )
-      | _ -> fail (Typing_failure_pat (PCons (pat1, pat2))))
+      let* s2, t2, context2 = helper context1 pat2 in
+      let* s_uni = unify (TList t1) t2 in
+      return
+        ( Subst.(s_uni ++ s2 ++ s1)
+        , TList (Subst.apply Subst.(s_uni ++ s2 ++ s1) t1)
+        , TypeMap.union (fun _ _ v2 -> Some v2) context1 context2 )
     | PNil ->
       let* fresh = fresh_var in
       return (Subst.empty, TList fresh, context)
@@ -330,22 +322,18 @@ let return_with_debug ctx exp res =
   return res
 ;;
 
-let rec count_continues = function
+let rec cont_cnt = function
   | ENil | EConst _ | EVar _ | EEffect1 _ -> 0
-  | EOp (_, exp1, exp2) | ECons (exp1, exp2) ->
-    count_continues exp1 + count_continues exp2
+  | EOp (_, exp1, exp2) | ECons (exp1, exp2) -> cont_cnt exp1 + cont_cnt exp2
   | EUnOp (_, exp) | EFun (_, exp) | EApp (_, exp) | EPerform exp | EEffect2 (_, exp) ->
-    count_continues exp
-  | ETuple exps -> List.fold_left (fun acc exp -> acc + count_continues exp) 0 exps
-  | EIf (exp1, exp2, exp3) ->
-    count_continues exp1 + count_continues exp2 + count_continues exp3
+    cont_cnt exp
+  | ETuple exps -> List.fold_left (fun acc exp -> acc + cont_cnt exp) 0 exps
+  | EIf (exp1, exp2, exp3) -> cont_cnt exp1 + cont_cnt exp2 + cont_cnt exp3
   | ELet (bindings, exp) ->
-    count_continues exp
-    + List.fold_left (fun acc (_, _, exp) -> acc + count_continues exp) 0 bindings
+    cont_cnt exp + List.fold_left (fun acc (_, _, exp) -> acc + cont_cnt exp) 0 bindings
   | EMatch (exp, cases) ->
-    count_continues exp
-    + List.fold_left (fun acc (_, exp) -> acc + count_continues exp) 0 cases
-  | EContinue (_, exp) -> 1 + count_continues exp
+    cont_cnt exp + List.fold_left (fun acc (_, exp) -> acc + cont_cnt exp) 0 cases
+  | EContinue (_, exp) -> 1 + cont_cnt exp
 ;;
 
 let infer_exp =
@@ -479,32 +467,32 @@ let infer_exp =
     | EMatch (exp_main, cases) ->
       let* s0, t0 = helper context exp_main in
       let rec mega_helper = function
-        | [ (_, exp1) ] when count_continues exp1 > 1 ->
-          fail (Multishot_continuation exp1)
+        | [ (_, exp1) ] when cont_cnt exp1 > 1 -> fail (Multishot_continuation exp1)
         | [ (pat, exp) ] ->
           let* s1, t1, context1 = infer_pat context pat in
           let* s2 = unify t0 t1 in
           let* s3, t3 = helper context1 exp in
           let s = Subst.(s3 ++ s2 ++ s1 ++ s0) in
-          return (s, t3)
-        | (_, exp1) :: (_, _) :: _ when count_continues exp1 > 1 ->
+          return (s, Subst.apply s t3)
+        | (_, exp1) :: (_, _) :: _ when cont_cnt exp1 > 1 ->
           fail (Multishot_continuation exp1)
         | (pat1, exp1) :: (pat2, exp2) :: tl ->
           let* s1, t1, context1 = infer_pat context pat1 in
           let* s2, t2, context2 = infer_pat context pat2 in
           let* s3 = unify t0 t1 in
           let* s4 = unify t0 t2 in
+          let* s44 = unify t1 t2 in
           let* s5, t5 = helper context1 exp1 in
           let* s6, t6 = helper context2 exp2 in
           let* s7 = unify t5 t6 in
-          (* Я провел за этим 12 часов подряд, я ""искренне"" сожалею что это не тейлрек *)
           let* s8, t8 = mega_helper ((pat2, exp2) :: tl) in
           let* s9 = unify t6 t8 in
-          let s = Subst.(s9 ++ s8 ++ s7 ++ s6 ++ s5 ++ s4 ++ s3 ++ s2 ++ s1) in
-          return (s, t8)
+          let s = Subst.(s9 ++ s8 ++ s7 ++ s6 ++ s5 ++ s44 ++ s4 ++ s3 ++ s2 ++ s1) in
+          return (s, Subst.apply s t8)
         | [] -> fail (Typing_failure_exp (EMatch (exp_main, cases)))
       in
-      mega_helper cases
+      let* s, t = mega_helper cases in
+      return (s, Subst.apply s t)
     | EEffect1 id -> lookup_context id context
     | EEffect2 (id, exp) ->
       let* _, effty = lookup_context id context in
@@ -575,7 +563,7 @@ let infer_decl context = function
 
 let infer_prog prog =
   let context_empty = return TypeContext.empty in
-  let context1 =
+  let ctx =
     List.fold_left
       (fun context decl ->
         let* context = context in
@@ -583,70 +571,9 @@ let infer_prog prog =
       context_empty
       prog
   in
-  match R.run context1 with
+  match R.run ctx with
   | Ok _ -> true
   | Error x ->
     pp_error std_formatter x;
     false
 ;;
-
-let test_infer exp =
-  match run (infer_exp TypeContext.empty exp) with
-  | Ok (s, t) ->
-    Subst.pp s;
-    Printf.printf "Type is:\n%s\n" (show_tyexp t);
-    true
-  | Error e ->
-    Printf.printf "Error is:\n%s\n" (show_error e);
-    false
-;;
-
-let test code =
-  match Parser.parse Parser.exp code with
-  | Result.Ok exp -> test_infer exp
-  | _ ->
-    Printf.printf "Parse error";
-    false
-;;
-
-(* let%test _ =
-  test
-    {|
-
-   let rec fold f init l = match l with 
-   | [] -> init
-   | hd :: tl -> fold f (f init hd) tl
-   in fold
-
-   |}
-;;
-
-let rec fold f init l =
-  match l with
-  | [] -> init
-  | hd :: tl -> fold f (f init hd) tl
-;; *)
-
-(* let%test _ = test {|
-   let rec fix f x = f (fix f) x in fix|} *)
-
-(* let%test _ = test {|
-   fun x y -> x :: y
-   |} *)
-
-(* let%test _ = test {|
-   function
-   | a :: b :: c -> a * b
-   | [a] -> a
-   | _ -> 0
-   |} *)
-
-(* let%test _ = test {|
- let (a,b) = (1,[2]) in a :: b
- |} *)
-
-(* let%test _ = test {| let f x = match x with
-| hd :: tl -> hd
-| _ -> 0
-  in f
-|} *)

@@ -122,5 +122,48 @@ let%test _ =
     ~code:{|
      fun x -> match x with effect y k -> continue k x | _ -> 0
   |}
-    ~expected:(TArrow (TVar 3, TInt))
+    ~expected:(TArrow (TVar 4, TInt))
+;;
+
+let%test _ =
+  test_type
+    ~label:"Fixpoint"
+    ~code:{|
+     let rec fix f x = f (fix f) x in fix
+  |}
+    ~expected:
+      (TArrow
+         ( TArrow (TArrow (TVar 6, TVar 7), TArrow (TVar 6, TVar 7))
+         , TArrow (TVar 6, TVar 7) ))
+;;
+
+let%test _ =
+  test_type
+    ~label:"Fold"
+    ~code:
+      {|
+     let rec fold f init = function [] -> init | hd :: tl -> fold f (f init hd) tl in fold
+  |}
+    ~expected:
+      (TArrow
+         ( TArrow (TVar 20, TArrow (TVar 19, TVar 20))
+         , TArrow (TVar 20, TArrow (TList (TVar 19), TVar 20)) ))
+;;
+
+let%test _ =
+  test_type
+    ~label:"List reverse"
+    ~code:
+      {|
+
+        let reverse = 
+          let rec aux acc = function 
+          | [] -> acc 
+          | hd :: tl -> aux (hd :: acc) tl in
+          aux []
+        in reverse
+
+
+  |}
+    ~expected:(TArrow (TList (TVar 15), TList (TVar 15)))
 ;;

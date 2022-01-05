@@ -529,18 +529,21 @@ let infer_decl context = function
 ;;
 
 let infer_prog prog =
-  let context_empty = return TypeContext.empty in
-  let ctx =
+  let context_empty = TypeContext.empty in
+  let m =
     List.fold_left
-      (fun context decl ->
-        let* context = context in
-        infer_decl context decl)
-      context_empty
+      (fun m decl ->
+        let* context, l = m in
+        let* new_context = infer_decl context decl in
+        let c_uni = TypeMap.union (fun _ _ _ -> None) context new_context in
+        let c_fold = TypeMap.fold (fun k (S (_, t)) acc -> (k, t) :: acc) c_uni [] in
+        return (new_context, l @ c_fold))
+      (return (context_empty, []))
       prog
   in
-  match R.run ctx with
-  | Ok _ -> true
+  match R.run m with
+  | Ok (_, l) -> Some l
   | Error x ->
     pp_error std_formatter x;
-    false
+    None
 ;;

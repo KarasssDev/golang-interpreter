@@ -5,11 +5,11 @@ type error =
   | Occurs_check
   | NoVariable of string
   | UnificationFailed of tyexp * tyexp
-  | Typing_failure_exp of exp
-  | Typing_failure_decl of decl
-  | Typing_failure_pat of pat
+  | Typing_failure_exp of exp (** Typing failure while infering expression *)
+  | Typing_failure_decl of decl (** Typing failure while infering declaration *)
+  | Typing_failure_pat of pat (** Typing failure while infering pattern *)
   | Match_fail of pat * tyexp
-  | Binging_error of pat * exp
+  | Binding_error of pat * exp
   | Invalid_Constructor
   | Not_effect_perform
   | Several_bound of pat
@@ -356,7 +356,7 @@ let rec match_pat context = function
     let* s1, _ = infer_exp context exp in
     let context2 = TypeContext.apply s1 context in
     return (s1, context2)
-  | a, b -> fail (Binging_error (a, b))
+  | a, b -> fail (Binding_error (a, b))
 
 and infer_exp context = function
   | EConst x ->

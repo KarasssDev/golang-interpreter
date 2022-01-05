@@ -43,22 +43,21 @@ and exval =
 [@@deriving show { with_path = false }]
 
 and error =
-  | Match_fail of pat * exval
-  | Tuple_compare of exval * exval
+  | Match_fail of pat * exval (** Pattern matching failed *)
   | No_handler of capitalized_ident
-  | No_effect of capitalized_ident
+      (** No effect handler found in context while doing perform *)
+  | No_effect of capitalized_ident (** No effect found in current state *)
   | Wrong_infix_op of infix_op * exval * exval
   | Wrong_unary_op of unary_op * exval
-  | Undef_var of ident
-  | Interp_error of exp
+  | Undef_var of ident (** No such variable in current state *)
+  | Interp_error of exp (** General interpretation error *)
   | Match_exhaust of exp
-  | Not_cont_val of ident
-  | Not_bound of ident
-  | Internal_Error
-  | Catapulted of exval
+  | Not_cont_val of ident (** Trying to continue not a continuation value *)
+  | Not_bound of ident (** No such key in a map *)
+  | Catapulted of exval (** Getting thrown out of expression evaluations *)
   | Catapulted_cont of exval
-  | Not_single_continue of exp
-  | Let_rec_only_vars of pat
+      (** Getting thrown out of expression evaluations when specifically continue is found *)
+  | Let_rec_only_vars of pat (** let rec only allows PVar patterns *)
 [@@deriving show { with_path = false }]
 
 and state =
@@ -113,6 +112,7 @@ module Interpret (M : MONAD_FAIL) = struct
     List.fold_left (fun state (id, v) -> extend_env id v state) state binds
   ;;
 
+  (* <-> means "matches" in examples *)
   let rec match_pat pat var =
     match pat, var with
     | PWild, _ -> return []
@@ -136,11 +136,15 @@ module Interpret (M : MONAD_FAIL) = struct
         return (bind_hd @ bind_tl)
       | [], [] -> return []
       | _ -> fail (Match_fail (PTuple pats, TupleV vars)))
-    | PEffect1 name_p, Eff1V name_exp when name_p = name_exp -> return []
-    | PEffect2 (name_p, p), Eff2V (name_exp, v) when name_p = name_exp -> match_pat p v
-    | PEffectH (pat, _), Eff1V name_exp -> match_pat pat (Eff1V name_exp)
-    | PEffectH (pat, _), Eff2V (name_exp, v) -> match_pat pat (Eff2V (name_exp, v))
-    | PEffectH (pat1, _), EffH pat2 when pat1 = pat2 -> return []
+    | PEffect1 name_p, Eff1V name_exp when name_p = name_exp -> return [] (* E <-> E *)
+    | PEffect2 (name_p, p), Eff2V (name_exp, v) when name_p = name_exp ->
+      match_pat p v (* E x <-> E p *)
+    | PEffectH (pat, _), Eff1V name_exp ->
+      match_pat pat (Eff1V name_exp) (* | effect E cont <-> E *)
+    | PEffectH (pat, _), Eff2V (name_exp, v) ->
+      match_pat pat (Eff2V (name_exp, v)) (* | effect (E x) cont <-> E 5 *)
+    | PEffectH (pat1, _), EffH pat2 when pat1 = pat2 ->
+      return [] (* | effect E cont <-> E (direct pattern comparison) *)
     | a, b -> fail (Match_fail (a, b))
   ;;
 
@@ -293,7 +297,7 @@ module Interpret (M : MONAD_FAIL) = struct
                   ~err:(function
                     | Catapulted_cont exval -> return exval
                     | a -> fail a)))
-      | _ -> fail Internal_Error)
+      | _ -> fail (Interp_error (EPerform exp)))
     | EContinue (cont_val, exp) ->
       let _ =
         try lookup_env cont_val state with

@@ -167,3 +167,55 @@ let%test _ =
   |}
     ~expected:(TArrow (TList (TVar 15), TList (TVar 15)))
 ;;
+
+let%test _ =
+  test_type
+    ~label:"Just example"
+    ~code:
+      {|
+
+        let f = 
+          let plus_one x = x + 1 in 
+          let to_str = function 
+          | 0 -> "0"
+          | 1 -> "1"
+          | _ -> "42" in 
+          let fst x y = x in 
+        fun x y -> to_str (plus_one (fst x y))
+        in f
+
+  |}
+    ~expected:(TArrow (TInt, TArrow (TVar 16, TString)))
+;;
+
+let%test _ =
+  test_type
+    ~label:"Declaration pattern matching"
+    ~code:{|
+
+
+      let a, b, (d, e) = 1, true, (1 :: [], "wtf") in (a, b, d, e)
+
+  |}
+    ~expected:(TTuple [ TInt; TBool; TList TInt; TString ])
+;;
+
+let%test _ =
+  test_type
+    ~label:"Fold + fixpoint"
+    ~code:
+      {|
+
+     let fold = 
+      let ffold self f init = function 
+      | [] -> init
+      | hd :: tl -> self f (f init hd) tl 
+      in let rec fix f x = f (fix f) x in 
+      fix ffold in fold
+
+  |}
+    ~expected:
+      (TArrow
+         ( TArrow (TVar 33, TArrow (TVar 32, TVar 33))
+         , TArrow (TVar 33, TArrow (TList (TVar 32), TVar 33)) ))
+;;

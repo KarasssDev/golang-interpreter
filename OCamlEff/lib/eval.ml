@@ -203,7 +203,6 @@ module Interpret (M : MONAD_FAIL) = struct
           Some (name, EffHV (PEffect1 name, cont, exp))
         | PEffectH (PEffect2 (name, pat), cont), exp ->
           Some (name, EffHV (PEffect2 (name, pat), cont, exp))
-        | PEffectH (PVar x, cont), exp -> Some (x, EffHV (PVar x, cont, exp))
         | _ -> None)
       cases
   ;;

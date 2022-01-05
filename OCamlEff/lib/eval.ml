@@ -198,17 +198,18 @@ module Interpret (M : MONAD_FAIL) = struct
 
   let scan_cases cases =
     List.filter_map
-      (fun (pat, exp) ->
-        match pat, exp with
+      (function
         | PEffectH (PEffect1 name, cont), exp ->
           Some (name, EffHV (PEffect1 name, cont, exp))
         | PEffectH (PEffect2 (name, pat), cont), exp ->
           Some (name, EffHV (PEffect2 (name, pat), cont, exp))
+        | PEffectH (PVar x, cont), exp -> Some (x, EffHV (PVar x, cont, exp))
         | _ -> None)
       cases
   ;;
 
-  let rec eval_exp state = function
+  let rec eval_exp state e =
+    match e with
     | ENil -> return (ListV [])
     | EConst x ->
       (match x with
@@ -276,7 +277,7 @@ module Interpret (M : MONAD_FAIL) = struct
     | EPerform exp ->
       let* eff = eval_exp state exp in
       (match eff with
-      | Eff1V name ->
+      | Eff1V name | Eff2V (name, _) ->
         let lookup = lookup_ctx name state in
         run
           lookup
@@ -286,24 +287,7 @@ module Interpret (M : MONAD_FAIL) = struct
               (lookup_env name state)
               ~err:(fun _ -> fail (No_effect name))
               ~ok:(fun _ ->
-                let _ = match_pat pat (Eff1V name) in
-                run
-                  (eval_exp (extend_env cont_val (ContV cont_val) state) exph)
-                  ~ok:(fun _ -> return (EffH pat))
-                  ~err:(function
-                    | Catapulted_cont exval -> return exval
-                    | a -> fail a)))
-      | Eff2V (name, exval) ->
-        let lookup = lookup_ctx name state in
-        run
-          lookup
-          ~err:(fun _ -> fail (No_handler name))
-          ~ok:(fun (EffHV (pat, cont_val, exph)) ->
-            run
-              (lookup_env name state)
-              ~err:(fun _ -> fail (No_effect name))
-              ~ok:(fun _ ->
-                let* binds = match_pat pat (Eff2V (name, exval)) in
+                let* binds = match_pat pat eff in
                 let state = extend_state state binds in
                 run
                   (eval_exp (extend_env cont_val (ContV cont_val) state) exph)

@@ -430,26 +430,16 @@ and infer_exp context = function
     let* s5 = unify t2 t3 in
     return (Subst.(s5 ++ s4 ++ s3 ++ s2 ++ s1), Subst.apply s5 t2)
   | ELet (bindings, in_exp) ->
-    (match bindings with
-    | hd :: tl ->
-      (match hd with
-      | false, pat, exp ->
-        let* s1, context2 = match_pat context (pat, exp) in
-        let* s2, t3 = infer_exp context2 (ELet (tl, in_exp)) in
-        return (Subst.(s1 ++ s2), t3)
-      | true, PVar x, exp ->
-        let* fresh = fresh_var in
-        let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
-        let* s1, t1 = infer_exp context exp in
-        let* s2 = unify (Subst.apply s1 fresh) t1 in
-        let s = Subst.(s2 ++ s1) in
-        let context2 = TypeContext.apply s context in
-        let t2 = generalize context2 (Subst.apply s fresh) in
-        infer_exp TypeContext.(extend (apply s context2) x t2) (ELet (tl, in_exp))
-      | _ -> fail (Typing_failure_exp (ELet (bindings, in_exp))))
-    | [] ->
-      let* s, t = infer_exp context in_exp in
-      return (s, t))
+    let* ctx =
+      List.fold_left
+        (fun ctx binding ->
+          let* ctx = ctx in
+          infer_binding ctx binding)
+        (return context)
+        bindings
+    in
+    let* s, t = infer_exp ctx in_exp in
+    return (s, t)
   | EFun (pat, exp) ->
     let* s1, t1, context1 = infer_pat context pat in
     let* s2, t2 = infer_exp context1 exp in
@@ -513,24 +503,25 @@ and infer_exp context = function
     let* _ = lookup_context k context in
     let* tv = fresh_var in
     return (Subst.empty, tv)
+
+and infer_binding context = function
+  | false, pat, exp ->
+    let* _, context1 = match_pat context (pat, exp) in
+    return context1
+  | true, PVar x, exp ->
+    let* fresh = fresh_var in
+    let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
+    let* s1, t1 = infer_exp context exp in
+    let* s2 = unify (Subst.apply s1 fresh) t1 in
+    let s = Subst.(s2 ++ s1) in
+    let context2 = TypeContext.apply s context in
+    let t2 = generalize context2 (Subst.apply s fresh) in
+    return (TypeContext.extend context2 x t2)
+  | other -> fail (Typing_failure_decl (DLet other))
 ;;
 
 let infer_decl context = function
-  | DLet binding ->
-    (match binding with
-    | false, pat, exp ->
-      let* _, context1 = match_pat context (pat, exp) in
-      return context1
-    | true, PVar x, exp ->
-      let* fresh = fresh_var in
-      let context = TypeContext.extend context x (S (VarSet.empty, fresh)) in
-      let* s1, t1 = infer_exp context exp in
-      let* s2 = unify (Subst.apply s1 fresh) t1 in
-      let s = Subst.(s2 ++ s1) in
-      let context2 = TypeContext.apply s context in
-      let t2 = generalize context2 (Subst.apply s fresh) in
-      return (TypeContext.extend context2 x t2)
-    | _ -> fail (Typing_failure_decl (DLet binding)))
+  | DLet binding -> infer_binding context binding
   | DEffect1 (id, ty) ->
     return @@ TypeContext.extend context id (S (VarSet.empty, TEffect ty))
   | DEffect2 (id, ty1, ty2) ->

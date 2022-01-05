@@ -208,8 +208,7 @@ module Interpret (M : MONAD_FAIL) = struct
       cases
   ;;
 
-  let rec eval_exp state e =
-    match e with
+  let rec eval_exp state = function
     | ENil -> return (ListV [])
     | EConst x ->
       (match x with

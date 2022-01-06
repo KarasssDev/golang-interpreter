@@ -4,7 +4,7 @@ open Format
 type error =
   | Occurs_check
   | NoVariable of string
-  | UnificationFailed of tyexp * tyexp
+  | UnificationFailed
   | Typing_failure_exp of exp (** Typing failure while infering expression *)
   | Typing_failure_decl of decl (** Typing failure while infering declaration *)
   | Typing_failure_pat of pat (** Typing failure while infering pattern *)
@@ -211,7 +211,7 @@ let unify l r =
         let* subst_tl = helper (TTuple tl1) (TTuple tl2) in
         return (Subst.compose subst_hd subst_tl)
       | [], [] -> return Subst.empty
-      | _ -> fail (UnificationFailed (l, r)))
+      | _ -> fail UnificationFailed)
     | TEffect t1, TEffect t2 -> helper t1 t2
     | TVar a, TVar b when a = b -> return Subst.empty
     | TVar b, t when Type.occurs_in b t -> fail Occurs_check
@@ -221,7 +221,7 @@ let unify l r =
       let* subs1 = helper l1 l2 in
       let* subs2 = helper (Type.apply subs1 r1) (Type.apply subs1 r2) in
       return Subst.(subs2 ++ subs1)
-    | _ -> fail (UnificationFailed (l, r))
+    | _ -> fail UnificationFailed
   in
   helper l r
 ;;
@@ -476,7 +476,10 @@ and infer_exp context = function
         let* s7 = unify t5 t6 in
         let* s8, t8 = mega_helper ((pat2, exp2) :: tl) in
         let* s9 = unify t6 t8 in
-        let s = Subst.(s9 ++ s8 ++ s7 ++ s6 ++ s5 ++ s44 ++ s4 ++ s3 ++ s2 ++ s1) in
+        let* s10 = unify t5 t8 in
+        let s =
+          Subst.(s10 ++ s9 ++ s8 ++ s7 ++ s6 ++ s5 ++ s44 ++ s4 ++ s3 ++ s2 ++ s1)
+        in
         return (s, Subst.apply s t8)
       | [] -> fail (Typing_failure_exp (EMatch (exp_main, cases)))
     in
@@ -544,6 +547,27 @@ let infer_prog prog =
   match R.run m with
   | Ok (_, l) -> Some l
   | Error x ->
-    pp_error std_formatter x;
+    Format.printf "Typing error: %a\n" pp_error x;
     None
+;;
+
+let pp_ty ty =
+  let open Format in
+  let rec helper _ = function
+    | TVar x -> printf "'_%d" x
+    | TBool -> printf "bool"
+    | TInt -> printf "int"
+    | TString -> printf "string"
+    | TEffect t -> printf "%a eff" helper t
+    | TTuple l -> printf "%a" (pp_print_list ~pp_sep:(fun _ _ -> printf " * ") helper) l
+    | TList t -> printf "%a list" helper t
+    | TArrow (t1, t2) ->
+      let fmt : _ format =
+        match t1 with
+        | TArrow _ -> "(%a) -> %a"
+        | _ -> "%a -> %a"
+      in
+      printf fmt helper t1 helper t2
+  in
+  helper ty
 ;;

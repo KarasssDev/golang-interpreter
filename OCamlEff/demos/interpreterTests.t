@@ -1,8 +1,25 @@
   $ ./interpreterTests.exe <<-EOF
+  >  let fib n k = if n < 2 then n else fib (n-1) (fun l -> fib (n-2) (fun r -> k (l+r)));;
+  Typing error: (NoVariable "fib")
+  =====================================
+  $ ./interpreterTests.exe <<-EOF
+  >  effect E: (int -> int -> int list -> bool) -> int
+  >  ;;
+  >  let helper x = match perform (E x) with
+  >     | effect (E s) k -> continue k (s*s)
+  >     | l -> l
+  >  ;;
+  >  let res = match perform (E 5) with
+  >     | effect (E s) k -> continue k (s*s)
+  >     | l -> helper l
+  >  ;;
+  Typing error: UnificationFailed
+  =====================================
+  $ ./interpreterTests.exe <<-EOF
   >  let rec fib n k = if n < 2 then k n else fib (n-1) (fun l -> fib (n-2) (fun r -> k (l+r)));;
   >  let ans = fib 6 (fun x -> x);;
-  val fib = <fun>
-  val ans = 8
+  val fib : int -> (int -> '_19) -> '_19 = <fun>
+  val ans : int = 8
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  effect E: int -> int
@@ -15,9 +32,9 @@
   >     | effect (E s) k -> continue k (s*s)
   >     | l -> helper l
   >  ;;
-  val E = effect
-  val helper = <fun>
-  val res = 625
+  val E : int -> int eff = effect
+  val helper : int -> int = <fun>
+  val res : int = 625
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  effect EmptyListException : int
@@ -38,13 +55,13 @@
   >  ;;
   >    let non_empty_hd = safe_list_hd non_empty
   >  ;;
-  val EmptyListException = effect
-  val list_hd = <fun>
-  val empty = []
-  val non_empty = [1; 2; 3]
-  val safe_list_hd = <fun>
-  val empty_hd = (0, false)
-  val non_empty_hd = (1, true)
+  val EmptyListException : int eff = effect
+  val list_hd : int list -> int = <fun>
+  val empty : '_6 list = []
+  val non_empty : int list = [1; 2; 3]
+  val safe_list_hd : int list -> int * bool = <fun>
+  val empty_hd : int * bool = (0, false)
+  val non_empty_hd : int * bool = (1, true)
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  effect Failure : string -> int
@@ -63,11 +80,11 @@
   >    | effect (Failure _) k -> continue k 0
   >    | res -> res
   >  ;; 
-  val Failure = effect
-  val binary_int_of_str = <fun>
-  val sum_up = <fun>
-  val lst = ["0"; "hope"; "1"; "it"; "0"; "works"; "1"]
-  val result = 2
+  val Failure : string -> int eff = effect
+  val binary_int_of_str : string -> int = <fun>
+  val sum_up : string list -> int = <fun>
+  val lst : string list = ["0"; "hope"; "1"; "it"; "0"; "works"; "1"]
+  val result : int = 2
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  let rec fix f x = f (fix f) x
@@ -75,9 +92,9 @@
   >  let f self n = if n <= 1 then n else self (n - 1) * n
   >  ;;
   >  let fact10 = fix f 10
-  val fix = <fun>
-  val f = <fun>
-  val fact10 = 3628800
+  val fix : (('_2 -> '_5) -> '_2 -> '_5) -> '_2 -> '_5 = <fun>
+  val f : (int -> int) -> int -> int = <fun>
+  val fact10 : int = 3628800
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  let mtx1 = [[1; 2; 3; 4];[1; 2; 3; 4];[1; 2; 3; 4]]
@@ -93,11 +110,11 @@
   >  | hd1 :: tl1, hd2 :: tl2 -> (sum_up_row (hd1, hd2)) :: sum_up_matrix (tl1, tl2)
   >  ;;
   >  let mtx3 = sum_up_matrix (mtx1, mtx2)
-  val mtx1 = [[1; 2; 3; 4]; [1; 2; 3; 4]; [1; 2; 3; 4]]
-  val mtx2 = [[0; 1; 0; 8]; [0; 0; 1; 3]; [1; 0; 1; 2]]
-  val sum_up_row = <fun>
-  val sum_up_matrix = <fun>
-  val mtx3 = [[1; 3; 3; 12]; [1; 2; 4; 7]; [2; 2; 4; 6]]
+  val mtx1 : int list list = [[1; 2; 3; 4]; [1; 2; 3; 4]; [1; 2; 3; 4]]
+  val mtx2 : int list list = [[0; 1; 0; 8]; [0; 0; 1; 3]; [1; 0; 1; 2]]
+  val sum_up_row : int list * int list -> int list = <fun>
+  val sum_up_matrix : int list list * int list list -> int list list = <fun>
+  val mtx3 : int list list = [[1; 3; 3; 12]; [1; 2; 4; 7]; [2; 2; 4; 6]]
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  let rec fold f init = function 
@@ -107,8 +124,8 @@
   >  let sum = fold (fun x y -> x + y) 0
   >  ;;
   >  let sum_of_first_three = sum [1; 2; 3]
-  val fold = <fun>
-  val sum = <fun>
-  val sum_of_first_three = 6
+  val fold : ('_18 -> '_5 -> '_18) -> '_18 -> '_5 list -> '_18 = <fun>
+  val sum : int list -> int = <fun>
+  val sum_of_first_three : int = 6
   =====================================
 

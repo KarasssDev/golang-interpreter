@@ -118,15 +118,6 @@ let%test _ =
 
 let%test _ =
   test_type
-    ~label:"Effect handling"
-    ~code:{|
-     fun x -> match x with effect y k -> continue k x | _ -> 0
-  |}
-    ~expected:(TArrow (TVar 4, TInt))
-;;
-
-let%test _ =
-  test_type
     ~label:"Fixpoint"
     ~code:{|
      let rec fix f x = f (fix f) x in fix

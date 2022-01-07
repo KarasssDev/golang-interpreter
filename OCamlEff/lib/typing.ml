@@ -6,8 +6,7 @@ type error =
   | NoVariable of string
   | UnificationFailed
   | Effect_pattern_not_top_level of pat
-  | Typing_failure_exp of exp (** Typing failure while infering expression *)
-  | Typing_failure_decl of decl (** Typing failure while infering declaration *)
+  | Let_rec_only_vars (** Only variables are allowed as left-hand side of let*)
   | Typing_failure_pat of pat (** Typing failure while infering pattern *)
   | Match_fail of pat * tyexp
   | Binding_error of pat * exp
@@ -408,26 +407,19 @@ and infer_exp context = function
       return (Subst.(s_bool ++ s), TBool))
   | EVar x -> lookup_context x context
   | ETuple exps ->
-    (match exps with
-    | hd :: tl ->
-      let* s1, t1 = infer_exp context hd in
-      let* s_tl, t_tl = infer_exp context (ETuple tl) in
-      (match t_tl with
-      | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps))
-      | _ -> fail (Typing_failure_exp (ETuple exps)))
-    | [] -> return (Subst.empty, TTuple []))
+    let st =
+      List.filter_map (fun e -> Result.to_option @@ run (infer_exp context e)) exps
+    in
+    let sts, tys = List.map fst st, List.map snd st in
+    return (List.fold_left Subst.( ++ ) Subst.empty sts, TTuple tys)
   | ENil ->
     let* fresh = fresh_var in
     return (Subst.empty, TList fresh)
   | ECons (exp1, exp2) ->
     let* s1, t1 = infer_exp context exp1 in
     let* s2, t2 = infer_exp context exp2 in
-    (match t2 with
-    | TList _ ->
-      let* s_uni = unify (TList t1) t2 in
-      return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
-    | TVar _ -> return (Subst.(s1 ++ s2), TList (Subst.apply s2 t1))
-    | _ -> fail (Typing_failure_exp (ECons (exp1, exp2))))
+    let* s_uni = unify (TList t1) t2 in
+    return (Subst.(s1 ++ s2 ++ s_uni), TList (Subst.apply s_uni t1))
   | EIf (exp1, exp2, exp3) ->
     let* s1, t1 = infer_exp context exp1 in
     let* s2, t2 = infer_exp context exp2 in
@@ -511,7 +503,7 @@ and infer_binding context = function
     let context2 = TypeContext.apply s context in
     let t2 = generalize context2 (Subst.apply s fresh) in
     return (TypeContext.extend context2 x t2)
-  | other -> fail (Typing_failure_decl (DLet other))
+  | _ -> fail Let_rec_only_vars
 ;;
 
 let infer_decl context = function

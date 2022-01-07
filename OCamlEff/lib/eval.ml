@@ -1,4 +1,5 @@
 open Ast
+open Typing
 
 module EnvMap = struct
   include Map.Make (String)
@@ -69,7 +70,7 @@ and state =
 [@@deriving show { with_path = false }]
 
 (* for pp to console *)
-let pp_value (k, v) =
+let pp_value (k, t, v) =
   let open Format in
   let rec helper _ = function
     | IntV n -> printf "%d" n
@@ -81,7 +82,7 @@ let pp_value (k, v) =
     | ContV _ -> printf "continuation"
     | _ -> printf "effect"
   in
-  printf "val %s = %a\n%!" k helper v
+  printf "val %s : %a = %a\n%!" k pp_ty t helper v
 ;;
 
 module Interpret (M : MONAD_FAIL) = struct
@@ -373,14 +374,18 @@ module InterpreterResult = struct
   let ( let* ) x f = x >>= f
 end
 
-let eval_pp ~code =
+let eval_pp _ code =
   let open Format in
   let open Interpret (InterpreterResult) in
   match Parser.parse Parser.prog code with
   | Ok prog ->
-    InterpreterResult.run
-      (eval_prog prog)
-      ~err:(fun x -> pp_error std_formatter x)
-      ~ok:(fun binds -> List.iter pp_value binds)
+    (match infer_prog prog with
+    | None -> ()
+    | Some types ->
+      InterpreterResult.run
+        (eval_prog prog)
+        ~err:(fun x -> pp_error std_formatter x)
+        ~ok:(fun binds ->
+          List.iter pp_value (List.map2 (fun (k, v) (_, t) -> k, t, v) binds types)))
   | _ -> Printf.printf "Parse error"
 ;;

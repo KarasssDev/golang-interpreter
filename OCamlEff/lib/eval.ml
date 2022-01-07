@@ -47,11 +47,13 @@ and error =
   | Match_fail of pat * exval (** Pattern matching failed *)
   | No_handler of capitalized_ident
       (** No effect handler found in context while doing perform *)
+  | Not_bool_condition of exp (** Condition of an if-statement should be boolean *)
+  | Not_effect_perform of exp (** Only effects can be performed *)
+  | Not_function of exp (** Applying expression to not a function *)
   | No_effect of capitalized_ident (** No effect found in current state *)
   | Wrong_infix_op of infix_op * exval * exval
   | Wrong_unary_op of unary_op * exval
   | Undef_var of ident (** No such variable in current state *)
-  | Interp_error of exp (** General interpretation error *)
   | Match_exhaust of exp
   | Not_cont_val of ident (** Trying to continue not a continuation value *)
   | Not_bound of ident (** No such key in a map *)
@@ -243,7 +245,7 @@ module Interpret (M : MONAD_FAIL) = struct
         ~ok:(function
           | BoolV true -> eval_exp state exp2
           | BoolV false -> eval_exp state exp3
-          | _ -> fail (Interp_error (EIf (exp1, exp2, exp3))))
+          | _ -> fail (Not_bool_condition exp1))
         ~err:fail
     | ELet (bindings, exp1) ->
       let gen_state =
@@ -261,7 +263,7 @@ module Interpret (M : MONAD_FAIL) = struct
         let* binds = match_pat pat evaled2 in
         let new_state = extend_state { state with env = (Lazy.force fstate).env } binds in
         eval_exp new_state body
-      | _ -> fail (Interp_error (EApp (exp1, exp2))))
+      | _ -> fail (Not_function exp1))
     | EMatch (exp, mathchings) ->
       let effh = scan_cases mathchings in
       let exp_state =
@@ -300,7 +302,7 @@ module Interpret (M : MONAD_FAIL) = struct
                   ~err:(function
                     | Catapulted_cont exval -> return exval
                     | a -> fail a)))
-      | _ -> fail (Interp_error (EPerform exp)))
+      | _ -> fail (Not_effect_perform exp))
     | EContinue (cont_val, exp) ->
       let _ =
         try lookup_env cont_val state with

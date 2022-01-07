@@ -455,35 +455,20 @@ and infer_exp context = function
     return (Subst.(s3 ++ s2 ++ s1), trez)
   | EMatch (exp_main, cases) ->
     let* s0, t0 = infer_exp context exp_main in
-    let rec mega_helper = function
-      | [ (_, exp1) ] when cont_cnt exp1 > 1 -> fail (Multishot_continuation exp1)
-      | [ (pat, exp) ] ->
-        let* s1, t1, context1 = infer_pat context pat in
-        let* s2 = unify t0 t1 in
-        let* s3, t3 = infer_exp context1 exp in
-        let s = Subst.(s3 ++ s2 ++ s1 ++ s0) in
-        return (s, Subst.apply s t3)
-      | (_, exp1) :: (_, _) :: _ when cont_cnt exp1 > 1 ->
-        fail (Multishot_continuation exp1)
-      | (pat1, exp1) :: (pat2, exp2) :: tl ->
-        let* s1, t1, context1 = infer_pat context pat1 in
-        let* s2, t2, context2 = infer_pat context pat2 in
-        let* s3 = unify t0 t1 in
-        let* s4 = unify t0 t2 in
-        let* s44 = unify t1 t2 in
-        let* s5, t5 = infer_exp context1 exp1 in
-        let* s6, t6 = infer_exp context2 exp2 in
-        let* s7 = unify t5 t6 in
-        let* s8, t8 = mega_helper ((pat2, exp2) :: tl) in
-        let* s9 = unify t6 t8 in
-        let* s10 = unify t5 t8 in
-        let s =
-          Subst.(s10 ++ s9 ++ s8 ++ s7 ++ s6 ++ s5 ++ s44 ++ s4 ++ s3 ++ s2 ++ s1)
-        in
-        return (s, Subst.apply s t8)
-      | [] -> fail (Typing_failure_exp (EMatch (exp_main, cases)))
+    let* fresh = fresh_var in
+    let* s, _, t =
+      List.fold_left
+        (fun m (pat, exp) ->
+          let* s, t_pat, t_exp = m in
+          let* s1, t1, ctx1 = infer_pat context pat in
+          let* s2, t2 = infer_exp ctx1 exp in
+          let* s3 = unify t_pat t1 in
+          let* s4 = unify t_exp t2 in
+          let s = Subst.(s4 ++ s2 ++ s3 ++ s1 ++ s) in
+          return (s, Subst.apply s t_pat, Subst.apply s t_exp))
+        (return (s0, t0, fresh))
+        cases
     in
-    let* s, t = mega_helper cases in
     return (s, Subst.apply s t)
   | EEffect1 id -> lookup_context id context
   | EEffect2 (id, exp) ->

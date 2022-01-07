@@ -122,7 +122,7 @@ let%test _ =
     ~code:{|
      fun x -> match x with effect y k -> continue k x | _ -> 0
   |}
-    ~expected:(TArrow (TVar 4, TInt))
+    ~expected:(TArrow (TVar 6, TInt))
 ;;
 
 let%test _ =
@@ -146,8 +146,8 @@ let%test _ =
   |}
     ~expected:
       (TArrow
-         ( TArrow (TVar 20, TArrow (TVar 19, TVar 20))
-         , TArrow (TVar 20, TArrow (TList (TVar 19), TVar 20)) ))
+         ( TArrow (TVar 14, TArrow (TVar 13, TVar 14))
+         , TArrow (TVar 14, TArrow (TList (TVar 13), TVar 14)) ))
 ;;
 
 let%test _ =
@@ -165,7 +165,7 @@ let%test _ =
 
 
   |}
-    ~expected:(TArrow (TList (TVar 15), TList (TVar 15)))
+    ~expected:(TArrow (TList (TVar 12), TList (TVar 12)))
 ;;
 
 let%test _ =
@@ -216,6 +216,6 @@ let%test _ =
   |}
     ~expected:
       (TArrow
-         ( TArrow (TVar 33, TArrow (TVar 32, TVar 33))
-         , TArrow (TVar 33, TArrow (TList (TVar 32), TVar 33)) ))
+         ( TArrow (TVar 27, TArrow (TVar 26, TVar 27))
+         , TArrow (TVar 27, TArrow (TList (TVar 26), TVar 27)) ))
 ;;

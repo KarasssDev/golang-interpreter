@@ -57,7 +57,7 @@
   >  ;;
   val EmptyListException : int eff = effect
   val list_hd : int list -> int = <fun>
-  val empty : '_6 list = []
+  val empty : '_5 list = []
   val non_empty : int list = [1; 2; 3]
   val safe_list_hd : int list -> int * bool = <fun>
   val empty_hd : int * bool = (0, false)
@@ -124,7 +124,7 @@
   >  let sum = fold (fun x y -> x + y) 0
   >  ;;
   >  let sum_of_first_three = sum [1; 2; 3]
-  val fold : ('_18 -> '_5 -> '_18) -> '_18 -> '_5 list -> '_18 = <fun>
+  val fold : ('_12 -> '_6 -> '_12) -> '_12 -> '_6 list -> '_12 = <fun>
   val sum : int list -> int = <fun>
   val sum_of_first_three : int = 6
   =====================================

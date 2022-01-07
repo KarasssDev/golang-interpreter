@@ -5,6 +5,7 @@ type error =
   | Occurs_check
   | NoVariable of string
   | UnificationFailed
+  | Effect_pattern_not_top_level of pat
   | Typing_failure_exp of exp (** Typing failure while infering expression *)
   | Typing_failure_decl of decl (** Typing failure while infering declaration *)
   | Typing_failure_pat of pat (** Typing failure while infering pattern *)
@@ -305,6 +306,11 @@ let infer_pat =
       let* s2, t2, context1 = helper context pat in
       return (Subst.(s1 ++ s2), TArrow (t1, t2), context1)
     | PEffectH (effpat, k) ->
+      let* _ =
+        match effpat with
+        | PEffect1 _ | PEffect2 _ -> return None
+        | _ -> fail @@ Effect_pattern_not_top_level effpat
+      in
       let* s1, _, ctx1 = helper context (PVar k) in
       let* s2, _, ctx2 = helper ctx1 effpat in
       let* fresh = fresh_var in

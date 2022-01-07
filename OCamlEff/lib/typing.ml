@@ -7,7 +7,6 @@ type error =
   | UnificationFailed
   | Effect_pattern_not_top_level of pat
   | Let_rec_only_vars (** Only variables are allowed as left-hand side of let*)
-  | Typing_failure_pat of pat (** Typing failure while infering pattern *)
   | Match_fail of pat * tyexp
   | Binding_error of pat * exp
   | Invalid_Constructor (** Wrong effect constuctor call *)
@@ -252,9 +251,15 @@ let lookup_context e xs =
 let fresh_var = fresh >>| fun n -> TVar n
 
 let rec contains_pat = function
-  | PVar x, PVar y :: _ when x = y -> return true
+  | PVar x, PVar y :: _ when x = y -> true
   | PVar x, PVar y :: tl when x != y -> contains_pat (PVar x, tl)
-  | _, _ -> return false
+  | _, _ -> false
+;;
+
+let rec check = function
+  | hd :: tl when contains_pat (hd, tl) -> fail (Several_bound (PTuple (hd :: tl)))
+  | _ :: tl -> check tl
+  | [] -> return true
 ;;
 
 let infer_pat =
@@ -285,18 +290,24 @@ let infer_pat =
       let* fresh = fresh_var in
       return (Subst.empty, fresh, context)
     | PTuple pats ->
-      (match pats with
-      | hd :: tl ->
-        let* sev_bound = contains_pat (hd, tl) in
-        if sev_bound
-        then fail (Several_bound (PTuple pats))
-        else
-          let* s1, t1, context1 = helper context hd in
-          let* s_tl, t_tl, context2 = helper context1 (PTuple tl) in
-          (match t_tl with
-          | TTuple tyexps -> return (Subst.(s1 ++ s_tl), TTuple (t1 :: tyexps), context2)
-          | _ -> fail (Typing_failure_pat (PTuple pats)))
-      | [] -> return (Subst.empty, TTuple [], context))
+      (match run (check pats) with
+      | Ok _ ->
+        let st =
+          List.filter_map (fun e -> Result.to_option @@ run (helper context e)) pats
+        in
+        let sts, tys, ctxs =
+          ( List.map (fun (z, _, _) -> z) st
+          , List.map (fun (_, z, _) -> z) st
+          , List.map (fun (_, _, z) -> z) st )
+        in
+        return
+          ( List.fold_left Subst.( ++ ) Subst.empty sts
+          , TTuple tys
+          , List.fold_left
+              (fun a ctx -> TypeMap.union (fun _ _ v -> Some v) a ctx)
+              TypeContext.empty
+              ctxs )
+      | Error x -> fail x)
     | PEffect1 name ->
       let* s, t = lookup_context name context in
       return (s, TEffect t, context)
@@ -348,7 +359,7 @@ let rec match_pat context = function
     let t2 = generalize context2 t1 in
     return (s1, TypeContext.extend context2 p t2)
   | PTuple (hd_p :: tl_p), ETuple (hd_e :: tl_e) ->
-    let* oc_check = contains_pat (hd_p, tl_p) in
+    let oc_check = contains_pat (hd_p, tl_p) in
     if oc_check
     then fail Occurs_check
     else

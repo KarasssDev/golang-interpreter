@@ -10,9 +10,9 @@ type error =
   | Typing_failure_pat of pat (** Typing failure while infering pattern *)
   | Match_fail of pat * tyexp
   | Binding_error of pat * exp
-  | Invalid_Constructor
-  | Not_effect_perform
-  | Several_bound of pat
+  | Invalid_Constructor (** Wrong effect constuctor call *)
+  | Not_effect_perform (** Calling perform not with an effect *)
+  | Several_bound of pat (** Several let binds of the same PVar in PTuples *)
   | Multishot_continuation of exp
 [@@deriving show { with_path = false }]
 

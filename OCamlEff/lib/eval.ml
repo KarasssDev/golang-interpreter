@@ -54,7 +54,9 @@ and error =
   | Match_exhaust of exp
   | Not_cont_val of ident (** Trying to continue not a continuation value *)
   | Not_bound of ident (** No such key in a map *)
+  (* Needed to leave the whole expression in EMatch when perform did not have continue in its handler *)
   | Catapulted of exval (** Getting thrown out of expression evaluations *)
+  (* Needed to leave the whole effect handler expression and return to the perform place when continue is fired *)
   | Catapulted_cont of exval
       (** Getting thrown out of expression evaluations when specifically continue is found *)
   | Let_rec_only_vars of pat (** let rec only allows PVar patterns *)

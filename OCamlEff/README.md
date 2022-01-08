@@ -9,16 +9,8 @@ Authors: Sergey Loktev, Alexander Fedkin
 Features done (append only):
 
 - Parser
-
-Feautres in progress:
-
-- Interpreter
 - Typechecker
-
-TODO:
-
-- Add check that continuation is used no more than one time
-- Fix typing pattern matching expression
+- Interpreter
 
 
 ##### Замечания по стилю кодирования

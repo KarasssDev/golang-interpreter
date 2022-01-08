@@ -318,15 +318,6 @@ let infer_pat =
   helper
 ;;
 
-let return_with_debug ctx exp res =
-  let s, t = res in
-  let () = TypeContext.pp ctx in
-  let () = Subst.pp s in
-  let () = Printf.printf "Expression: %s\n" (show_exp exp) in
-  let () = Printf.printf "Type: %s\n\n" (show_tyexp t) in
-  return res
-;;
-
 let rec cont_cnt = function
   | ENil | EConst _ | EVar _ | EEffect1 _ -> 0
   | EOp (_, exp1, exp2) | ECons (exp1, exp2) -> cont_cnt exp1 + cont_cnt exp2

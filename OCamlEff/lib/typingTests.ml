@@ -83,7 +83,7 @@ let%test _ =
     ~expected:(TArrow (TInt, TInt))
 ;;
 
-(* let%test _ =
+let%test _ =
   test_type
     ~label:"Pattern matching + recursion"
     ~code:
@@ -96,7 +96,7 @@ let%test _ =
       int_from_list
   |}
     ~expected:(TArrow (TList (TTuple [ TInt; TInt ]), TInt))
-;; *)
+;;
 
 let%test _ =
   test_type

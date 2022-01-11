@@ -63,6 +63,7 @@ and error =
   | Catapulted_cont of exval
       (** Getting thrown out of expression evaluations when specifically continue is found *)
   | Let_rec_only_vars of pat (** let rec only allows PVar patterns *)
+  | Division_by_zero
 [@@deriving show { with_path = false }]
 
 and state =
@@ -158,6 +159,7 @@ module Interpret (M : MONAD_FAIL) = struct
     | Add, IntV x, IntV y -> return (IntV (x + y))
     | Sub, IntV x, IntV y -> return (IntV (x - y))
     | Mul, IntV x, IntV y -> return (IntV (x * y))
+    | Div, IntV _, IntV y when y = 0 -> fail Division_by_zero
     | Div, IntV x, IntV y -> return (IntV (x / y))
     (* "<" block *)
     | Less, IntV x, IntV y -> return (BoolV (x < y))
@@ -386,7 +388,7 @@ let eval_pp _ code =
     | Some types ->
       InterpreterResult.run
         (eval_prog prog)
-        ~err:(fun x -> pp_error std_formatter x)
+        ~err:(fun x -> printf "%a\n" pp_error x)
         ~ok:(fun binds ->
           List.iter pp_value (List.map2 (fun (k, v) (_, t) -> k, t, v) binds types)))
   | _ -> Printf.printf "Parse error"

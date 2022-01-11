@@ -4,6 +4,7 @@
   =====================================
   $ ./interpreterTests.exe <<-EOF
   > let x = (1/0);;
+  Division_by_zero
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  effect E: (int -> int -> int list -> bool) -> int

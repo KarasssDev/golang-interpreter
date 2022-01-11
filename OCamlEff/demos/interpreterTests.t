@@ -26,6 +26,10 @@
   val ans : int = 8
   =====================================
   $ ./interpreterTests.exe <<-EOF
+  > let rec fib = fun x -> 1 :: (fib x);;
+  > let _ = fib 1;;
+  =====================================
+  $ ./interpreterTests.exe <<-EOF
   >  effect E: int -> int
   >  ;;
   >  let helper x = match perform (E x) with

@@ -3,6 +3,9 @@
   Typing error: (NoVariable "fib")
   =====================================
   $ ./interpreterTests.exe <<-EOF
+  > let x = (1/0);;
+  =====================================
+  $ ./interpreterTests.exe <<-EOF
   >  effect E: (int -> int -> int list -> bool) -> int
   >  ;;
   >  let helper x = match perform (E x) with
@@ -39,7 +42,7 @@
   $ ./interpreterTests.exe <<-EOF
   >  effect EmptyListException : int
   >  ;;
-  >  let list_hd = function 
+  >  let list_hd = function
   >     | [] -> perform EmptyListException
   >     | hd :: _ -> hd
   >  ;;
@@ -47,8 +50,8 @@
   >  ;;
   >  let non_empty = [1; 2; 3]
   >  ;;
-  >  let safe_list_hd l = match list_hd l with 
-  >    | effect EmptyListException k -> 0, false 
+  >  let safe_list_hd l = match list_hd l with
+  >    | effect EmptyListException k -> 0, false
   >    | res -> res, true
   >  ;;
   >    let empty_hd = safe_list_hd empty
@@ -66,20 +69,20 @@
   $ ./interpreterTests.exe <<-EOF
   >  effect Failure : string -> int
   >  ;;
-  >  let binary_int_of_str = function 
+  >  let binary_int_of_str = function
   >    | "0" -> 0
   >    | "1" -> 1
   >    | s -> perform (Failure s)
   >  ;;
-  >  let rec sum_up = function 
+  >  let rec sum_up = function
   >    | [] -> 0
   >    | s :: ss -> binary_int_of_str s + sum_up ss
   >  ;;
   >  let lst = ["0";"hope";"1";"it";"0";"works";"1"];;
-  >  let result = match sum_up lst with 
+  >  let result = match sum_up lst with
   >    | effect (Failure _) k -> continue k 0
   >    | res -> res
-  >  ;; 
+  >  ;;
   val Failure : string -> int eff = effect
   val binary_int_of_str : string -> int = <fun>
   val sum_up : string list -> int = <fun>
@@ -101,7 +104,7 @@
   >  ;;
   >  let mtx2 = [[0; 1; 0; 8];[0; 0; 1; 3]; [1; 0; 1; 2]]
   >  ;;
-  >  let rec sum_up_row = function 
+  >  let rec sum_up_row = function
   >  | [], [] -> []
   >  | hd1 :: tl1, hd2 :: tl2 -> (hd1 + hd2) :: sum_up_row (tl1, tl2)
   > ;;
@@ -117,8 +120,8 @@
   val mtx3 : int list list = [[1; 3; 3; 12]; [1; 2; 4; 7]; [2; 2; 4; 6]]
   =====================================
   $ ./interpreterTests.exe <<-EOF
-  >  let rec fold f init = function 
-  >    | [] -> init 
+  >  let rec fold f init = function
+  >    | [] -> init
   >    | hd :: tl -> fold f (f init hd) tl
   >  ;;
   >  let sum = fold (fun x y -> x + y) 0
@@ -128,4 +131,3 @@
   val sum : int list -> int = <fun>
   val sum_of_first_three : int = 6
   =====================================
-

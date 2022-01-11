@@ -17,7 +17,10 @@
   >     | effect (E s) k -> continue k (s*s)
   >     | l -> helper l
   >  ;;
-  Typing error: UnificationFailed
+  Typing error: (UnificationFailed (
+                   (TArrow (TInt,
+                      (TArrow (TInt, (TArrow ((TList TInt), TBool)))))),
+                   TInt))
   =====================================
   $ ./interpreterTests.exe <<-EOF
   >  let rec fib n k = if n < 2 then k n else fib (n-1) (fun l -> fib (n-2) (fun r -> k (l+r)));;
@@ -26,18 +29,12 @@
   val ans : int = 8
   =====================================
   $ ./interpreterTests.exe <<-EOF
-  > let rec fib = fun x -> 1 :: (fib x);;
-  > let _ = fib 1;;
-  =====================================
-  $ ./interpreterTests.exe <<-EOF
   > effect Some: int -> int ;;
   > let f g x = match perform (g(perform (Some 0))) with
   > | effect (Some x) k -> 42;;
   > let ans = f (fun x -> x) 3;;
-  (Not_effect_perform
-     (EApp ((EVar "g"), (EPerform (EEffect2 ("Some", (EConst (CInt 0))))))))
+  Typing error: (UnificationFailed ((TEffect (TVar 9)), TInt))
   =====================================
-  Сделайте, чтобы было очевидно, что это ошибка типизации, а не исполнения.
   $ ./interpreterTests.exe <<-EOF
   >  effect E: int -> int
   >  ;;

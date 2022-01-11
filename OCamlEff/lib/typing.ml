@@ -4,7 +4,7 @@ open Format
 type error =
   | Occurs_check
   | NoVariable of string
-  | UnificationFailed
+  | UnificationFailed of tyexp * tyexp
   | Effect_pattern_not_top_level of pat
   | Let_rec_only_vars (** Only variables are allowed as left-hand side of let*)
   | Match_fail of pat * tyexp
@@ -211,7 +211,7 @@ let unify l r =
         let* subst_tl = helper (TTuple tl1) (TTuple tl2) in
         return (Subst.compose subst_hd subst_tl)
       | [], [] -> return Subst.empty
-      | _ -> fail UnificationFailed)
+      | _ -> fail @@ UnificationFailed (l, r))
     | TEffect t1, TEffect t2 -> helper t1 t2
     | TVar a, TVar b when a = b -> return Subst.empty
     | TVar b, t when Type.occurs_in b t -> fail Occurs_check
@@ -221,7 +221,7 @@ let unify l r =
       let* subs1 = helper l1 l2 in
       let* subs2 = helper (Type.apply subs1 r1) (Type.apply subs1 r2) in
       return Subst.(subs2 ++ subs1)
-    | _ -> fail UnificationFailed
+    | _ -> fail @@ UnificationFailed (l, r)
   in
   helper l r
 ;;
@@ -475,7 +475,8 @@ and infer_exp context = function
     | t ->
       let* tv = fresh_var in
       let* s = unify t (TEffect tv) in
-      return (s, tv))
+      let subst = Subst.(s ++ s1) in
+      return (subst, Subst.apply subst tv))
   | EContinue (k, _) ->
     let* _ = lookup_context k context in
     let* tv = fresh_var in

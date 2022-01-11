@@ -30,6 +30,15 @@
   > let _ = fib 1;;
   =====================================
   $ ./interpreterTests.exe <<-EOF
+  > effect Some: int -> int ;;
+  > let f g x = match perform (g(perform (Some 0))) with
+  > | effect (Some x) k -> 42;;
+  > let ans = f (fun x -> x) 3;;
+  (Not_effect_perform
+     (EApp ((EVar "g"), (EPerform (EEffect2 ("Some", (EConst (CInt 0))))))))
+  =====================================
+  Сделайте, чтобы было очевидно, что это ошибка типизации, а не исполнения.
+  $ ./interpreterTests.exe <<-EOF
   >  effect E: int -> int
   >  ;;
   >  let helper x = match perform (E x) with

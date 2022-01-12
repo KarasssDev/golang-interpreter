@@ -1,4 +1,25 @@
   $ ./interpreterTests.exe <<-EOF
+  >  effect E: int
+  >  ;;
+  >  let exp = match perform E with 
+  >    | effect E k -> continue k 10 + continue k 10
+  >    | n -> n
+  >  ;;
+  Typing error: (Multishot_continuation
+                   (EOp (Add, (EContinue ("k", (EConst (CInt 10)))),
+                      (EContinue ("k", (EConst (CInt 10)))))))
+  =====================================
+  $ ./interpreterTests.exe <<-EOF
+  >  let rec cps_sum k = function
+  >    | [] -> k 0
+  >    | hd :: tl -> cps_sum (fun x -> k (hd + x)) tl;;
+  >  let sum = cps_sum (fun x -> x);;
+  >  let sum_of_first_ten = sum [1; 2; 3; 4; 5; 6; 7; 8; 9; 10];;
+  val cps_sum : (int -> '_13) -> int list -> '_13 = <fun>
+  val sum : int list -> int = <fun>
+  val sum_of_first_ten : int = 55
+  =====================================
+  $ ./interpreterTests.exe <<-EOF
   >  let fib n k = if n < 2 then n else fib (n-1) (fun l -> fib (n-2) (fun r -> k (l+r)));;
   Typing error: (NoVariable "fib")
   =====================================

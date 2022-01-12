@@ -448,13 +448,17 @@ and infer_exp context = function
     let* s, _, t =
       List.fold_left
         (fun m (pat, exp) ->
-          let* s, t_pat, t_exp = m in
-          let* s1, t1, ctx1 = infer_pat context pat in
-          let* s2, t2 = infer_exp ctx1 exp in
-          let* s3 = unify t_pat t1 in
-          let* s4 = unify t_exp t2 in
-          let s = Subst.(s4 ++ s2 ++ s3 ++ s1 ++ s) in
-          return (s, Subst.apply s t_pat, Subst.apply s t_exp))
+          let cont_cnt = cont_cnt exp in
+          if cont_cnt > 1
+          then fail @@ Multishot_continuation exp
+          else
+            let* s, t_pat, t_exp = m in
+            let* s1, t1, ctx1 = infer_pat context pat in
+            let* s2, t2 = infer_exp ctx1 exp in
+            let* s3 = unify t_pat t1 in
+            let* s4 = unify t_exp t2 in
+            let s = Subst.(s4 ++ s2 ++ s3 ++ s1 ++ s) in
+            return (s, Subst.apply s t_pat, Subst.apply s t_exp))
         (return (s0, t0, fresh))
         cases
     in
@@ -533,9 +537,21 @@ let pp_ty ty =
     | TBool -> printf "bool"
     | TInt -> printf "int"
     | TString -> printf "string"
-    | TEffect t -> printf "%a eff" helper t
     | TTuple l -> printf "%a" (pp_print_list ~pp_sep:(fun _ _ -> printf " * ") helper) l
-    | TList t -> printf "%a list" helper t
+    | TList t ->
+      let fmt : _ format =
+        match t with
+        | TArrow _ -> "(%a) list"
+        | _ -> "%a list"
+      in
+      printf fmt helper t
+    | TEffect t ->
+      let fmt : _ format =
+        match t with
+        | TArrow _ -> "(%a) eff"
+        | _ -> "%a eff"
+      in
+      printf fmt helper t
     | TArrow (t1, t2) ->
       let fmt : _ format =
         match t1 with

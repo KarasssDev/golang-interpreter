@@ -1,0 +1,16 @@
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A -w -3-9-32-58)))
+ (release
+  (flags
+   (:standard -warn-error -A -w -58))))
+
+(library
+ (name c_lib)
+ (public_name C.Lib)
+ (modules Ast Parser Interpreterctx)
+ (libraries base angstrom ppx_show.runtime)
+ (preprocess
+  (pps ppx_expect ppx_show))
+ (inline_tests))

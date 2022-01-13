@@ -1,0 +1,43 @@
+(lang dune 2.9)
+
+(generate_opam_files true)
+
+(cram enable)
+
+(license LGPL-3.0-only)
+
+(authors "Andrew Olejnikov")
+
+(maintainers "a.oleynikov@outlook.com")
+
+(bug_reports "soon")
+
+(homepage "soon")
+
+(package
+ (name C) ; FIXME and regenerate .opam file using 'dune build @install'
+ (synopsis "C_mini")
+ (description "Не поддерживается:
+  - Изменение значений большего типа меньшим
+    ( int* arr = malloc(sizeof(int));
+      arr[0] = 1000000000;
+      char *pt = arr;
+      pt[0] = 'y';) -> arr[0] != 1000000121 
+  - Многомерные массивы (не указатели)
+  ...
+
+  запись x++/x-- эквивалентна x = x + 1 / x = x - 1")
+ (version 0.1)
+ (depends
+  dune
+  angstrom
+  (ppx_inline_test :with-test)
+  qcheck-core
+  ppx_expect
+  ppx_show
+  (odoc :with-doc)
+  (ocamlformat :build)
+  base
+  ppx_deriving
+  ; After adding dependencies to 'dune' files and the same dependecies here too
+  ))

@@ -1,0 +1,8 @@
+(executable
+ (name interpreterTests)
+ (modules interpreterTests)
+ (public_name interpreterTests)
+ (libraries OCamlEff.Lib stdio))
+
+(cram
+ (deps ./interpreterTests.exe))

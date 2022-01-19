@@ -1,0 +1,9 @@
+(library
+ (name lambda_lib)
+ (public_name Lambda.Lib)
+ (modules Ast Lambda Interpret Parser Printast Pprintast utils Tests)
+ (modules_without_implementation ast)
+ (libraries base angstrom ppx_show.runtime)
+ (preprocess
+  (pps ppx_expect ppx_show))
+ (inline_tests))

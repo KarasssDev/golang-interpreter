@@ -1,6 +1,2 @@
-_build
-.merlin
-/_esy
-/node_modules
-/esy.lock
-/.melange.eobjs
+.stack-work/
+*~

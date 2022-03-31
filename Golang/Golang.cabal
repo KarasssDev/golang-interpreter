@@ -25,13 +25,14 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Ast
   other-modules:
       Paths_Golang
   hs-source-dirs:
       src
   build-depends:
       base >=4.7 && <5
+    , hspec
   default-language: Haskell2010
 
 executable Golang-exe
@@ -44,6 +45,7 @@ executable Golang-exe
   build-depends:
       Golang
     , base >=4.7 && <5
+    , hspec
   default-language: Haskell2010
 
 test-suite Golang-test
@@ -57,4 +59,5 @@ test-suite Golang-test
   build-depends:
       Golang
     , base >=4.7 && <5
+    , hspec
   default-language: Haskell2010

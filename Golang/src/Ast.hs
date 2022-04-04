@@ -3,17 +3,20 @@ module Ast where
 type Id = String
 
 data GoType = 
-      TInt              -- int
-    | TString           -- string
-    | TBool             -- bool
-    | TArray Int GoType -- arr[size] type
-    | TChan GoType
+      TInt                  -- int
+    | TString               -- string
+    | TBool                 -- bool
+    | TArray Int GoType     -- arr[size] type
+    | TChan GoType          -- chan int
+    | TFunc [(Id,GoType)] GoType -- func (int x, int y) int
+    deriving Show
 
 data GoValue =
       VInt Int
     | VString String
     | VBool Bool
-    | VArray [GoExpr]
+    | VArray [GoValue]
+    deriving (Show, Eq, Ord) 
 
 data GoExpr = 
     -- int 
@@ -41,6 +44,7 @@ data GoExpr =
     | Var Id
     | FuncCall Id [GoExpr]
     | GoFuncCall Id [GoExpr]
+    deriving Show
 
 
 data GoStatement = 
@@ -53,7 +57,7 @@ data GoStatement =
     | If GoExpr GoStatement
     | IfElse GoExpr GoStatement GoStatement
     | For GoStatement GoExpr GoStatement GoStatement
-
+    deriving Show
 
 data GoProgram = 
       Top GoStatement

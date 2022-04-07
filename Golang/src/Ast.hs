@@ -16,7 +16,7 @@ data GoValue =
     | VString String
     | VBool Bool
     | VArray [GoValue]
-    deriving (Show, Eq, Ord) 
+    deriving Show
 
 data GoExpr = 
     -- int 
@@ -44,13 +44,14 @@ data GoExpr =
     | Var Id
     | FuncCall Id [GoExpr]
     | GoFuncCall Id [GoExpr]
+    | Val GoValue
     deriving Show
 
 
 data GoStatement = 
       VarDecl Id GoType GoExpr   -- var x int = 
     | ConstDecl Id GoType GoExpr -- const x int = 
-    | FuncDecl Id [GoType] GoType GoStatement
+    | FuncDecl Id [(Id, GoType)] GoType GoStatement
     | Expr GoExpr
     | Block [GoStatement]
     | Return GoExpr

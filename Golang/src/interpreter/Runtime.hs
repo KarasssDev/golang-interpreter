@@ -1,6 +1,6 @@
 module Runtime where
 import Ast
-import Data.Map (Map, lookup, empty, insert)
+import Data.Map (Map, lookup, empty, insert, member)
 import Control.Monad.State (gets, evalState, MonadState(get, put), State )
 import Prelude hiding (lookup)
 import Errors
@@ -35,6 +35,17 @@ putVar :: Id -> (GoType, GoValue) -> Runtime ()
 putVar id (t, v) = do
   r <- get
   put GoRuntime {vars = insert id (t,v) (vars r), consts = consts r, toPrint = toPrint r}
+
+getConst :: Id -> Runtime GoValue
+getConst id = gets (getOrError id)
+
+putConst :: Id -> (GoType, GoValue) -> Runtime ()
+putConst id (t, v) = do
+  r <- get
+  if member id (consts r) then
+    errorRedeclarationConst id
+  else
+    put GoRuntime {vars = vars r, consts = insert id (t,v) (consts r), toPrint = toPrint r}
 
 goPrint :: GoValue -> Runtime ()
 goPrint v = do

@@ -47,6 +47,14 @@ evalStatement (VarDecl id t e) = do
   else
     putVar id (t, res)
 
+evalStatement (ConstDecl id t e) = do
+  r <- get
+  let res = evalExpr e r
+  if showValueType res /= showType t then
+    errorAssigmnetsType id res t
+  else
+    putConst id (t, res)
+
 evalStatement (Block b) = case b of
   [] -> error "empty block"
   [x] -> evalStatement x

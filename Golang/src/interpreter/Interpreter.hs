@@ -9,47 +9,61 @@ import Errors
 
 
 
-getValue :: Runtime GoValue  -> GoValue
-getValue r = evalState r emptyGoRuntime
-
-evalExpr :: GoExpr -> GoRuntime -> GoValue
+evalBinOp :: BinOp -> GoValue -> GoValue -> GoValue 
+evalBinOp op v1 v2 = case op of
 -- int
-evalExpr (Add   e1 e2) r = evalExpr e1 r   +   evalExpr e2 r
-evalExpr (Minus e1 e2) r = evalExpr e1 r   -   evalExpr e2 r
-evalExpr (Mul   e1 e2) r = evalExpr e1 r   *   evalExpr e2 r
-evalExpr (Div   e1 e2) r = evalExpr e1 r `div` evalExpr e2 r
-evalExpr (Mod   e1 e2) r = evalExpr e1 r `mod` evalExpr e2 r
-evalExpr (UnMinus e)   r = - evalExpr e r
+  Add   -> v1   +   v2
+  Minus -> v1   -   v2
+  Mul   -> v1   *   v2
+  Div   -> v1 `div` v2
+  Mod   -> v1 `mod` v2
 -- bool 
-evalExpr (And e1 e2) r = evalExpr e1 r `goAnd` evalExpr e2 r
-evalExpr (Or  e1 e2) r = evalExpr e1 r `goOr`  evalExpr e2 r
-evalExpr (Not e)     r = goNot $ evalExpr e r
+  And -> v1 `goAnd` v2
+  Or  -> v1 `goOr`  v2
 -- comparsions
-evalExpr (Eq  e1 e2) r = VBool $ evalExpr e1 r == evalExpr e2 r
-evalExpr (Gr  e1 e2) r = VBool $ evalExpr e1 r >  evalExpr e2 r
-evalExpr (Le  e1 e2) r = VBool $ evalExpr e1 r <  evalExpr e2 r
-evalExpr (Gre e1 e2) r = VBool $ evalExpr e1 r >= evalExpr e2 r
-evalExpr (Leq e1 e2) r = VBool $ evalExpr e1 r <= evalExpr e2 r
-evalExpr (Neq e1 e2) r = VBool $ evalExpr e1 r /= evalExpr e2 r
+  Eq  -> VBool $ v1 == v2
+  Gr  -> VBool $ v1 >  v2
+  Le  -> VBool $ v1 <  v2
+  Gre -> VBool $ v1 >= v2
+  Leq -> VBool $ v1 <= v2
+  Neq -> VBool $ v1 /= v2
+
+evalUnOp :: UnOp -> GoValue -> GoValue 
+evalUnOp op v = case op of
+  UnMinus -> -v
+  Not     -> goNot v
+
+
+
+evalExpr :: GoExpr -> Runtime GoValue
+
+evalExpr (GoBinOp op e1 e2)  = do
+  v1 <- evalExpr e1
+  v2 <- evalExpr e2
+  return $ evalBinOp op v1 v2
+
+evalExpr (GoUnOp op e) = do
+  v <- evalExpr e
+  return $ evalUnOp op v
+
+
 -- other
-evalExpr (Var id) r = getOrError id r
-evalExpr (Val x) r = x
-evalExpr _ _ = undefined
+evalExpr (Var id) = gets (getOrError id)
+evalExpr (Val x)  = return x
+evalExpr _  = undefined
 
 
 evalStatement :: GoStatement -> Runtime ()
 
 evalStatement (VarDecl id t e) = do
-  r <- get
-  let res = evalExpr e r
+  res <- evalExpr e
   if showValueType res /= showType t then
     errorAssigmnetsType id res t
   else
     putVar id (t, res)
 
 evalStatement (ConstDecl id t e) = do
-  r <- get
-  let res = evalExpr e r
+  res <- evalExpr e
   if showValueType res /= showType t then
     errorAssigmnetsType id res t
   else
@@ -63,15 +77,14 @@ evalStatement (Block b) = case b of
      evalStatement (Block xs)
 
 evalStatement (Print e) = do
-  r <- get
-  goPrint $ evalExpr e r
+  res <- evalExpr e
+  goPrint res
 
 evalStatement (If e s) = do
-  r <- get 
-  let res = evalExpr e r
-  case res of 
+  res <- evalExpr e
+  case res of
     (VBool True) -> evalStatement s
     (VBool False) -> return ()
-    _ -> errorNotBoolInIf res 
+    _ -> errorNotBoolInIf res
 
 evalStatement _ = undefined

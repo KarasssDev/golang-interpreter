@@ -41,7 +41,7 @@ data UnOp =
   | Not     -- bool
 
 data GoExpr = 
-      GoUnOp UnOp GoExpr GoExpr
+      GoUnOp UnOp GoExpr
     | GoBinOp BinOp GoExpr GoExpr
     | Get -- пока здесь для напоминания
     | Put --пока здесь для напоминания

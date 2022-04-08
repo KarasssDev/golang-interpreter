@@ -66,4 +66,12 @@ evalStatement (Print e) = do
   r <- get
   goPrint $ evalExpr e r
 
+evalStatement (If e s) = do
+  r <- get 
+  let res = evalExpr e r
+  case res of 
+    (VBool True) -> evalStatement s
+    (VBool False) -> return ()
+    _ -> errorNotBoolInIf res 
+
 evalStatement _ = undefined

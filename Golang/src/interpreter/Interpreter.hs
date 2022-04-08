@@ -106,4 +106,22 @@ evalStatement (Assign id e) = do
     else
       putVar id (t, res)
 
+evalStatement (For init cont d act) = do
+  evalStatement init
+  for cont d act
+  where 
+    for cont d act = do
+      res <- evalExpr cont
+      case res of 
+        VBool True  -> evalStatement act  
+        VBool False -> return ()
+        _           -> errorNotBoolExprInFor
+      evalStatement d
+      res <- evalExpr cont
+      case res of 
+        VBool True  -> for cont d act
+        VBool False -> return ()
+        _           -> errorNotBoolExprInFor
+    
+    
 evalStatement _ = undefined

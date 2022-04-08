@@ -48,3 +48,6 @@ errorNotBoolInIf v = error $ baseErrorMessage ++ "not bool type in if: " ++ show
 
 errorAssignToConst :: Id -> a
 errorAssignToConst id = error $ baseErrorMessage ++ "assign to const " ++ id
+
+errorNotBoolExprInFor :: a
+errorNotBoolExprInFor = error $ baseErrorMessage ++ "not bool expression in for"

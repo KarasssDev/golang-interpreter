@@ -13,16 +13,16 @@ data GoRuntime = GoRuntime {
 
 emptyGoRuntime :: GoRuntime
 emptyGoRuntime = GoRuntime {
-    vars = empty , 
-    consts = empty, 
-    toPrint=[] 
+    vars = empty ,
+    consts = empty,
+    toPrint=[]
 }
 
-getOrError :: Id -> GoRuntime -> GoValue
+getOrError :: Id -> GoRuntime -> (GoType, GoValue)
 getOrError id r = case lookup id (vars r) of
-    Just (t, v) -> v
-    Nothing -> case lookup id (consts r) of 
-        Just (t, v) -> v
+    Just x -> x
+    Nothing -> case lookup id (consts r) of
+        Just x -> x
         Nothing -> errorVarNotInScope id
 
 
@@ -30,8 +30,18 @@ getOrError id r = case lookup id (vars r) of
 
 type Runtime a = State GoRuntime a
 
-getVar :: Id -> Runtime GoValue
-getVar id = gets (getOrError id)
+getVarValue :: Id -> Runtime GoValue
+getVarValue id = gets (snd . getOrError id)
+
+getVarType :: Id -> Runtime GoType
+getVarType id = gets (fst . getOrError id)
+
+isConst :: Id -> Runtime Bool 
+isConst id = do
+  r <- get 
+  case lookup id (consts r) of
+        Just x -> return True
+        Nothing -> return False
 
 putVar :: Id -> (GoType, GoValue) -> Runtime ()
 putVar id (t, v) = do
@@ -39,7 +49,7 @@ putVar id (t, v) = do
   put GoRuntime {vars = insert id (t,v) (vars r), consts = consts r, toPrint = toPrint r}
 
 getConst :: Id -> Runtime GoValue
-getConst id = gets (getOrError id)
+getConst id = gets (snd . getOrError id)
 
 putConst :: Id -> (GoType, GoValue) -> Runtime ()
 putConst id (t, v) = do

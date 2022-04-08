@@ -65,6 +65,7 @@ data GoStatement =
     | IfElse GoExpr GoStatement GoStatement
     | For GoStatement GoExpr GoStatement GoStatement
     | Print GoExpr
+    | Assign Id GoExpr
     deriving Show
 
 data GoProgram = 

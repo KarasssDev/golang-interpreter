@@ -43,5 +43,8 @@ errorAssigmnetsType id v t = error $ baseErrorMessage ++ "x = expr, type x = " +
 errorRedeclarationConst :: Id -> a
 errorRedeclarationConst id = error $ "redeclaration const " ++ id
 
-errorNotBoolInIf :: GoValue -> abs 
+errorNotBoolInIf :: GoValue -> a
 errorNotBoolInIf v = error $ baseErrorMessage ++ "not bool type in if: " ++ showValueType v 
+
+errorAssignToConst :: Id -> a
+errorAssignToConst id = error $ baseErrorMessage ++ "assign to const " ++ id

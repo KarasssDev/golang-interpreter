@@ -48,7 +48,7 @@ evalExpr (GoUnOp op e) = do
 
 
 -- other
-evalExpr (Var id) = gets (getOrError id)
+evalExpr (Var id) = getVarValue id
 evalExpr (Val x)  = return x
 evalExpr _  = undefined
 
@@ -93,5 +93,17 @@ evalStatement(IfElse e s1 s2) = do
     (VBool True)  -> evalStatement s1
     (VBool False) -> evalStatement s2
     _ -> errorNotBoolInIf res
+
+evalStatement (Assign id e) = do
+  res <- evalExpr e
+  t   <- getVarType id
+  s   <- isConst id
+  if s then
+    errorAssignToConst id
+  else
+    if showValueType res /= showType t then
+      errorAssigmnetsType id res t
+    else
+      putVar id (t, res)
 
 evalStatement _ = undefined

@@ -35,10 +35,12 @@ data BinOp =
   | Gre
   | Leq
   | Neq
+  deriving Show
 
 data UnOp = 
     UnMinus -- int
   | Not     -- bool
+  deriving Show
 
 data GoExpr = 
       GoUnOp UnOp GoExpr

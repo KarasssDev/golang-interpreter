@@ -18,29 +18,33 @@ data GoValue =
     | VArray [GoValue]
     deriving Show
 
+data BinOp = 
+-- int
+    Add 
+  | Minus 
+  | Mul 
+  | Div
+  | Mod
+-- bool 
+  | And 
+  | Or   
+-- comparsions
+  | Eq
+  | Gr
+  | Le
+  | Gre
+  | Leq
+  | Neq
+
+data UnOp = 
+    UnMinus -- int
+  | Not     -- bool
+
 data GoExpr = 
-    -- int 
-      Add GoExpr GoExpr   -- (+)
-    | Minus GoExpr GoExpr -- (-)
-    | Mul GoExpr GoExpr   -- (*)
-    | Div GoExpr GoExpr   -- (/)
-    | Mod GoExpr GoExpr   -- (%)
-    | UnMinus GoExpr      -- (-)
-    -- bool
-    | And GoExpr GoExpr -- (&&)
-    | Or GoExpr GoExpr  -- (||)
-    | Not GoExpr        -- (!)
-    -- comparsions
-    | Eq GoExpr GoExpr  -- (==)
-    | Gr GoExpr GoExpr  -- (>)
-    | Le GoExpr GoExpr  -- (<)
-    | Gre GoExpr GoExpr -- (>=)
-    | Leq GoExpr GoExpr -- (<=)
-    | Neq GoExpr GoExpr -- (!=)
-    -- chan
+      GoUnOp UnOp GoExpr GoExpr
+    | GoBinOp BinOp GoExpr GoExpr
     | Get -- пока здесь для напоминания
     | Put --пока здесь для напоминания
-    -- other
     | Var Id
     | FuncCall Id [GoExpr]
     | GoFuncCall Id [GoExpr]

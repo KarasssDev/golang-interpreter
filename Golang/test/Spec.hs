@@ -1,6 +1,7 @@
 import Test.Hspec
 import Interpreter
 import Ast
+import BaseFunc
 
 
 main :: IO ()

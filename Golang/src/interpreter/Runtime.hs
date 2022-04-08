@@ -21,7 +21,9 @@ emptyGoRuntime = GoRuntime {
 getOrError :: Id -> GoRuntime -> GoValue
 getOrError id r = case lookup id (vars r) of
     Just (t, v) -> v
-    Nothing -> errorVarNotInScope id
+    Nothing -> case lookup id (consts r) of 
+        Just (t, v) -> v
+        Nothing -> errorVarNotInScope id
 
 
 -- runtime monad

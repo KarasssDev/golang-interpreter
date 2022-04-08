@@ -37,8 +37,8 @@ errorVarNotInScope :: Id -> a
 errorVarNotInScope id = error $ "Var " ++ id ++ " not in scope"
 
 errorAssigmnetsType :: Id -> GoValue -> GoType -> a
-errorAssigmnetsType id v t = error $ "x = expr, type x = " ++ showValueType v 
-  ++ "type expr = " ++ showType t
+errorAssigmnetsType id v t = error $ baseErrorMessage ++ "x = expr, type x = " ++ showValueType v 
+  ++ "; type expr = " ++ showType t
 
 errorRedeclarationConst :: Id -> a
 errorRedeclarationConst id = error $ "redeclaration const " ++ id

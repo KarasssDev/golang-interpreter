@@ -26,7 +26,10 @@ dependencies:
 - containers
 
 library:
-  source-dirs: src
+  source-dirs: 
+  - src 
+  - src/interpreter
+  - src/parser
 
 executables:
   Golang-exe:

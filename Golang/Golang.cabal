@@ -26,11 +26,16 @@ source-repository head
 library
   exposed-modules:
       Ast
+      BaseFunc
+      Errors
       Interpreter
+      Runtime
   other-modules:
       Paths_Golang
   hs-source-dirs:
       src
+      src/interpreter
+      src/parser
   build-depends:
       base >=4.7 && <5
     , containers

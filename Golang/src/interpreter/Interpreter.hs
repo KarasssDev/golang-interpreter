@@ -87,4 +87,11 @@ evalStatement (If e s) = do
     (VBool False) -> return ()
     _ -> errorNotBoolInIf res
 
+evalStatement(IfElse e s1 s2) = do
+  res <- evalExpr e
+  case res of
+    (VBool True)  -> evalStatement s1
+    (VBool False) -> evalStatement s2
+    _ -> errorNotBoolInIf res
+
 evalStatement _ = undefined

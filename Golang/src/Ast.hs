@@ -51,6 +51,7 @@ data GoExpr =
     | FuncCall Id [GoExpr]
     | GoFuncCall Id [GoExpr]
     | Val GoValue
+    | EmptyCondition
     deriving Show
 
 
@@ -66,6 +67,7 @@ data GoStatement =
     | For GoStatement GoExpr GoStatement GoStatement
     | Print GoExpr
     | Assign Id GoExpr
+    | EmptyStatement
     deriving Show
 
 data GoProgram = 

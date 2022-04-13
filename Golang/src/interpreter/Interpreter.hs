@@ -48,9 +48,10 @@ evalExpr (GoUnOp op e) = do
 
 
 -- other
-evalExpr (Var id) = getVarValue id
-evalExpr (Val x)  = return x
-evalExpr _  = undefined
+evalExpr (Var id)  = getVarValue id
+evalExpr (Val x)   = return x
+evalExpr EmptyCondition = return $ VBool True 
+evalExpr _ = undefined 
 
 
 evalStatement :: GoStatement -> Runtime ()
@@ -105,6 +106,8 @@ evalStatement (Assign id e) = do
       errorAssigmnetsType id res t
     else
       putVar id (t, res)
+
+evalStatement EmptyStatement = return ()
 
 evalStatement (For init cont d act) = do
   evalStatement init

@@ -8,14 +8,16 @@ import Errors
 data GoRuntime = GoRuntime {
     vars    :: Map Id (GoType, GoValue),
     consts  :: Map Id (GoType, GoValue),
-    toPrint :: [String]
+    toPrint :: [String],
+    jumpSt  :: Maybe JumpStatement
 }
 
 emptyGoRuntime :: GoRuntime
 emptyGoRuntime = GoRuntime {
-    vars = empty ,
-    consts = empty,
-    toPrint=[]
+    vars    = empty ,
+    consts  = empty,
+    toPrint = [],
+    jumpSt  = Nothing
 }
 
 getOrError :: Id -> GoRuntime -> (GoType, GoValue)
@@ -36,9 +38,9 @@ getVarValue id = gets (snd . getOrError id)
 getVarType :: Id -> Runtime GoType
 getVarType id = gets (fst . getOrError id)
 
-isConst :: Id -> Runtime Bool 
+isConst :: Id -> Runtime Bool
 isConst id = do
-  r <- get 
+  r <- get
   case lookup id (consts r) of
         Just x -> return True
         Nothing -> return False
@@ -46,7 +48,7 @@ isConst id = do
 putVar :: Id -> (GoType, GoValue) -> Runtime ()
 putVar id (t, v) = do
   r <- get
-  put GoRuntime {vars = insert id (t,v) (vars r), consts = consts r, toPrint = toPrint r}
+  put r {vars = insert id (t,v) (vars r)}
 
 getConst :: Id -> Runtime GoValue
 getConst id = gets (snd . getOrError id)
@@ -57,9 +59,20 @@ putConst id (t, v) = do
   if member id (consts r) then
     errorRedeclarationConst id
   else
-    put GoRuntime {vars = vars r, consts = insert id (t,v) (consts r), toPrint = toPrint r}
+    put r { consts = insert id (t,v) (consts r) }
 
 goPrint :: GoValue -> Runtime ()
 goPrint v = do
   r <- get
-  put GoRuntime {vars = vars r, consts = consts r, toPrint = show v : toPrint r}
+  put r { toPrint = show v : toPrint r }
+
+
+getJumpSt :: Runtime (Maybe JumpStatement)
+getJumpSt = do --gets jumpSt
+  r <- get 
+  return $ jumpSt r
+  
+putJumpSt :: Maybe JumpStatement  -> Runtime ()
+putJumpSt s = do
+  r <- get
+  put r { jumpSt = s }

@@ -55,6 +55,8 @@ data GoExpr =
     deriving Show
 
 
+data JumpStatement = Break | Continue deriving Show
+
 data GoStatement = 
       VarDecl Id GoType GoExpr   -- var x int = 
     | ConstDecl Id GoType GoExpr -- const x int = 
@@ -68,6 +70,7 @@ data GoStatement =
     | Print GoExpr
     | Assign Id GoExpr
     | EmptyStatement
+    | Jump JumpStatement
     deriving Show
 
 data GoProgram = 

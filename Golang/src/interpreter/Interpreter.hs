@@ -8,6 +8,13 @@ import BaseFunc
 import Errors
 
 
+checkIfSt :: GoExpr -> Runtime () -> Runtime () -> Runtime ()
+checkIfSt e tr fl = do
+  res <- evalExpr e
+  case res of
+    (VBool True) -> tr
+    (VBool False) -> fl
+    _ -> errorNotBoolInIf res
 
 evalBinOp :: BinOp -> GoValue -> GoValue -> GoValue 
 evalBinOp op v1 v2 = case op of
@@ -70,30 +77,38 @@ evalStatement (ConstDecl id t e) = do
   else
     putConst id (t, res)
 
-evalStatement (Block b) = case b of
-  [] -> error "empty block"
-  [x] -> evalStatement x
-  x:xs -> do
-     evalStatement x
-     evalStatement (Block xs)
+evalStatement (Block b) = do 
+  j <- getJumpSt
+  case j of
+    Just s  -> return ()
+    Nothing -> case b of
+      [] -> return ()
+      x:xs ->  case x of 
+        (Jump s) -> do
+          putJumpSt $ Just s
+          return ()
+        _        -> do 
+          evalStatement x
+          evalStatement (Block xs)
+
 
 evalStatement (Print e) = do
   res <- evalExpr e
   goPrint res
 
-evalStatement (If e s) = do
-  res <- evalExpr e
-  case res of
-    (VBool True) -> evalStatement s
-    (VBool False) -> return ()
-    _ -> errorNotBoolInIf res
+evalStatement (If e s) = checkIfSt e (evalStatement s) (return ())
+  -- res <- evalExpr e
+  -- case res of
+  --   (VBool True) -> evalStatement s
+  --   (VBool False) -> return ()
+  --   _ -> errorNotBoolInIf res
 
-evalStatement(IfElse e s1 s2) = do
-  res <- evalExpr e
-  case res of
-    (VBool True)  -> evalStatement s1
-    (VBool False) -> evalStatement s2
-    _ -> errorNotBoolInIf res
+evalStatement(IfElse e s1 s2) = checkIfSt e (evalStatement s1) (evalStatement s2)
+  -- res <- evalExpr e
+  -- case res of
+  --   (VBool True)  -> evalStatement s1
+  --   (VBool False) -> evalStatement s2
+  --   _ -> errorNotBoolInIf res
 
 evalStatement (Assign id e) = do
   res <- evalExpr e
@@ -109,22 +124,28 @@ evalStatement (Assign id e) = do
 
 evalStatement EmptyStatement = return ()
 
-evalStatement (For init cont d act) = do
+evalStatement (For init cont di act) = do
   evalStatement init
-  for cont d act
+  for cont di act
   where 
-    for cont d act = do
-      res <- evalExpr cont
-      case res of 
-        VBool True  -> evalStatement act  
-        VBool False -> return ()
-        _           -> errorNotBoolExprInFor
-      evalStatement d
-      res <- evalExpr cont
-      case res of 
-        VBool True  -> for cont d act
-        VBool False -> return ()
-        _           -> errorNotBoolExprInFor
-    
-    
+    for cont di act = do
+      checkIfSt cont (evalStatement act) (return ())
+      evalStatement di
+      j <- getJumpSt 
+      case j of 
+        Just x  -> case x of
+          Break    -> do
+            putJumpSt Nothing 
+            return ()
+          Continue -> do
+            putJumpSt Nothing
+            checkIfSt cont (for cont di act) (return ())
+        Nothing -> checkIfSt cont (for cont di act) (return ())
+      
+
+
+
+evalStatement (Jump Continue) = putJumpSt $ Just Continue
+evalStatement (Jump Break)    = putJumpSt $ Just Break 
+
 evalStatement _ = undefined

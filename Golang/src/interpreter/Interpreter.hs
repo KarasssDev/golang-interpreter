@@ -1,7 +1,7 @@
 module Interpreter where
 import Prelude hiding (lookup)
 import Ast
-import Control.Monad.State (gets, evalState, MonadState(get, put), State )
+import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT, lift )
 import Data.Map (Map, lookup, empty, insert)
 import Runtime
 import BaseFunc
@@ -94,7 +94,7 @@ evalStatement (Block b) = do
 
 evalStatement (Print e) = do
   res <- evalExpr e
-  goPrint res
+  lift $ print $ show res
 
 evalStatement (If e s) = checkIfSt e (evalStatement s) (return ())
   -- res <- evalExpr e

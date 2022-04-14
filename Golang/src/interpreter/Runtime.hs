@@ -1,14 +1,13 @@
 module Runtime where
 import Ast
 import Data.Map (Map, lookup, empty, insert, member)
-import Control.Monad.State (gets, evalState, MonadState(get, put), State )
+import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT )
 import Prelude hiding (lookup)
 import Errors
 
 data GoRuntime = GoRuntime {
     vars    :: Map Id (GoType, GoValue),
     consts  :: Map Id (GoType, GoValue),
-    toPrint :: [String],
     jumpSt  :: Maybe JumpStatement
 }
 
@@ -16,7 +15,6 @@ emptyGoRuntime :: GoRuntime
 emptyGoRuntime = GoRuntime {
     vars    = empty ,
     consts  = empty,
-    toPrint = [],
     jumpSt  = Nothing
 }
 
@@ -30,7 +28,7 @@ getOrError id r = case lookup id (vars r) of
 
 -- runtime monad
 
-type Runtime a = State GoRuntime a
+type Runtime a = StateT GoRuntime IO a
 
 getVarValue :: Id -> Runtime GoValue
 getVarValue id = gets (snd . getOrError id)
@@ -60,12 +58,6 @@ putConst id (t, v) = do
     errorRedeclarationConst id
   else
     put r { consts = insert id (t,v) (consts r) }
-
-goPrint :: GoValue -> Runtime ()
-goPrint v = do
-  r <- get
-  put r { toPrint = show v : toPrint r }
-
 
 getJumpSt :: Runtime (Maybe JumpStatement)
 getJumpSt = do --gets jumpSt

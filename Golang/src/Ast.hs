@@ -17,6 +17,8 @@ data GoValue =
     | VString String
     | VBool Bool
     | VArray (Map Int GoValue)
+    | VChan
+    | VFunc [Id] GoStatement
 
 instance (Show GoValue) where
   show x = case x of 

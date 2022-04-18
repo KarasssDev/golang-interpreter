@@ -7,17 +7,15 @@ import Runtime
 import BaseFunc
 import Errors
 
--- (!?) :: [a] -> Int -> Maybe a
--- []     !? i = Nothing
--- (x:xs) !? i = if i == 0 then (Just x) else (xs !? (i - 1))
 
--- setInd :: a -> Int -> [a] -> Maybe [a]
--- setInd v i lst = helper v i lst []
---   where 
---     helper v i []     r = if i == -1 then (Just (reverse r)) else Nothing
---     helper v 0 (x:xs) r = helper v (-1)    xs (v:r)
---     helper v i (x:xs) r = helper v (i - 1) xs (x:r)
-
+typeCheck :: GoValue -> GoType -> () -> ()
+typeCheck v t f = if eq v t then () else f
+  where 
+-- fix me (arrays, funcs and channels)
+    eq (VInt x) TInt = True
+    eq (VString s) TString = True
+    eq (VBool b) TBool = True
+    eq _ _ = True
 
 checkIfSt :: GoExpr -> Runtime () -> Runtime () -> Runtime ()
 checkIfSt e tr fl = do
@@ -64,21 +62,22 @@ evalExpr (GoUnOp op e) = do
   v <- evalExpr e
   return $ evalUnOp op v
 
-
--- other
 evalExpr (Var id)  = getVarValue id
-evalExpr (Val x)   = return x
+
+evalExpr (Val v)   = return v
+
 evalExpr EmptyCondition = return $ VBool True 
+
 evalExpr (GetByInd arr ind) = do
   varr <- evalExpr arr
   vind <- evalExpr ind
   case (varr, vind) of 
     ((VArray lst), (VInt i)) -> return $ safeInd lst i
-    _                        -> error $ "fix me"
+    _                        -> undefined -- видимо должен поймать парсер
   where
     safeInd lst i = case (lookup i lst) of
       (Just v) -> v
-      Nothing  -> error $ "fix me"
+      Nothing  -> errorIndexOutOfRange i
 
 evalExpr _ = undefined
 
@@ -87,17 +86,13 @@ evalStatement :: GoStatement -> Runtime ()
 
 evalStatement (VarDecl id t e) = do
   res <- evalExpr e
-  if showValueType res /= showType t then
-    errorAssigmnetsType id res t
-  else
-    putVar id (t, res)
+  return $ typeCheck res t (errorAssigmnetsType id res t)
+  putVar id (t, res)
 
 evalStatement (ConstDecl id t e) = do
   res <- evalExpr e
-  if showValueType res /= showType t then
-    errorAssigmnetsType id res t
-  else
-    putConst id (t, res)
+  return $ typeCheck res t (errorAssigmnetsType id res t)
+  putConst id (t, res)
 
 evalStatement (Block b) = do 
   j <- getJumpSt
@@ -116,7 +111,7 @@ evalStatement (Block b) = do
 
 evalStatement (Print e) = do
   res <- evalExpr e
-  lift $ print $ show res
+  lift $ print res
 
 evalStatement (If e s) = checkIfSt e (evalStatement s) (return ())
 
@@ -162,7 +157,7 @@ evalStatement (SetByInd id arr ind v) = do
   -- fix me (add assign type check)
   case (varr, vind) of
     ((VArray arr), (VInt i)) -> let res = (insert i vv arr) in evalStatement (Assign id (Val (VArray res)))
-    _                        -> error $ "fix me"
+    _                        -> undefined -- видимо должен поймать парсер
 
 
 evalStatement (Jump Continue) = putJumpSt $ Just Continue

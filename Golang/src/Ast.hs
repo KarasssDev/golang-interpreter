@@ -1,4 +1,5 @@
 module Ast where
+import Data.Map
 
 type Id = String
 
@@ -15,8 +16,13 @@ data GoValue =
       VInt Int
     | VString String
     | VBool Bool
-    | VArray [GoValue]
-    deriving Show
+    | VArray (Map Int GoValue)
+
+instance (Show GoValue) where
+  show x = case x of 
+    (VInt v)    -> show v
+    (VString v) -> show v
+    (VBool v)   -> show v
 
 data BinOp = 
 -- int
@@ -46,10 +52,11 @@ data GoExpr =
       GoUnOp UnOp GoExpr
     | GoBinOp BinOp GoExpr GoExpr
     | Get -- пока здесь для напоминания
-    | Put --пока здесь для напоминания
+    | Put -- пока здесь для напоминания
     | Var Id
     | FuncCall Id [GoExpr]
     | GoFuncCall Id [GoExpr]
+    | GetByInd GoExpr GoExpr
     | Val GoValue
     | EmptyCondition
     deriving Show
@@ -69,6 +76,7 @@ data GoStatement =
     | For GoStatement GoExpr GoStatement GoStatement
     | Print GoExpr
     | Assign Id GoExpr
+    | SetByInd Id GoExpr GoExpr GoExpr
     | EmptyStatement
     | Jump JumpStatement
     deriving Show

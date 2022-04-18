@@ -7,6 +7,17 @@ import Runtime
 import BaseFunc
 import Errors
 
+-- (!?) :: [a] -> Int -> Maybe a
+-- []     !? i = Nothing
+-- (x:xs) !? i = if i == 0 then (Just x) else (xs !? (i - 1))
+
+-- setInd :: a -> Int -> [a] -> Maybe [a]
+-- setInd v i lst = helper v i lst []
+--   where 
+--     helper v i []     r = if i == -1 then (Just (reverse r)) else Nothing
+--     helper v 0 (x:xs) r = helper v (-1)    xs (v:r)
+--     helper v i (x:xs) r = helper v (i - 1) xs (x:r)
+
 
 checkIfSt :: GoExpr -> Runtime () -> Runtime () -> Runtime ()
 checkIfSt e tr fl = do
@@ -58,7 +69,18 @@ evalExpr (GoUnOp op e) = do
 evalExpr (Var id)  = getVarValue id
 evalExpr (Val x)   = return x
 evalExpr EmptyCondition = return $ VBool True 
-evalExpr _ = undefined 
+evalExpr (GetByInd arr ind) = do
+  varr <- evalExpr arr
+  vind <- evalExpr ind
+  case (varr, vind) of 
+    ((VArray lst), (VInt i)) -> return $ safeInd lst i
+    _                        -> error $ "fix me"
+  where
+    safeInd lst i = case (lookup i lst) of
+      (Just v) -> v
+      Nothing  -> error $ "fix me"
+
+evalExpr _ = undefined
 
 
 evalStatement :: GoStatement -> Runtime ()
@@ -97,18 +119,8 @@ evalStatement (Print e) = do
   lift $ print $ show res
 
 evalStatement (If e s) = checkIfSt e (evalStatement s) (return ())
-  -- res <- evalExpr e
-  -- case res of
-  --   (VBool True) -> evalStatement s
-  --   (VBool False) -> return ()
-  --   _ -> errorNotBoolInIf res
 
 evalStatement(IfElse e s1 s2) = checkIfSt e (evalStatement s1) (evalStatement s2)
-  -- res <- evalExpr e
-  -- case res of
-  --   (VBool True)  -> evalStatement s1
-  --   (VBool False) -> evalStatement s2
-  --   _ -> errorNotBoolInIf res
 
 evalStatement (Assign id e) = do
   res <- evalExpr e
@@ -143,6 +155,14 @@ evalStatement (For init cont di act) = do
         Nothing -> checkIfSt cont (for cont di act) (return ())
       
 
+evalStatement (SetByInd id arr ind v) = do
+  varr <- evalExpr arr
+  vind <- evalExpr ind
+  vv   <- evalExpr v
+  -- fix me (add assign type check)
+  case (varr, vind) of
+    ((VArray arr), (VInt i)) -> let res = (insert i vv arr) in evalStatement (Assign id (Val (VArray res)))
+    _                        -> error $ "fix me"
 
 
 evalStatement (Jump Continue) = putJumpSt $ Just Continue

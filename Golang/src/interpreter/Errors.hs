@@ -1,5 +1,7 @@
 module Errors where
 import Ast
+import Prelude hiding (lookup)
+import Data.Map
 
 -- errors
 
@@ -11,7 +13,9 @@ showValueType :: GoValue -> String
 showValueType (VInt _)    = "int"
 showValueType (VString _) = "string"
 showValueType (VBool _)   = "bool"
-showValueType (VArray x)  = "array of " ++ showValueType (head x)
+showValueType (VArray x)  = case (lookup 0 x) of 
+  (Just e) -> "array of " ++ showValueType e
+  Nothing  -> undefined 
 
 
 showType :: GoType -> String

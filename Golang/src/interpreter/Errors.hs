@@ -55,3 +55,6 @@ errorAssignToConst id = error $ baseErrorMessage ++ "assign to const " ++ id
 
 errorNotBoolExprInFor :: a
 errorNotBoolExprInFor = error $ baseErrorMessage ++ "not bool expression in for"
+
+errorIndexOutOfRange :: Int ->  a
+errorIndexOutOfRange i = error $ baseErrorMessage ++ "index out of range: " ++ show i

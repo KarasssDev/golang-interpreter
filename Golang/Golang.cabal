@@ -6,22 +6,22 @@ cabal-version: 1.12
 
 name:           Golang
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/Golang#readme>
-homepage:       https://github.com/githubuser/Golang#readme
-bug-reports:    https://github.com/githubuser/Golang/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2022 Author name here
+description:    Please see the README on GitHub at <https://github.com/KarasssDev/fp2021/tree/master/Golang/README.md>
+homepage:       https://github.com/KarasssDev/fp2021#readme
+bug-reports:    https://github.com/KarasssDev/fp2021/issues
+author:         Karasev Viktor
+maintainer:     viktorkarasev27@gmail.com
+copyright:      2022 Karasev Viktor
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     README.md
-    ChangeLog.md
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/Golang
+  location: https://github.com/KarasssDev/fp2021
+  subdir: Golang
 
 library
   exposed-modules:

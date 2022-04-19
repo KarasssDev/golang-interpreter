@@ -1,6 +1,6 @@
 name:                Golang
 version:             0.1.0.0
-github:              "https://github.com/KarasssDev/fp2021/tree/master/Golang"
+github:              "KarasssDev/fp2021/Golang"
 license:             BSD3
 author:              "Karasev Viktor"
 maintainer:          "viktorkarasev27@gmail.com"

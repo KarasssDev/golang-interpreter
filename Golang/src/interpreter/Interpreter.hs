@@ -1,7 +1,7 @@
 module Interpreter where
 import Prelude hiding (lookup)
 import Ast
-import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT, lift )
+import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT, lift, runStateT)
 import Data.Map (Map, lookup, empty, insert)
 import Runtime
 import BaseFunc
@@ -113,9 +113,15 @@ evalStatement (Print e) = do
   res <- evalExpr e
   lift $ print res
 
-evalStatement (If e s) = checkIfSt e (evalStatement s) (return ())
+evalStatement (If e s) = do
+  push
+  checkIfSt e (evalStatement s) (return ())
+  pop
 
-evalStatement(IfElse e s1 s2) = checkIfSt e (evalStatement s1) (evalStatement s2)
+evalStatement(IfElse e s1 s2) = do
+  push
+  checkIfSt e (evalStatement s1) (evalStatement s2)
+  pop
 
 evalStatement (Assign id e) = do
   res <- evalExpr e
@@ -132,8 +138,10 @@ evalStatement (Assign id e) = do
 evalStatement EmptyStatement = return ()
 
 evalStatement (For init cont di act) = do
+  push
   evalStatement init
   for cont di act
+  pop
   where 
     for cont di act = do
       checkIfSt cont (evalStatement act) (return ())
@@ -141,13 +149,24 @@ evalStatement (For init cont di act) = do
       j <- getJumpSt 
       case j of 
         Just x  -> case x of
-          Break    -> do
+          Break      -> do
             putJumpSt Nothing 
             return ()
-          Continue -> do
+          Continue   -> do
             putJumpSt Nothing
             checkIfSt cont (for cont di act) (return ())
+          (Return e) -> do
+            return ()
         Nothing -> checkIfSt cont (for cont di act) (return ())
+
+evalStatement (FuncDecl id args rt body) = do -- add check body == Block
+  let v = VFunc (map (\(x,y) -> x) args) body
+  let t = TFunc args rt
+  putVar id (t, v)
+
+-- evalStatement (FuncCall id lst) = do -- add check (f == func)
+--   f <- getVarValue id
+
       
 
 evalStatement (SetByInd id arr ind v) = do
@@ -162,5 +181,14 @@ evalStatement (SetByInd id arr ind v) = do
 
 evalStatement (Jump Continue) = putJumpSt $ Just Continue
 evalStatement (Jump Break)    = putJumpSt $ Just Break 
+evalStatement (Jump (Return e)) = do
+  v <- evalExpr e
+  putJumpSt    $ Just (Return e)
+  putReturnVal $ Just v
 
 evalStatement _ = undefined
+
+
+
+exec :: GoProgram -> IO ((), GoRuntime)
+exec (GoProgram top main) = runStateT (evalStatement (Block [top, main])) emptyGoRuntime

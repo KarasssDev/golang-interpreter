@@ -64,7 +64,7 @@ data GoExpr =
     deriving Show
 
 
-data JumpStatement = Break | Continue deriving Show
+data JumpStatement = Break | Continue | Return GoExpr deriving Show
 
 data GoStatement = 
       VarDecl Id GoType GoExpr   -- var x int = 
@@ -72,7 +72,6 @@ data GoStatement =
     | FuncDecl Id [(Id, GoType)] GoType GoStatement
     | Expr GoExpr
     | Block [GoStatement]
-    | Return GoExpr
     | If GoExpr GoStatement
     | IfElse GoExpr GoStatement GoStatement
     | For GoStatement GoExpr GoStatement GoStatement
@@ -83,6 +82,4 @@ data GoStatement =
     | Jump JumpStatement
     deriving Show
 
-data GoProgram = 
-      Top GoStatement
-    | Main GoStatement
+data GoProgram = GoProgram GoStatement GoStatement

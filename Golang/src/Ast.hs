@@ -26,7 +26,7 @@ instance (Show GoValue) where
     (VInt v)    -> show v
     (VString v) -> show v
     (VBool v)   -> show v
-    VNil        -> ""
+    VNil        -> "Nil"
 
 data BinOp = 
 -- int

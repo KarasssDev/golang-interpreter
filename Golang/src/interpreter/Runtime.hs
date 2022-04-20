@@ -80,7 +80,7 @@ popFrame = do
   r <- get
   let f = head (frameStack r) internalErrorEmptyFrameStack
   put $ r {frameStack = tail (frameStack r)}
-  lift $ print $ "pop frame"
+  --lift $ print $ "pop frame"
   return f
 
 pushScope :: Runtime ()
@@ -89,7 +89,7 @@ pushScope = do
   let stack    = frameStack r
   let topFrame = head stack (error "fix me")
   let newFrame = topFrame {scopes = empty : (scopes topFrame)}
-  lift $ print $ "push scope"
+  --lift $ print $ "push scope"
   put $ r {frameStack = newFrame:(tail stack)}
 
 popScope :: Runtime ()
@@ -98,7 +98,7 @@ popScope = do
   let stack    = frameStack r
   let topFrame = head stack (error "fix me")
   let newFrame = topFrame {scopes = tail (scopes topFrame)}
-  lift $ print $ "pop scope"
+  --lift $ print $ "pop scope"
   put $ r {frameStack = newFrame:(tail stack)}
 
 getVarValue :: Id -> Runtime GoValue

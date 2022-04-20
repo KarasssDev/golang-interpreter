@@ -83,12 +83,16 @@ evalExpr (FuncCall id arge) = do -- add check (f == func)
   f <- getVarValue id
   case f of 
     (VFunc args body) -> do
+      argv <- forM arge evalExpr
       pushFrame
       pushScope
-      argv <- forM arge evalExpr
+      lift $ print "--- arguments ---"
+      lift $ print $ args
+      lift $ print $ argv
+      lift $ print "-----------------"
       putArgs argv args
       evalStatement body
-      popScope
+      --popScope
       fr <- popFrame
       return $ returnVal fr
     _                 -> error "fix me3" 
@@ -116,7 +120,7 @@ evalStatement (Block b) = do
       [] -> return ()
       x:xs ->  case x of 
         (Jump s) -> do
-          putJumpSt $ Just s
+          evalStatement x
           return ()
         _        -> do 
           evalStatement x
@@ -186,12 +190,13 @@ evalStatement (SetByInd id ind e) = do
   -- fix me (add assign type check)
   case (arr, vind) of
     ((VArray arr), (VInt i)) -> do
-      lift $ print (insert i v arr)
+      --lift $ print (insert i v arr)
       let res = (insert i v arr) in evalStatement (Assign id (Val (VArray res)))
     _                        -> undefined -- видимо должен поймать парсер
 
 evalStatement (Jump (Return e)) = do
   v <- evalExpr e
+  lift $ print "1111111111111"
   putReturnValue v
   putJumpSt $ Just $ Return e
 
@@ -199,8 +204,15 @@ evalStatement (Jump s) = putJumpSt $ Just s
 
 evalStatement _ = undefined
 
-exec :: GoStatement -> IO ((), GoRuntime)
-exec s = runStateT (evalStatement s >> evalStatement goMain) emptyGoRuntime
+data GoProgram  = GoProgram [GoStatement]
+
+evalGoProgram :: GoProgram -> Runtime ()
+evalGoProgram (GoProgram (x:xs)) = do
+  evalStatement x
+  evalGoProgram $ GoProgram xs
+evalGoProgram (GoProgram []) = return ()
+
+exec :: GoProgram -> IO ((), GoRuntime)
+exec p = runStateT (evalGoProgram p >> evalStatement goMain) emptyGoRuntime
   where 
     goMain = Print $ FuncCall "main" []
-    --program = s

@@ -10,6 +10,7 @@ data GoType =
     | TArray Int GoType     -- arr[size] type
     | TChan GoType          -- chan int
     | TFunc [(Id,GoType)] GoType -- func (int x, int y) int
+    | TNil
     deriving Show
 
 data GoValue =
@@ -83,3 +84,5 @@ data GoStatement =
     | EmptyStatement
     | Jump JumpStatement
     deriving Show
+
+data GoProgram  = GoProgram [GoStatement] deriving Show

@@ -72,7 +72,6 @@ type Runtime a = StateT GoRuntime IO a
 pushFrame :: Runtime ()
 pushFrame = do
   r <- get
-  lift $ print $ "push frame"
   put $ r {frameStack = emptyFrame:(frameStack r) }
 
 popFrame :: Runtime Frame
@@ -80,7 +79,6 @@ popFrame = do
   r <- get
   let f = head (frameStack r) internalErrorEmptyFrameStack
   put $ r {frameStack = tail (frameStack r)}
-  --lift $ print $ "pop frame"
   return f
 
 pushScope :: Runtime ()
@@ -89,7 +87,6 @@ pushScope = do
   let stack    = frameStack r
   let topFrame = head stack (error "fix me")
   let newFrame = topFrame {scopes = empty : (scopes topFrame)}
-  --lift $ print $ "push scope"
   put $ r {frameStack = newFrame:(tail stack)}
 
 popScope :: Runtime ()
@@ -98,7 +95,6 @@ popScope = do
   let stack    = frameStack r
   let topFrame = head stack (error "fix me")
   let newFrame = topFrame {scopes = tail (scopes topFrame)}
-  --lift $ print $ "pop scope"
   put $ r {frameStack = newFrame:(tail stack)}
 
 getVarValue :: Id -> Runtime GoValue
@@ -182,12 +178,6 @@ putArgs argv argsign = do
 
 putReturnValue :: GoValue -> Runtime ()
 putReturnValue v = changeTopFrame (\x -> x {returnVal = v})
-
--- getReturnValue :: Runtime (Maybe GoValue)
--- getReturnValue = do
---   r <- get
-  
---   return $ returnVal r
 
 
 -- helper functions

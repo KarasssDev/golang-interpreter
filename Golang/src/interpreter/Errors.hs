@@ -8,6 +8,9 @@ import Data.Map
 baseErrorMessage :: String
 baseErrorMessage = "Interpretation error: "
 
+baseInternalErrorMessage :: String 
+baseInternalErrorMessage = "Internal interpretation error: "
+
 -- helpers for erros
 showValueType :: GoValue -> String
 showValueType (VInt _)    = "int"
@@ -58,3 +61,6 @@ errorNotBoolExprInFor = error $ baseErrorMessage ++ "not bool expression in for"
 
 errorIndexOutOfRange :: Int ->  a
 errorIndexOutOfRange i = error $ baseErrorMessage ++ "index out of range: " ++ show i
+
+internalErrorEmptyFrameStack :: a
+internalErrorEmptyFrameStack = error $ baseInternalErrorMessage ++ "empty frame stack"

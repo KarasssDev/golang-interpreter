@@ -1,29 +1,38 @@
 module Runtime where
 import Ast
 import Data.Map (Map, lookup, empty, insert, member)
-import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT )
-import Prelude hiding (lookup)
+import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT, lift)
+import Prelude hiding (lookup, head)
 import Errors
 
 data RVarType = RConst | RVar
 type RVar = (GoType, GoValue, RVarType)
-type VarsMap = Map Id RVar
-type Scope = VarsMap
+type Scope = Map Id RVar
+
+
+data Frame = Frame {
+    scopes    :: [Scope],
+    returnVal :: GoValue,
+    jumpSt    :: Maybe JumpStatement
+}
+
+emptyFrame :: Frame
+emptyFrame = Frame {
+    scopes    = [],
+    returnVal = VNil,
+    jumpSt    = Nothing
+}
 
 
 data GoRuntime = GoRuntime {
-    scope     :: Scope,
-    callStack :: [Scope],
-    returnVal :: Maybe GoValue,
-    jumpSt    :: Maybe JumpStatement
+    scope      :: Scope,
+    frameStack :: [Frame]
 }
 
 emptyGoRuntime :: GoRuntime
 emptyGoRuntime = GoRuntime {
     scope      = empty,
-    callStack  = [],
-    returnVal  = Nothing,
-    jumpSt     = Nothing
+    frameStack  = []
 }
 
 getRVarType :: RVar -> GoType
@@ -50,28 +59,47 @@ containVar id sc = case (lookupVarInScope id sc) of
   Nothing -> False
 
 getOrError :: Id -> GoRuntime -> RVar
-getOrError id r = case (lookupVar id scopes) of
+getOrError id r = case (lookupVar id scs) of
   Just x -> x
   Nothing -> errorVarNotInScope id
   where
-    scopes = (callStack r) ++ [(scope r)]
+    scs = (scopes (head (frameStack r) (emptyFrame))) ++ [(scope r)]
 
-
--- runtime monad
 
 type Runtime a = StateT GoRuntime IO a
 
 
-push :: Runtime ()
-push = do
+pushFrame :: Runtime ()
+pushFrame = do
   r <- get
-  put $ r {callStack = empty:(callStack r) }
+  lift $ print $ "push frame"
+  put $ r {frameStack = emptyFrame:(frameStack r) }
 
-pop :: Runtime ()
-pop = do
-  r <- get 
-  put $ r {callStack = tail (callStack r)}
+popFrame :: Runtime Frame
+popFrame = do
+  r <- get
+  let f = head (frameStack r) internalErrorEmptyFrameStack
+  put $ r {frameStack = tail (frameStack r)}
+  lift $ print $ "pop frame"
+  return f
 
+pushScope :: Runtime ()
+pushScope = do
+  r <- get
+  let stack    = frameStack r
+  let topFrame = head stack (error "fix me")
+  let newFrame = topFrame {scopes = empty : (scopes topFrame)}
+  lift $ print $ "push scope"
+  put $ r {frameStack = newFrame:(tail stack)}
+
+popScope :: Runtime ()
+popScope = do
+  r <- get
+  let stack    = frameStack r
+  let topFrame = head stack (error "fix me")
+  let newFrame = topFrame {scopes = tail (scopes topFrame)}
+  lift $ print $ "pop scope"
+  put $ r {frameStack = newFrame:(tail stack)}
 
 getVarValue :: Id -> Runtime GoValue
 getVarValue id = gets (getRVarValue . getOrError id)
@@ -91,27 +119,17 @@ isConst id = do
 putRVar :: Id -> RVar -> Runtime ()  
 putRVar id v = do
   r <- get
-  case (callStack r) of
+  let stack = frameStack r
+  case stack of
     []     -> put $ r {scope = insert id v (scope r)}
-    (x:xs) -> put $ r {callStack = (insert id v x) : xs}
+    (x:xs) -> do
+      let scope    = head (scopes x) (error "empty scopes")
+      let newScope = insert id v scope
+      let newFrame = x {scopes = newScope:(tail (scopes x)) }
+      put $ r {frameStack = newFrame : xs}
 
 putVar :: Id -> (GoType, GoValue) -> Runtime ()
 putVar id (t, v) = putRVar id (t, v, RVar)
-
-
-changeVar :: Id -> GoValue -> Runtime()
-changeVar id v = do
-  r <- get
-  let (t,_,_) = getOrError id r
-  if not (containVar id (scope r)) then
-    put $ r {callStack = helper [] (callStack r) id v r}
-  else
-    put $ r {scope = insert id (t,v, RVar) (scope r)} 
-  where 
-    helper lst (x:xs) id v r = if (containVar id x) 
-      then let (t,_,_) = (getOrError id r) in (lst ++ [(insert id (t,v,RVar) x)] ++ xs)
-      else helper (lst ++ [x]) xs id v r
-    helper lst [] id v r = errorVarNotInScope id
 
 putConst :: Id -> (GoType, GoValue) -> Runtime ()
 putConst id (t, v) = do
@@ -122,24 +140,76 @@ putConst id (t, v) = do
   else
     putRVar id (t, v, RConst)
 
+changeVar :: Id -> GoValue -> Runtime () -- add type check
+changeVar id v = do
+  r <- get
+  let (t,_,_) = getOrError id r
+  if (containVar id (scope r)) then
+    put $ r {scope = insert id (t,v,RVar) (scope r)} 
+  else do
+    newFrame <- changeVarInFrame id v (head (frameStack r) internalErrorEmptyFrameStack)
+    put $ r {frameStack = newFrame : (tail (frameStack r))}
+
+changeVarInFrame :: Id -> GoValue -> Frame -> Runtime Frame
+changeVarInFrame id v fr = case (scopes fr) of
+  lst@(x:xs) -> do
+    t <- getVarType id
+    let newScopes = changeElem lst (\e -> containVar id e) (\e -> insert id (t,v,RVar) e)
+    return $ fr {scopes = newScopes}
+  []     -> errorVarNotInScope id
+
+
+
+
 getJumpSt :: Runtime (Maybe JumpStatement)
 getJumpSt = do 
-  r <- get 
-  return $ jumpSt r
+  r <- get
+  return $ jumpSt $ head (frameStack r) internalErrorEmptyFrameStack
   
 putJumpSt :: Maybe JumpStatement  -> Runtime ()
-putJumpSt s = do
-  r <- get
-  put $ r { jumpSt = s }
+putJumpSt s = changeTopFrame (\x -> x {jumpSt = s})
 
-getReturnVal :: Runtime (Maybe GoValue)
-getReturnVal = do
-  r <- get
-  return $ returnVal r
 
-putReturnVal :: Maybe GoValue -> Runtime ()
-putReturnVal s = do
-  r <- get
-  put r { returnVal = s }
+putArgs :: [GoValue] -> [(Id, GoType)] -> Runtime ()
+putArgs argv argsign = do
+  let args = zip3 (map fst argsign) (map snd argsign) argv
+  putAll args
+  where
+    putAll [] = return ()
+    putAll ((id,t,v):xs) = do
+      putVar id (t,v) 
+      putAll xs
 
--- putArgs :: [GoExpr] -> [Id] -> Runtime ()
+putReturnValue :: GoValue -> Runtime ()
+putReturnValue v = changeTopFrame (\x -> x {returnVal = v})
+
+-- getReturnValue :: Runtime (Maybe GoValue)
+-- getReturnValue = do
+--   r <- get
+  
+--   return $ returnVal r
+
+
+-- helper functions
+splitBy :: [a] -> (a -> Bool) -> ([a], a, [a])
+splitBy lst p = helper lst p []
+  where 
+    helper (x:xs) p l = if (p x) then (l, x, xs) else helper xs p (l ++ [x])
+    helper []     p l = undefined
+
+changeElem :: [a] -> (a -> Bool) -> (a -> a) -> [a]
+changeElem lst p f = l ++ [(f x)] ++ r
+  where
+    (l,x,r) = splitBy lst p
+
+changeTopFrame :: (Frame -> Frame) -> Runtime ()
+changeTopFrame f = do
+  r <- get
+  let fs = frameStack r
+  let topFrame = head fs internalErrorEmptyFrameStack
+  let newFrame = f topFrame
+  put $ r { frameStack = newFrame:(tail fs)}
+
+head :: [a] -> a -> a
+head (x:xs) e = x
+head []     e = e

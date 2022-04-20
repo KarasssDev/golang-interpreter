@@ -1,7 +1,7 @@
 module Interpreter where
 import Prelude hiding (lookup)
 import Ast
-import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT, lift, runStateT)
+import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT, lift, runStateT, forM)
 import Data.Map (Map, lookup, empty, insert)
 import Runtime
 import BaseFunc
@@ -79,6 +79,20 @@ evalExpr (GetByInd arr ind) = do
       (Just v) -> v
       Nothing  -> errorIndexOutOfRange i
 
+evalExpr (FuncCall id arge) = do -- add check (f == func)
+  f <- getVarValue id
+  case f of 
+    (VFunc args body) -> do
+      pushFrame
+      pushScope
+      argv <- forM arge evalExpr
+      putArgs argv args
+      evalStatement body
+      popScope
+      fr <- popFrame
+      return $ returnVal fr
+    _                 -> error "fix me3" 
+
 evalExpr _ = undefined
 
 
@@ -114,14 +128,14 @@ evalStatement (Print e) = do
   lift $ print res
 
 evalStatement (If e s) = do
-  push
+  pushScope
   checkIfSt e (evalStatement s) (return ())
-  pop
+  popScope
 
 evalStatement(IfElse e s1 s2) = do
-  push
+  pushScope
   checkIfSt e (evalStatement s1) (evalStatement s2)
-  pop
+  popScope
 
 evalStatement (Assign id e) = do
   res <- evalExpr e
@@ -138,10 +152,10 @@ evalStatement (Assign id e) = do
 evalStatement EmptyStatement = return ()
 
 evalStatement (For init cont di act) = do
-  push
+  pushScope
   evalStatement init
   for cont di act
-  pop
+  popScope
   where 
     for cont di act = do
       checkIfSt cont (evalStatement act) (return ())
@@ -160,14 +174,10 @@ evalStatement (For init cont di act) = do
         Nothing -> checkIfSt cont (for cont di act) (return ())
 
 evalStatement (FuncDecl id args rt body) = do -- add check body == Block
-  let v = VFunc (map (\(x,y) -> x) args) body
+  let v = VFunc args body
   let t = TFunc args rt
   putVar id (t, v)
 
--- evalStatement (FuncCall id lst) = do -- add check (f == func)
---   f <- getVarValue id
-
-      
 
 evalStatement (SetByInd id arr ind v) = do
   varr <- evalExpr arr
@@ -178,17 +188,17 @@ evalStatement (SetByInd id arr ind v) = do
     ((VArray arr), (VInt i)) -> let res = (insert i vv arr) in evalStatement (Assign id (Val (VArray res)))
     _                        -> undefined -- видимо должен поймать парсер
 
-
-evalStatement (Jump Continue) = putJumpSt $ Just Continue
-evalStatement (Jump Break)    = putJumpSt $ Just Break 
 evalStatement (Jump (Return e)) = do
   v <- evalExpr e
-  putJumpSt    $ Just (Return e)
-  putReturnVal $ Just v
+  putReturnValue v
+  putJumpSt $ Just $ Return e
+
+evalStatement (Jump s) = putJumpSt $ Just s
 
 evalStatement _ = undefined
 
-
-
-exec :: GoProgram -> IO ((), GoRuntime)
-exec (GoProgram top main) = runStateT (evalStatement (Block [top, main])) emptyGoRuntime
+exec :: GoStatement -> IO ((), GoRuntime)
+exec s = runStateT (evalStatement s >> evalStatement goMain) emptyGoRuntime
+  where 
+    goMain = Print $ FuncCall "main" []
+    --program = s

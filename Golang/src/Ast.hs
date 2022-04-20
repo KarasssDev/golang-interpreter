@@ -18,13 +18,15 @@ data GoValue =
     | VBool Bool
     | VArray (Map Int GoValue)
     | VChan
-    | VFunc [Id] GoStatement
+    | VFunc [(Id, GoType)] GoStatement
+    | VNil
 
 instance (Show GoValue) where
   show x = case x of 
     (VInt v)    -> show v
     (VString v) -> show v
     (VBool v)   -> show v
+    VNil        -> ""
 
 data BinOp = 
 -- int
@@ -81,5 +83,3 @@ data GoStatement =
     | EmptyStatement
     | Jump JumpStatement
     deriving Show
-
-data GoProgram = GoProgram GoStatement GoStatement

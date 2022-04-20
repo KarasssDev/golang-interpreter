@@ -147,7 +147,7 @@ evalStatement (Assign id e) = do
     if showValueType res /= showType t then
       errorAssigmnetsType id res t
     else
-      putVar id (t, res) -- ?
+      changeVar id res
 
 evalStatement EmptyStatement = return ()
 

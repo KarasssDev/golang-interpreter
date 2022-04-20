@@ -79,7 +79,7 @@ data GoStatement =
     | For GoStatement GoExpr GoStatement GoStatement
     | Print GoExpr
     | Assign Id GoExpr
-    | SetByInd Id GoExpr GoExpr GoExpr
+    | SetByInd Id GoExpr GoExpr
     | EmptyStatement
     | Jump JumpStatement
     deriving Show

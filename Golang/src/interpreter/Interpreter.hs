@@ -147,7 +147,7 @@ evalStatement (Assign id e) = do
     if showValueType res /= showType t then
       errorAssigmnetsType id res t
     else
-      putVar id (t, res)
+      putVar id (t, res) -- ?
 
 evalStatement EmptyStatement = return ()
 
@@ -179,13 +179,15 @@ evalStatement (FuncDecl id args rt body) = do -- add check body == Block
   putVar id (t, v)
 
 
-evalStatement (SetByInd id arr ind v) = do
-  varr <- evalExpr arr
+evalStatement (SetByInd id ind e) = do
+  arr <- evalExpr (Var id)
   vind <- evalExpr ind
-  vv   <- evalExpr v
+  v   <- evalExpr e
   -- fix me (add assign type check)
-  case (varr, vind) of
-    ((VArray arr), (VInt i)) -> let res = (insert i vv arr) in evalStatement (Assign id (Val (VArray res)))
+  case (arr, vind) of
+    ((VArray arr), (VInt i)) -> do
+      lift $ print (insert i v arr)
+      let res = (insert i v arr) in evalStatement (Assign id (Val (VArray res)))
     _                        -> undefined -- видимо должен поймать парсер
 
 evalStatement (Jump (Return e)) = do

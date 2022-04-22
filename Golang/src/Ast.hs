@@ -3,7 +3,7 @@ import Data.Map
 
 type Id = String
 
-data GoType = 
+data GoType =
       TInt                  -- int
     | TString               -- string
     | TBool                 -- bool

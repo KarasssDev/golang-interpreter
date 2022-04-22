@@ -23,6 +23,8 @@ dependencies:
 - hspec
 - mtl
 - containers
+- array
+- parsec
 
 library:
   source-dirs: 

@@ -146,12 +146,17 @@ table = [ [ unIntOp "-" UnMinus,
             unBoolOp "!" Not]
         , [ binIntOp "*" Mul, 
             binIntOp "/" Div,
-            binBoolOp "&&" And ]
+            binIntOp "%" Mod]
         , [ binIntOp "+" Add, 
-            binIntOp "-" Minus,
-            binBoolOp "||" Or ]
+            binIntOp "-" Minus]
         , [ compOp "==" Eq,
-            compOp "<" Le ]
+            compOp ">" Gr,
+            compOp "<" Le,
+            compOp ">=" Gre,
+            compOp "<=" Leq,
+            compOp "!=" Neq]
+        , [ binBoolOp "&&" And ]
+        , [ binBoolOp "||" Or ]
         ]
 
 binary  name fun assoc = Ex.Infix   ( do { reservedOp name; return fun } ) assoc

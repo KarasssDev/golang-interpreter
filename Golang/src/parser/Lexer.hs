@@ -14,7 +14,7 @@ lexer = Tok.makeTokenParser style
     ops = [ "+", "*", "-", "/", "%"
           , "<", ">", ">=", "<=", "==", "!="
           , ";", "=", "," ]
-    names = ["true", "false", "func", "var", "const", "int", "bool", "=", "print"]
+    names = ["true", "false", "func", "var", "const", "int", "bool", "=", "println"]
     style = emptyDef {
                Tok.commentLine = "//"
              , Tok.commentStart = "/*"

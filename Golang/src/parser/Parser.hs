@@ -85,7 +85,7 @@ stExpr = do
 
 gprint :: Parser GoStatement
 gprint = do
-    try $ reserved "print"
+    try $ reserved "println"
     e <- try $ parens $ try expr
     try semi
     return $ Print e

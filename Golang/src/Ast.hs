@@ -26,7 +26,8 @@ instance (Show GoValue) where
   show x = case x of 
     (VInt v)    -> show v
     (VString v) -> show v
-    (VBool v)   -> show v
+    (VBool True)   -> "true"
+    (VBool False)  -> "false" 
     VNil        -> "Nil"
 
 data BinOp = 

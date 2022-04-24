@@ -1,0 +1,26 @@
+#!/bin/sh 
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+
+cd demos 
+tests=`find . -maxdepth 1 -type f -name "*.go"`
+
+for test in $tests
+do
+    go    run $test &> expected
+    stack run $test &> actual
+    dif=`diff expected actual`
+
+    if [[ $? == 0 ]] ; then
+        echo "Test $test done"
+    else
+        echo "Test $test failed"
+        echo $dif
+        exit 1
+    fi
+
+done
+
+rm expected actual
+exit 0

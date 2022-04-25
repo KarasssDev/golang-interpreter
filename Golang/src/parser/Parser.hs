@@ -25,12 +25,14 @@ program = do
 statement :: Parser GoStatement
 statement = 
     try decl   <|> 
-    try stExpr <|>
     try gprint <|>
     try block  <|>
     try jump   <|>
     try ifelse <|>
-    try gif
+    try gif    <|>
+    try for    <|>
+    try assign <|>
+    try stExpr
 
 -- declarations
 
@@ -75,6 +77,16 @@ sign = do
     t <- try gtype
     return (id, t)
 
+-- assign
+
+assign :: Parser GoStatement
+assign = do
+  id <- try identifier
+  try $ reserved "="
+  e <- try expr
+  optional semi
+  return $ Assign id e
+
 -- expr as statement
 
 stExpr :: Parser GoStatement
@@ -107,6 +119,29 @@ tbool = do
     try $ reserved "bool"
     return $ TBool
 
+-- for
+
+for = try for1 <|> try for2
+
+for1 :: Parser GoStatement
+for1 = do
+  try $ reserved "for"
+  try semi
+  e <- try expr <|> return EmptyCondition
+  try semi
+  d <- try statement <|> return EmptyStatement
+  b <- try block
+  return $ For EmptyStatement e d b
+
+for2 :: Parser GoStatement
+for2 = do
+  try $ reserved "for"
+  try semi
+  e <- try expr <|> return EmptyCondition
+  try semi
+  b <- try block
+  return $ For EmptyStatement e EmptyStatement b
+
 -- block
 
 block :: Parser GoStatement
@@ -118,7 +153,7 @@ statementList = many $ try statement
 -- jump
 
 jump :: Parser GoStatement
-jump = Jump <$> greturn
+jump = Jump <$> (greturn <|> gbreak <|> continue)
  
 greturn :: Parser JumpStatement
 greturn = do
@@ -126,6 +161,18 @@ greturn = do
     e <- try expr
     try semi
     return $ Return e
+
+gbreak :: Parser JumpStatement
+gbreak = do
+  try $ reserved "break"
+  try semi
+  return Break
+
+continue :: Parser JumpStatement
+continue = do
+  try $ reserved "continue"
+  try semi
+  return Continue
 
 -- if else
 
@@ -229,4 +276,4 @@ cleanFile s = helper s ""
 goParse :: String -> Either ParseError GoProgram
 goParse inp = parse program "" inp
 
-p s = parseTest statementList s
+p s = parseTest for s

@@ -1,20 +1,29 @@
 #!/bin/sh 
 
 cd demos
-tests=`find . -type f -name "*.go"`
+tests=$(find . -type f -name "*.go")
 stack build
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+
 
 for test in $tests
 do
     go    run $test &> expected
     stack run $test &> actual
-    dif=`diff expected actual`
-
-    if [[ $? == 0 ]] ; then
-        echo "Test $test done"
+    dif=$(diff expected actual)
+    if [ $? == 0 ] ; then
+        echo -e "${GREEN}[Test $test] done${NC}"
     else
-        echo "Test $test failed"
-        echo $dif
+        echo -e "${RED}[Test $test] failed ${NC}"
+        echo -e "${YELLOW}Expected:${NC}"
+        cat expected
+        echo -e "${YELLOW}Actual:${NC}"
+        cat actual
         exit 1
     fi
 

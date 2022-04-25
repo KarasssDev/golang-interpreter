@@ -17,7 +17,8 @@ program :: Parser GoProgram
 program = do
   skipMany1 (try $ reserved "package")
   skipMany1 (try $ reserved "main")
-  GoProgram <$> (try statementList)
+  try semi
+  GoProgram <$> statementList
 
 -- statements 
 
@@ -28,6 +29,7 @@ statement =
     try gprint <|>
     try block  <|>
     try jump   <|>
+    try ifelse <|>
     try gif
 
 -- declarations
@@ -134,6 +136,14 @@ gif = do
   b <- try block
   return $ If e b
 
+ifelse :: Parser GoStatement
+ifelse = do
+  try $ reserved "if"
+  e <- try expr
+  b1 <- try block
+  try $ reserved "else"
+  b2 <- try statement
+  return $ IfElse e b1 b2
 -- expressions
 
 expr = Ex.buildExpressionParser table term 

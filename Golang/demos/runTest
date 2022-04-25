@@ -1,10 +1,8 @@
 #!/bin/sh 
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-
-cd demos 
-tests=`find . -maxdepth 1 -type f -name "*.go"`
+cd demos
+tests=`find . -type f -name "*.go"`
+stack build
 
 for test in $tests
 do

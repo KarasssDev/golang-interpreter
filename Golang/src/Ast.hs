@@ -25,7 +25,7 @@ data GoValue =
 instance (Show GoValue) where
   show x = case x of 
     (VInt v)    -> show v
-    (VString v) -> show v
+    (VString v) -> v
     (VBool True)   -> "true"
     (VBool False)  -> "false" 
     VNil        -> "Nil"

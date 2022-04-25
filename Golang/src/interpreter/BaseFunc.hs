@@ -17,6 +17,7 @@ instance (Ord GoValue) where
 
 instance (Num GoValue) where
   VInt x + VInt y = VInt $ x + y
+  VString x + VString y = VString $ x ++ y
   x + y = errorUnexpectedTypes x y "+" "int" "int"
 
   VInt x * VInt y = VInt $ x * y

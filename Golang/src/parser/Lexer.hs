@@ -34,6 +34,7 @@ whitespace = Tok.whiteSpace lexer
 reserved   = Tok.reserved lexer
 reservedOp = Tok.reservedOp lexer
 semi       = Tok.semi lexer
+sym        = Tok.symbol lexer
 
 
 

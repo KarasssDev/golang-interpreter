@@ -119,6 +119,11 @@ tbool = do
     try $ reserved "bool"
     return $ TBool
 
+tstring :: Parser GoType
+tstring = do
+    try $ reserved "string"
+    return $ TString
+
 -- for
 
 for = try for1 <|> try for2
@@ -232,7 +237,7 @@ unBoolOp s op = prefix s (GoUnOp op)
 -- values 
 
 value :: Parser GoExpr
-value = Val <$> (vint <|> vbool)
+value = Val <$> (vint <|> vbool <|> vstring)
 
 vint :: Parser GoValue
 vint = toVInt <$> integer
@@ -244,6 +249,11 @@ vbool = (toVTrue <$> try (reserved "true")) <|> (toVFalse <$> try (reserved "fal
   where
     toVTrue  _ = VBool True
     toVFalse _ = VBool False
+
+vstring :: Parser GoValue
+vstring = do
+  syms <- try $ between (sym "\"") (sym "\"") (many letter)
+  return $ VString $ syms
 
 -- var
 

@@ -16,7 +16,7 @@ jobs:
         ghc: ['8.8.3', '8.10.5']
         cabal: ['2.4.1.0', '3.0.0.0']
         os: [ubuntu-latest]
-        resolver: [lts-3.22 , lts-17, lts-18, lts]
+        resolver: [lts]
         exclude:
           # GHC 8.8+ only works with cabal v3+
           - ghc: 8.8.3
@@ -59,7 +59,7 @@ jobs:
 
       - name: Run tests
         run: |
-          stack --resolver ${{ matrix.resolver }} build --test --no-run-benchmarks
+          ./demos/runTest
 
       - name: Package list
         run: |

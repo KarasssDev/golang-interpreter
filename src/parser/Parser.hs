@@ -1,6 +1,6 @@
-module Parser where 
+module Parser where
 
-import Lexer 
+import Lexer
 import Ast
 
 import Data.Maybe
@@ -23,8 +23,8 @@ program = do
 -- statements 
 
 statement :: Parser GoStatement
-statement = 
-    try decl   <|> 
+statement =
+    try decl   <|>
     try gprint <|>
     try block  <|>
     try jump   <|>
@@ -41,7 +41,7 @@ decl = try varDecl <|> try constDecl <|> try funcDecl
 
 varDecl :: Parser GoStatement
 varDecl = do
-    try $ reserved "var" 
+    try $ reserved "var"
     id <- try identifier
     t  <- try gtype
     try $ reserved "="
@@ -51,7 +51,7 @@ varDecl = do
 
 constDecl :: Parser GoStatement
 constDecl = do
-    try $ reserved "const" 
+    try $ reserved "const"
     id <- try identifier
     t  <- try gtype
     try $ reserved "="
@@ -107,11 +107,11 @@ gprint = do
 -- type
 
 gtype :: Parser GoType
-gtype = try tint <|> try tbool <|> (return TNil)
+gtype = try tint <|> try tbool <|> return TNil
 
 tint :: Parser GoType
 tint = do
-    try $ reserved "int" 
+    try $ reserved "int"
     return $ TInt
 
 tbool :: Parser GoType
@@ -159,7 +159,7 @@ statementList = many $ try statement
 
 jump :: Parser GoStatement
 jump = Jump <$> (greturn <|> gbreak <|> continue)
- 
+
 greturn :: Parser JumpStatement
 greturn = do
     try $ reserved "return"
@@ -198,18 +198,18 @@ ifelse = do
   return $ IfElse e b1 b2
 -- expressions
 
-expr = Ex.buildExpressionParser table term 
+expr = Ex.buildExpressionParser table term
 
-term = parens (try expr) <|> try value <|> try funcCall <|> try var 
+term = parens (try expr) <|> try value <|> try funcCall <|> try var
 
 -- operations
 
 table = [ [ unIntOp "-" UnMinus,
             unBoolOp "!" Not]
-        , [ binIntOp "*" Mul, 
+        , [ binIntOp "*" Mul,
             binIntOp "/" Div,
             binIntOp "%" Mod]
-        , [ binIntOp "+" Add, 
+        , [ binIntOp "+" Add,
             binIntOp "-" Minus]
         , [ compOp "==" Eq,
             compOp ">" Gr,
@@ -221,18 +221,18 @@ table = [ [ unIntOp "-" UnMinus,
         , [ binBoolOp "||" Or ]
         ]
 
-binary  name fun assoc = Ex.Infix   ( do { reservedOp name; return fun } ) assoc
-prefix  name fun       = Ex.Prefix  ( do { reservedOp name; return fun } )
-postfix name fun       = Ex.Postfix ( do { reservedOp name; return fun } )
+binary name fun = Ex.Infix   ( do { reservedOp name; return fun } )
+prefix  name fun = Ex.Prefix  ( do { reservedOp name; return fun } )
+postfix name fun = Ex.Postfix ( do { reservedOp name; return fun } )
 
 
 binIntOp s op = binary s (GoBinOp op) Ex.AssocLeft
-unIntOp  s op = prefix s (GoUnOp op) 
+unIntOp  s op = prefix s (GoUnOp op)
 
 compOp s op = binary s (GoBinOp op) Ex.AssocNone
 
 binBoolOp s op = binary s (GoBinOp op) Ex.AssocLeft
-unBoolOp s op = prefix s (GoUnOp op) 
+unBoolOp s op = prefix s (GoUnOp op)
 
 -- values 
 
@@ -275,15 +275,15 @@ listExpr = commaSep $ try expr
 
 cleanFile :: String -> String
 cleanFile s = helper s ""
-  where 
-    helper (x:xs) r = 
-      if (x == '\n' || x == '\t') then 
+  where
+    helper (x:xs) r =
+      if x == '\n' || x == '\t' then
         helper xs (' ':r)
       else
         helper xs (x:r)
     helper [] r = reverse r
 
 goParse :: String -> Either ParseError GoProgram
-goParse inp = parse program "" inp
+goParse = parse program ""
 
-p s = parseTest for s
+p = parseTest for

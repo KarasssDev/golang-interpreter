@@ -8,7 +8,7 @@ import Data.Map
 baseErrorMessage :: String
 baseErrorMessage = "Interpretation error: "
 
-baseInternalErrorMessage :: String 
+baseInternalErrorMessage :: String
 baseInternalErrorMessage = "Internal interpretation error: "
 
 -- helpers for erros
@@ -16,10 +16,10 @@ showValueType :: GoValue -> String
 showValueType (VInt _)    = "int"
 showValueType (VString _) = "string"
 showValueType (VBool _)   = "bool"
-showValueType (VArray x)  = case (lookup 0 x) of 
+showValueType (VArray x)  = case lookup 0 x of
   (Just e) -> "array of " ++ showValueType e
-  Nothing  -> undefined 
-
+  Nothing  -> undefined
+showValueType _ = undefined
 
 showType :: GoType -> String
 showType TInt    = "int"
@@ -44,14 +44,14 @@ errorVarNotInScope :: Id -> a
 errorVarNotInScope id = error $ "Var " ++ id ++ " not in scope"
 
 errorAssigmnetsType :: Id -> GoValue -> GoType -> a
-errorAssigmnetsType id v t = error $ baseErrorMessage ++ "x = expr, type x = " ++ showValueType v 
+errorAssigmnetsType id v t = error $ baseErrorMessage ++ "x = expr, type x = " ++ showValueType v
   ++ "; type expr = " ++ showType t
 
 errorRedeclarationConst :: Id -> a
 errorRedeclarationConst id = error $ "redeclaration const " ++ id
 
 errorNotBoolInIf :: GoValue -> a
-errorNotBoolInIf v = error $ baseErrorMessage ++ "not bool type in if: " ++ showValueType v 
+errorNotBoolInIf v = error $ baseErrorMessage ++ "not bool type in if: " ++ showValueType v
 
 errorAssignToConst :: Id -> a
 errorAssignToConst id = error $ baseErrorMessage ++ "assign to const " ++ id

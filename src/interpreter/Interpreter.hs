@@ -10,7 +10,7 @@ import Errors
 
 typeCheck :: GoValue -> GoType -> () -> ()
 typeCheck v t f = if eq v t then () else f
-  where 
+  where
 -- fix me (arrays, funcs and channels)
     eq (VInt x) TInt = True
     eq (VString s) TString = True
@@ -25,7 +25,7 @@ checkIfSt e tr fl = do
     (VBool False) -> fl
     _ -> errorNotBoolInIf res
 
-evalBinOp :: BinOp -> GoValue -> GoValue -> GoValue 
+evalBinOp :: BinOp -> GoValue -> GoValue -> GoValue
 evalBinOp op v1 v2 = case op of
 -- int
   Add   -> v1   +   v2
@@ -44,7 +44,7 @@ evalBinOp op v1 v2 = case op of
   Leq -> VBool $ v1 <= v2
   Neq -> VBool $ v1 /= v2
 
-evalUnOp :: UnOp -> GoValue -> GoValue 
+evalUnOp :: UnOp -> GoValue -> GoValue
 evalUnOp op v = case op of
   UnMinus -> -v
   Not     -> goNot v
@@ -66,31 +66,30 @@ evalExpr (Var id)  = getVarValue id
 
 evalExpr (Val v)   = return v
 
-evalExpr EmptyCondition = return $ VBool True 
+evalExpr EmptyCondition = return $ VBool True
 
 evalExpr (GetByInd arr ind) = do
   varr <- evalExpr arr
   vind <- evalExpr ind
-  case (varr, vind) of 
-    ((VArray lst), (VInt i)) -> return $ safeInd lst i
+  case (varr, vind) of
+    (VArray lst, VInt i) -> return $ safeInd lst i
     _                        -> undefined -- видимо должен поймать парсер
   where
-    safeInd lst i = case (lookup i lst) of
+    safeInd lst i = case lookup i lst of
       (Just v) -> v
       Nothing  -> errorIndexOutOfRange i
 
 evalExpr (FuncCall id arge) = do -- add check (f == func)
   f <- getVarValue id
-  case f of 
+  case f of
     (VFunc args body) -> do
       argv <- forM arge evalExpr
       pushFrame
       pushScope
       putArgs argv args
       evalStatement body
-      fr <- popFrame
-      return $ returnVal fr
-    _                 -> error "fix me3" 
+      returnVal <$> popFrame
+    _                 -> error "fix me3"
 
 evalExpr _ = undefined
 
@@ -107,17 +106,17 @@ evalStatement (ConstDecl id t e) = do
   return $ typeCheck res t (errorAssigmnetsType id res t)
   putConst id (t, res)
 
-evalStatement (Block b) = do 
+evalStatement (Block b) = do
   j <- getJumpSt
   case j of
     Just s  -> return ()
     Nothing -> case b of
       [] -> return ()
-      x:xs ->  case x of 
+      x:xs ->  case x of
         (Jump s) -> do
           evalStatement x
           return ()
-        _        -> do 
+        _        -> do
           evalStatement x
           evalStatement (Block xs)
 
@@ -155,15 +154,15 @@ evalStatement (For init cont di act) = do
   evalStatement init
   for cont di act
   popScope
-  where 
+  where
     for cont di act = do
       checkIfSt cont (evalStatement act) (return ())
       evalStatement di
-      j <- getJumpSt 
-      case j of 
+      j <- getJumpSt
+      case j of
         Just x  -> case x of
           Break      -> do
-            putJumpSt Nothing 
+            putJumpSt Nothing
             return ()
           Continue   -> do
             putJumpSt Nothing
@@ -184,8 +183,8 @@ evalStatement (SetByInd id ind e) = do
   v   <- evalExpr e
   -- fix me (add assign type check)
   case (arr, vind) of
-    ((VArray arr), (VInt i)) -> do
-      let res = (insert i v arr) in evalStatement (Assign id (Val (VArray res)))
+    (VArray arr, VInt i) -> do
+      let res = insert i v arr in evalStatement (Assign id (Val (VArray res)))
     _                        -> undefined -- видимо должен поймать парсер
 
 evalStatement (Jump (Return e)) = do

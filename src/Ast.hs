@@ -29,6 +29,7 @@ instance (Show GoValue) where
     (VBool True)   -> "true"
     (VBool False)  -> "false" 
     VNil        -> "Nil"
+    _ -> undefined
 
 data BinOp = 
 -- int
@@ -86,4 +87,4 @@ data GoStatement =
     | Jump JumpStatement
     deriving Show
 
-data GoProgram  = GoProgram [GoStatement] deriving Show
+newtype GoProgram  = GoProgram [GoStatement] deriving Show

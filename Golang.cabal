@@ -7,10 +7,10 @@ cabal-version: 1.12
 name:           Golang
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/KarasssDev/fp2021/tree/master/Golang/README.md>
-homepage:       https://github.com/KarasssDev/fp2021#readme
-bug-reports:    https://github.com/KarasssDev/fp2021/issues
+homepage:       https://github.com/KarasssDev/golang-interpreter#readme
+bug-reports:    https://github.com/KarasssDev/golang-interpreter/issues
 author:         Karasev Viktor
-maintainer:     viktorkarasev27@gmail.com
+maintainer:     karasssdev@gmail.com
 copyright:      2022 Karasev Viktor
 license:        BSD3
 license-file:   LICENSE
@@ -20,8 +20,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/KarasssDev/fp2021
-  subdir: Golang
+  location: https://github.com/KarasssDev/golang-interpreter
 
 library
   exposed-modules:

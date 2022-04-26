@@ -1,58 +1,97 @@
-# ФП 2021. Репо для домашек
+### An implementaion of Lambda mini-language
 
-Домашки по курсу ФП 2021 оформлять **в виде пулл-реквестов к этому репо**.
+This is a homework for functional programming course.
 
-В директории `/Lambda` лежит шаблон-скелет, его нужно скопипастить и исправить под свои нужды:
-- переименовать нужные файлы под свой мини-язык;
-- пофикисить имя автора и т.п.
-- ну и сделать реализацию с тестами.
+License: LGPL for implementation code + WTFPL for test examles in miniLanguage
 
-Ожидается примерно следующая структура репозитория
-- `/Lambda` -- шаблон проекта домашки, который редактирует только препод;
-- `/CSharpExc` -- реализация мини-С# c исключениями, на основе шаблона `/Lambda`;
-- `/Java` -- реализация мини-Java, снова на основе шаблона `/Lambda`;
-- и т.д.
+Author: Vasy Pupkin, vasya@pupkin.com
 
-Для Merge Requests настроен CI, который смотрит в какой директории (проекте) произошли последние изменения, 
-и именно в этой директории запускает сборку и тесты. Например, если поменялся файл `Lambda/src/Parser.ml`, то запустятся все тесты из директории проекта `Lambda`, а тесты из проекта `Java` запускаться не будут.
+Features done (append only):
 
-Также CI собирает документацию к миниязыку и выкладывает её в https://kakadu.github.io/fp2021/doc/LANGUAGE (например в https://kakadu.github.io/fp2021/doc/Lambda)
+- Parser  (for example)
+- interpreter of non-recursive functions (for example)
+- ...
 
-###### N.B. Не удаляйте директорию Lambda. Это шаблон!
+Features in progress (and TODOs):
+
+- Interpreter of recursive functions is not yet ready  (for example)
+- TODO: make pretty-printing less memory consuming (for example)
+- ...
 
 
-### Подготовка окружения
+##### Замечания по стилю кодирования
 
-Далее инструкции по найстройки всего под GNU/Linux. Но на Windows+WSL2 тоже должно работать.
+- Если merge request не проходит CI -- проверяться не будет
+- Замечания должны быть откомментированы, иначе проверяться не будет.
+  - Если исправлены, должны быть поменчены как "исправлены"
+  - Если непонятны/некорректны, то это должно быть откомментировано соответствующим образом.
 
-Во-первых, нужен пакетный менеджер opam версии 2.х. С помощью него будем устанавливать OCaml 4.12.1 и необходимые пакеты. Системный OCaml (установленный, например, из репозиториев Ubuntu) использовать не рекомендуется. 
+  Такие суровые ограничения вводятся, чтобы замечания не игнорировались.
 
-После установки opam следует установить правильный компилятор командой (у меня обычно вместо SWITCHNAME используется `4.12.1+flambda`)
+- Иимена типов и функций -- snake_case
+- Имена типов модулей и модулей -- CamelCase
+- Ворнинги должны быть пофикшены
+- Не стесняйтесь писать `if ... then ... else` вместо `match ... with true -> .. | false -> ...`
+- Не стесняйтесь писать гварды в мэтчинге, например
+```ocaml
+match ... with
+| x when f x -> ...
+| x          -> ...
+| ...
+```
+вместо
+```ocaml
+match ... with
+| x -> if f x then ... else ...
+| ...
+```
+- Вместо `fun x y -> match y with` лучше писать короче: `fun x -> function`
+- Используйте quoted string literals в тестах, чтобы не экранировать руками
+```
+─( 11:21:01 )─< command 1 >────────────────────────────
+utop # {|
+  int main () {
+    return 0;
+  }
+  |};;
+- : string = "\n  int main () {\n    return 0;\n  }\n  "
+```
+- Не надо писать
+```ocaml
+match ... with
+| x ->
+    Hashtbl.replace tbl key value |> fun () -> ...
+```
+Лучше
+```ocaml
+match ... with
+| x ->
+    let () = Hashtbl.replace tbl key value in
+    ...
+```
+или
+```ocaml
+match ... with
+| x -> (
+    Hashtbl.replace tbl key value;
+    ...
+  )
+```
+или даже
+```ocaml
+match ... with
+| x -> begin
+    Hashtbl.replace tbl key value;
+    ...
+  end
+```
+- Не надо писать
+```ocaml
+let x = if long_expression then true else false in ...
+```
+лучше
+```ocaml
+let x = long_expression in ...
+```
 
-    opam switch create SWITCHNAME --packages=ocaml-variants.4.12.1+options,ocaml-option-flambda
-    
-Перед этим можно удалить другие switch'и, если они есть, с помощью команды `opam switch remove SWITCHNAME`.
-
-После установки у вас будет рабочий компилятор по-умолчанию в директории `~/.opam/SWITCHNAME/bin`. В конце установки opam вам предложит что-то добавить в ~/.bashrc, чтобы пути к компилятору автоматически подхватывались. Рекомендую это сделать.
-
-Если что-то пошло не так, то всегда можно указать нужный свитч руками командой, например:
-
-    export OPAMSWITCH=SWITCHNAME && eval $(opam env)
-    
-и затем убедиться, что путь до компилятора правильный
-
-    $ which ocamlc                                    
-    /home/username/.opam/SWITCHNAME/bin/ocamlc
-   
-Замечание. Когда вы будете запускать VsCode, то информация об  окружении opam из файла ~/.bashrc автоматически применяться не будет, потому что так это работает в UNIX системах из покон веков. Рекомендуется, либо запускать VsCode из-под opam командой `opam exec -- code`, либо прописать в месте запуска правильную переменную среды OPAMSWITCH, и запускать opam через sh: `sh -c 'eval $(opam env) && code'`
-
-Когда VsCode запустится, её плагин https://marketplace.visualstudio.com/items?itemName=ocamllabs.ocaml-platform слева снизу должен показать, что правильная версия компилятора подцепилась.
-
-В процессе работы вам также понадобится автоформаттер кода. Он устанавливается с помощью `opam install ocamlformat` в 
-
-     $ which ocamlformat  
-     /home/username/.opam/SWITCHNAME/bin/ocamlformat
-     
-Необходимо также в VsCode включить автоформатирование: Settings->Text Editor->Formatting->Format On Paste и Format on Save. 
-
-
+- 1

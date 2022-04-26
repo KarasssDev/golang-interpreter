@@ -20,6 +20,7 @@ jobs:
           enable-stack: true
           stack-version: 'latest'
       - run: stack build
+  test:
     name: Test
     runs-on: ubuntu-latest
     steps:

@@ -14,9 +14,9 @@ NC='\033[0m'
 for test in $tests
 do
     go    run $test &> expected
-    stack run $test &> actual
+    stack run $test > actual
     dif=$(diff expected actual)
-    if [ $? == 0 ] ; then
+    if [ $? -eq 0 ] ; then
         echo -e "${GREEN}[Test $test] done${NC}"
     else
         echo -e "${RED}[Test $test] failed ${NC}"

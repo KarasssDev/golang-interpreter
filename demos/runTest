@@ -1,5 +1,7 @@
 #!/bin/bash 
 
+set -x
+
 cd demos
 tests=$(find . -type f -name "*.go")
 stack build
@@ -13,7 +15,7 @@ NC='\033[0m'
 
 for test in $tests
 do
-    go    run $test &> expected
+    go run $test &> expected
     stack run $test > actual
     dif=$(diff expected actual)
     if [ $? -eq 0 ] ; then

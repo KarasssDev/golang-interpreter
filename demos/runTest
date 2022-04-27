@@ -1,7 +1,5 @@
 #!/bin/bash 
 
-set -x
-
 cd demos
 tests=$(find . -type f -name "*.go")
 stack build

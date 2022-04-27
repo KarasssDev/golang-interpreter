@@ -11,16 +11,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-      steps:
-      - name: Check out
-        uses: actions/checkout@v2
+    steps:
+    
+    - name: Check out
+      uses: actions/checkout@v2
 
-      - name: Build package
-        run: |
-          stack build 
-
-      - name: Run tests
-        run: |
-          ./demos/runTest
-
+    - name: Build package
+      run: stack build 
 

@@ -19,3 +19,5 @@ jobs:
     - name: Build package
       run: stack build 
 
+    - name: Run tests
+      run: ./demos/runTest

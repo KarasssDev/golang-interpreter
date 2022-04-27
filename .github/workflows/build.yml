@@ -10,45 +10,14 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        ghc: ['8.10.7']
-        cabal: ['3.6.2.0']
-        os: [ubuntu-latest]
-        resolver: [lts]
-    name: ${{ matrix.resolver }} (${{ matrix.ghc }}/${{ matrix.cabal }})
-    steps:
-      
+    runs-on: ubuntu-latest
       
       - name: Check out
         uses: actions/checkout@v2
 
-      - name: Setup Haskell
-        uses: haskell/actions/setup@v1
-        with:
-          ghc-version: ${{ matrix.ghc }}
-          cabal-version: ${{ matrix.cabal }}
-          enable-stack: true
-
-      - name: Versions
-        run: |
-          stack --version
-          cabal --version
-          ghc --version
-
-      - name: Initalize stack for LTS
-        run: |
-          stack update
-          stack init --resolver ${{ matrix.resolver }} --force
-
-      - name: Build package dependencies
-        run: |
-          stack build --no-run-tests --no-run-benchmarks --only-dependencies
-
       - name: Build package
         run: |
-          stack build --no-run-tests --no-run-benchmarks
+          stack build 
 
       - name: Run tests
         run: |

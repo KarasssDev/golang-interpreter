@@ -18,7 +18,7 @@ data GoValue =
     | VString String
     | VBool Bool
     | VArray (Map Int GoValue)
-    | VChan -- TODO
+    | VChan Int
     | VFunc [(Id, GoType)] GoStatement
     | VNil
 
@@ -29,7 +29,7 @@ instance (Show GoValue) where
     (VBool True)   -> "true"
     (VBool False)  -> "false" 
     VNil           -> "Nil"
-    _ -> undefined
+    _ -> undefined -- TODO
 
 data BinOp = 
 -- int

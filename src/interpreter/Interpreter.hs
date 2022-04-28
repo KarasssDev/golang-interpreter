@@ -2,6 +2,7 @@ module Interpreter where
 import Prelude hiding (lookup)
 import Ast
 import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT, lift, runStateT, forM)
+import Control.Monad.Except
 import Data.Map (Map, lookup, empty, insert)
 import Runtime
 import BaseFunc
@@ -123,7 +124,7 @@ evalStatement (Block b) = do
 
 evalStatement (Print e) = do
   res <- evalExpr e
-  lift $ print res
+  lift $ lift $ print res
 
 evalStatement (If e s) = do
   pushScope
@@ -207,7 +208,8 @@ evalGoProgram (GoProgram (x:xs)) = do
   evalGoProgram $ GoProgram xs
 evalGoProgram (GoProgram []) = return ()
 
-exec :: GoProgram -> IO (GoValue, GoRuntime)
-exec p = runStateT (evalGoProgram p >> evalExpr goMain) emptyGoRuntime
+
+exec :: GoProgram -> IO (Either String GoValue, GoRuntime)
+exec p = runStateT (runExceptT  (evalGoProgram p >> evalExpr goMain)) emptyGoRuntime
   where
     goMain = FuncCall "main" []

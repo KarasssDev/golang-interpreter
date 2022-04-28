@@ -4,6 +4,7 @@ import Data.Map (Map, lookup, empty, insert, member)
 import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT, lift)
 import Prelude hiding (lookup, head)
 import Errors
+import Control.Monad.Except
 
 data RVarType = RConst | RVar
 type RVar = (GoType, GoValue, RVarType)
@@ -66,8 +67,7 @@ getOrError id r = case lookupVar id scs of
     scs = scopes (head (frameStack r) emptyFrame) ++ [scope r]
 
 
-type Runtime a = StateT GoRuntime IO a
-
+type Runtime a = ExceptT String (StateT GoRuntime IO) a
 
 pushFrame :: Runtime ()
 pushFrame = do

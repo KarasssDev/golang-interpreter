@@ -65,7 +65,7 @@ getOrError id = do
   let scs = scopes (headOr (frameStack r) emptyFrame) ++ [scope r]
   case lookupVar id scs of
     Just x  -> return x
-    Nothing -> throwError $ errorVarNotInScope id
+    Nothing -> throwError $ exceptionVarNotInScope id
 
 
 
@@ -142,7 +142,7 @@ putConst id (t, v) = do
   r <- get
   isCs <- isConst id
   if isCs then
-    throwError $ errorRedeclarationConst id
+    throwError $ exceptionRedeclarationConst id
   else
     putRVar id (t, v, RConst)
 
@@ -165,7 +165,7 @@ changeVarInFrame id v fr = case scopes fr of
     t <- getVarType id
     let newScopes = changeElem lst (containVar id) (insert id (t,v,RVar))
     return $ fr {scopes = newScopes}
-  []     -> throwError $ errorVarNotInScope id
+  []     -> throwError $ exceptionVarNotInScope id
 
 
 

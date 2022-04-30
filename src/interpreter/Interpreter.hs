@@ -17,19 +17,19 @@ opTypeCheck op v1 v2
     if isIntV1 && isIntV2 then 
       return () 
     else 
-      throwError $ errorUnexpectedTypes v1 v2 op "int" "int"
+      throwError $ exceptionUnexpectedTypes v1 v2 op "int" "int"
   | op `elem` [And, Or] = do
     let isBoolV1 = typeCheckVT v1 TBool
     let isBoolV2 = typeCheckVT v2 TBool
     if isBoolV1 && isBoolV2 then 
       return () 
     else 
-      throwError $ errorUnexpectedTypes v1 v2 op "bool" "bool"
+      throwError $ exceptionUnexpectedTypes v1 v2 op "bool" "bool"
   | op `elem` [Eq, Neq] = do
     if typeCheckVV v1 v2 then 
       return () 
     else 
-      throwError $ errorUnexpectedTypes v1 v2 op "t" "t"
+      throwError $ exceptionUnexpectedTypes v1 v2 op "t" "t"
   | op == Add = do
     let isIntV1 = typeCheckVT v1 TInt
     let isIntV2 = typeCheckVT v2 TInt
@@ -38,7 +38,7 @@ opTypeCheck op v1 v2
     if isIntV1 && isIntV2 || isStringV1 && isStringV2 then 
       return () 
     else 
-      throwError $ errorUnexpectedTypes v1 v2 op "int | string" "int | string"
+      throwError $ exceptionUnexpectedTypes v1 v2 op "int | string" "int | string"
   | otherwise = undefined
 
 checkIfSt :: GoExpr -> Runtime () -> Runtime () -> Runtime ()
@@ -47,12 +47,12 @@ checkIfSt e tr fl = do
   case res of
     (VBool True) -> tr
     (VBool False) -> fl
-    _ -> throwError $ errorNotBoolInIf res
+    _ -> throwError $ exceptionNotBoolInIf res
 
 evalBinOp :: BinOp -> GoValue -> GoValue -> GoValue
 evalBinOp op v1 v2 = case op of
 -- int
-  Add   -> v1   +   v2
+  Add   -> v1   +   v2 -- and string
   Minus -> v1   -   v2
   Mul   -> v1   *   v2
   Div   -> v1 `div` v2
@@ -101,7 +101,7 @@ evalExpr (GetByInd arr ind) = do
     safeInd :: Map Int GoValue -> Int -> Runtime GoValue
     safeInd lst i = case lookup i lst of
       (Just v) -> return v
-      Nothing  -> throwError $ errorIndexOutOfRange i
+      Nothing  -> throwError $ exceptionIndexOutOfRange i
 
 evalExpr (FuncCall id arge) = do -- add check (f == func)
   f <- getVarValue id
@@ -123,14 +123,14 @@ evalStatement :: GoStatement -> Runtime ()
 evalStatement (VarDecl id t e) = do
   res <- evalExpr e
   if not (typeCheckVT res t)  then
-    throwError $ errorAssigmnetsType id res t
+    throwError $ exceptionAssigmnetsType id res t
   else
     putVar id (t, res)
 
 evalStatement (ConstDecl id t e) = do
   res <- evalExpr e
   if not (typeCheckVT res t)  then
-    throwError $ errorAssigmnetsType id res t
+    throwError $ exceptionAssigmnetsType id res t
   else
     putConst id (t, res)
 
@@ -168,10 +168,10 @@ evalStatement (Assign id e) = do
   t   <- getVarType id
   s   <- isConst id
   if s then
-    throwError $ errorAssignToConst id
+    throwError $ exceptionAssignToConst id
   else
     if showValueType res /= showType t then
-      throwError $ errorAssigmnetsType id res t
+      throwError $ exceptionAssigmnetsType id res t
     else
       changeVar id res
 

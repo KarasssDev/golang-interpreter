@@ -2,65 +2,66 @@ module Errors where
 import Ast
 import Prelude hiding (lookup)
 import Data.Map
+import Types (getType)
 
 -- errors
 
-baseErrorMessage :: String
-baseErrorMessage = "Interpretation error: "
+baseExceptionMessage :: String
+baseExceptionMessage = "Interpretation error: "
 
 baseInternalErrorMessage :: String
 baseInternalErrorMessage = "Internal interpretation error: "
 
 -- helpers for erros
 showValueType :: GoValue -> String
-showValueType (VInt _)    = "int"
-showValueType (VString _) = "string"
-showValueType (VBool _)   = "bool"
-showValueType (VArray x sizes)  = case lookup 0 x of
-  (Just e) -> "array of " ++ showValueType e
-  Nothing  -> undefined
-showValueType _ = undefined
+showValueType v = showType $ getType v
 
 showType :: GoType -> String
 showType TInt    = "int"
 showType TString = "string"
 showType TBool   = "bool"
-showType (TArray x t)  = "array of " ++ showType t
-showType _ = undefined
+showType (TArray sz t)  = show sz ++ "array of " ++ showType t
+showType (TChan t) = "chan " ++ showType t
+showType (TFunc sign rt) = show sign ++ showType rt
+showType TNil = "nil" 
 
-errorUnexpectedType :: GoValue -> String -> String -> String
-errorUnexpectedType v act t = 
-    baseErrorMessage ++ "unexpected type for " ++ act ++
+-- Exceptions
+
+exceptionUnexpectedType :: GoValue -> String -> String -> String
+exceptionUnexpectedType v act t = 
+    baseExceptionMessage ++ "unexpected type for " ++ act ++
     "\nexpected type: " ++ t ++
     "\nactual type: " ++ showValueType v
 
-errorUnexpectedTypes :: GoValue -> GoValue -> BinOp -> String -> String -> String
-errorUnexpectedTypes v1 v2 op t1 t2 = 
-    baseErrorMessage ++ "unexpected type for " ++ show op ++
+exceptionUnexpectedTypes :: GoValue -> GoValue -> BinOp -> String -> String -> String
+exceptionUnexpectedTypes v1 v2 op t1 t2 = 
+    baseExceptionMessage ++ "unexpected type for " ++ show op ++
     "\nexpected types: " ++ t1 ++ " " ++ t2 ++
     "\nactual types: " ++ showValueType v1 ++ " " ++ showValueType v2
 
-errorVarNotInScope :: Id -> String
-errorVarNotInScope id = "Var " ++ id ++ " not in scope"
+exceptionVarNotInScope :: Id -> String
+exceptionVarNotInScope id = "Var " ++ id ++ " not in scope"
 
-errorAssigmnetsType :: Id -> GoValue -> GoType -> String
-errorAssigmnetsType id v t = baseErrorMessage ++ "x = expr, type x = " ++ showValueType v
+exceptionAssigmnetsType :: Id -> GoValue -> GoType -> String
+exceptionAssigmnetsType id v t = baseExceptionMessage ++ "x = expr, type x = " ++ showValueType v
   ++ "; type expr = " ++ showType t
 
-errorRedeclarationConst :: Id -> String
-errorRedeclarationConst id = "redeclaration const " ++ id
+exceptionRedeclarationConst :: Id -> String
+exceptionRedeclarationConst id = "redeclaration const " ++ id
 
-errorNotBoolInIf :: GoValue -> String
-errorNotBoolInIf v = baseErrorMessage ++ "not bool type in if: " ++ showValueType v
+exceptionNotBoolInIf :: GoValue -> String
+exceptionNotBoolInIf v = baseExceptionMessage ++ "not bool type in if: " ++ showValueType v
 
-errorAssignToConst :: Id -> String
-errorAssignToConst id = baseErrorMessage ++ "assign to const " ++ id
+exceptionAssignToConst :: Id -> String
+exceptionAssignToConst id = baseExceptionMessage ++ "assign to const " ++ id
 
-errorNotBoolExprInFor :: String
-errorNotBoolExprInFor = baseErrorMessage ++ "not bool expression in for"
+exceptionNotBoolExprInFor :: String
+exceptionNotBoolExprInFor = baseExceptionMessage ++ "not bool expression in for"
 
-errorIndexOutOfRange :: Int ->  String
-errorIndexOutOfRange i = baseErrorMessage ++ "index out of range: " ++ show i
+exceptionIndexOutOfRange :: Int ->  String
+exceptionIndexOutOfRange i = baseExceptionMessage ++ "index out of range: " ++ show i
+
+-- errrors
 
 internalErrorEmptyFrameStack :: String
 internalErrorEmptyFrameStack = baseInternalErrorMessage ++ "empty frame stack"

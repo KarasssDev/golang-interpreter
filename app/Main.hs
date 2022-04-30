@@ -15,12 +15,11 @@ main = do
   let fileName = head args
   inp      <- readFile fileName
   let prog = cleanFile inp
-  case (goParse prog) of
+  case goParse prog of
     Left err -> print err
     Right p  -> do
-      exec p
-      return ()
+      (res, r) <- exec p
+      case res of 
+        (Left err) -> print err
+        (Right _)  -> return ()
 
--- main = do
---   s <- getLine
---   p s

@@ -61,6 +61,9 @@ exceptionNotBoolExprInFor = baseExceptionMessage ++ "not bool expression in for"
 exceptionIndexOutOfRange :: Int ->  String
 exceptionIndexOutOfRange i = baseExceptionMessage ++ "index out of range: " ++ show i
 
+exceptionCallNotFunc :: String -> String
+exceptionCallNotFunc name = baseExceptionMessage ++ name ++ "is not func" 
+
 -- errrors
 
 internalErrorEmptyFrameStack :: String

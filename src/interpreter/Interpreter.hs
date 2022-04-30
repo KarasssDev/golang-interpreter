@@ -91,19 +91,19 @@ evalExpr (Val v)   = return v
 
 evalExpr EmptyCondition = return $ VBool True
 
-evalExpr (GetByInd arr ind) = do
+evalExpr (GetByInd arr ind) = do -- fix for multid array
   varr <- evalExpr arr
   vind <- evalExpr ind
   case (varr, vind) of
     (VArray lst _, VInt i) -> safeInd lst i
-    _                        -> undefined -- видимо должен поймать парсер
+    _                      -> unexpectedInternalError
   where
     safeInd :: Map Int GoValue -> Int -> Runtime GoValue
     safeInd lst i = case lookup i lst of
       (Just v) -> return v
       Nothing  -> throwError $ exceptionIndexOutOfRange i
 
-evalExpr (FuncCall id arge) = do -- add check (f == func)
+evalExpr (FuncCall id arge) = do
   f <- getVarValue id
   case f of
     (VFunc args _ body) -> do
@@ -113,7 +113,7 @@ evalExpr (FuncCall id arge) = do -- add check (f == func)
       putArgs argv args
       evalStatement body
       returnVal <$> popFrame
-    _                 -> error "fix me3"
+    _                 -> throwError $ exceptionCallNotFunc id
 
 evalExpr _ = undefined
 
@@ -170,7 +170,7 @@ evalStatement (Assign id e) = do
   if s then
     throwError $ exceptionAssignToConst id
   else
-    if showValueType res /= showType t then
+    if not (typeCheckVT res t) then
       throwError $ exceptionAssigmnetsType id res t
     else
       changeVar id res
@@ -199,21 +199,26 @@ evalStatement (For init cont di act) = do
             return ()
         Nothing -> checkIfSt cont (for cont di act) (return ())
 
-evalStatement (FuncDecl id args rt body) = do -- add check body == Block
-  let v = VFunc args rt body
-  let t = TFunc args rt
-  putVar id (t, v)
+evalStatement (FuncDecl id args rt body) = do
+  case body of 
+    (Block _) -> do
+      let v = VFunc args rt body
+      let t = TFunc args rt
+      putVar id (t, v)
+    _         -> unexpectedInternalError -- тут точно должен поймать парсер
 
 
 evalStatement (SetByInd id ind e) = do
   arr <- evalExpr (Var id)
   vind <- evalExpr ind
   v   <- evalExpr e
-  -- fix me (add assign type check)
-  case (arr, vind) of
-    (VArray arr sizes, VInt i) -> do
-      let res = insert i v arr in evalStatement (Assign id (Val (VArray res sizes)))
-    _                        -> undefined -- видимо должен поймать парсер
+  if typeCheckVT v (getArrayElemType arr) then 
+    throwError "[type] doesnt subs" -- fix me
+  else
+    case (arr, vind) of
+      (VArray arr sizes, VInt i) -> do
+        let res = insert i v arr in evalStatement (Assign id (Val (VArray res sizes)))
+      _                        -> throwError "[arr name] doesnt array" -- fix me
 
 evalStatement (Jump (Return e)) = do
   v <- evalExpr e

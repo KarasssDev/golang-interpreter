@@ -5,6 +5,7 @@ import Control.Monad.State.Lazy (gets, evalState, MonadState(get, put), StateT, 
 import Prelude hiding (lookup, head)
 import Errors
 import Control.Monad.Except
+import Types
 
 data RVarType = RConst | RVar
 type RVar = (GoType, GoValue, RVarType)
@@ -146,18 +147,21 @@ putConst id (t, v) = do
   else
     putRVar id (t, v, RConst)
 
-changeVar :: Id -> GoValue -> Runtime () -- add type check
+changeVar :: Id -> GoValue -> Runtime ()
 changeVar id v = do
   r <- get
   (t,_,_) <- getOrError id
-  if containVar id (scope r) then
-    put $ r {scope = insert id (t,v,RVar) (scope r)}
-  else do
-    case head (frameStack r) of
-      (Just x) -> do
-        newFrame <- changeVarInFrame id v x
-        put $ r {frameStack = newFrame : tail (frameStack r)}
-      Nothing -> throwError internalErrorEmptyFrameStack
+  if not (typeCheckVT v t) then 
+    throwError $ exceptionAssigmnetsType id v t
+  else
+    if containVar id (scope r) then
+      put $ r {scope = insert id (t,v,RVar) (scope r)}
+    else do
+      case head (frameStack r) of
+        (Just x) -> do
+          newFrame <- changeVarInFrame id v x
+          put $ r {frameStack = newFrame : tail (frameStack r)}
+        Nothing -> throwError internalErrorEmptyFrameStack
 
 changeVarInFrame :: Id -> GoValue -> Frame -> Runtime Frame
 changeVarInFrame id v fr = case scopes fr of

@@ -69,10 +69,12 @@ goNot :: GoValue  -> GoValue
 goNot (VBool x) = VBool  $ not x
 goNot x = unexpectedInternalError
 
+-- for Print functionality 
+
 class (Printable a) where
   toPrint :: a -> String
 
-instance (Printable BinOp) where
+instance (Printable BinOp) where -- for print in errors
   toPrint op = case op of
     Add -> "+"
     Minus -> "-"

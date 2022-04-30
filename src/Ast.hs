@@ -7,29 +7,22 @@ data GoType =  -- t
       TInt                       -- int
     | TString                    -- string
     | TBool                      -- bool
-    | TArray Int GoType          -- arr[size] type
+    | TArray [Int] GoType          -- arr[size] type
     | TChan GoType               -- chan int
     | TFunc [(Id,GoType)] GoType -- func (int x, int y) int
     | TNil
-    deriving Show
+    deriving (Show, Eq)
 
 data GoValue =
       VInt Int
     | VString String
     | VBool Bool
-    | VArray (Map Int GoValue)
-    | VChan Int
-    | VFunc [(Id, GoType)] GoStatement
+    | VArray (Map Int GoValue) [Int]
+    | VChan Int GoType
+    | VFunc [(Id, GoType)] GoType GoStatement
     | VNil
+    deriving Show
 
-instance (Show GoValue) where
-  show x = case x of 
-    (VInt v)       -> show v
-    (VString v)    -> v
-    (VBool True)   -> "true"
-    (VBool False)  -> "false" 
-    VNil           -> "Nil"
-    _ -> undefined -- TODO
 
 data BinOp = 
 -- int
@@ -48,7 +41,8 @@ data BinOp =
   | Gre -- >=
   | Leq -- <=
   | Neq -- !=
-  deriving Show
+  deriving (Show, Eq)
+
 
 data UnOp = 
     UnMinus -- -int

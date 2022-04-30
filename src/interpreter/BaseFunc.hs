@@ -6,43 +6,41 @@ instance (Eq GoValue) where
   VInt x == VInt y = x == y
   VString x == VString y = x == y
   VBool x == VBool y = x == y
-  VArray x == VArray y = x == y
-  x == y = errorUnexpectedTypes x y "==" "t" "t"
-
+  VArray x xs == VArray y ys = x == y && xs == ys
+  x == y = unexpectedInternalError
 
 instance (Ord GoValue) where
     compare (VInt x) (VInt y) = compare x y
-    compare x y = errorUnexpectedTypes x y "compare" "int" "int"
-
+    compare x y = unexpectedInternalError
 
 instance (Num GoValue) where
   VInt x + VInt y = VInt $ x + y
   VString x + VString y = VString $ x ++ y
-  x + y = errorUnexpectedTypes x y "+" "int" "int"
+  x + y = unexpectedInternalError
 
   VInt x * VInt y = VInt $ x * y
-  x * y = errorUnexpectedTypes x y "*" "int" "int"
+  x * y = unexpectedInternalError
 
   abs (VInt x) = VInt $ abs  x
-  abs x = errorUnexpectedType x "abs" "int"
+  abs x = unexpectedInternalError
 
   signum (VInt x ) = VInt $ signum x
-  signum x = errorUnexpectedType x "signum" "int"
+  signum x = unexpectedInternalError
 
   fromInteger x = VInt $ fromInteger x
 
   negate (VInt x) = VInt $ negate x
-  negate x = errorUnexpectedType x "-" "int"
+  negate x = unexpectedInternalError
 
 instance (Real GoValue) where
   toRational (VInt x) = toRational x
-  toRational x = errorUnexpectedType x "toRational" "int"
+  toRational x = unexpectedInternalError
 
 instance (Enum GoValue) where
   toEnum x = VInt x
 
   fromEnum (VInt x) = fromEnum x
-  fromEnum x = errorUnexpectedType x "fromEnum" "int"
+  fromEnum x = unexpectedInternalError
 
 
 instance (Integral GoValue) where
@@ -50,10 +48,10 @@ instance (Integral GoValue) where
       where
           x' = VInt $ fst $ x `quotRem` y
           y' = VInt $ snd $ x `quotRem` y
-  quotRem x y = errorUnexpectedTypes x y "quotRem" "int" "int"
+  quotRem x y = unexpectedInternalError
 
   toInteger (VInt x) = toInteger x
-  toInteger x = errorUnexpectedType x "toInteger" "int"
+  toInteger x = unexpectedInternalError
 
 
 -- implement func
@@ -61,12 +59,40 @@ instance (Integral GoValue) where
 -- bool
 goAnd :: GoValue -> GoValue -> GoValue
 goAnd (VBool x) (VBool y) = VBool $ x && y
-goAnd x y = errorUnexpectedTypes x y "&&" "bool" "bool"
+goAnd x y = unexpectedInternalError
 
 goOr :: GoValue -> GoValue -> GoValue
 goOr (VBool x) (VBool y) = VBool $ x || y
-goOr x y = errorUnexpectedTypes x y "||" "bool" "bool"
+goOr x y = unexpectedInternalError
 
 goNot :: GoValue  -> GoValue
 goNot (VBool x) = VBool  $ not x
-goNot x = errorUnexpectedType x "not" "bool"
+goNot x = unexpectedInternalError
+
+class (Printable a) where
+  toPrint :: a -> String
+
+instance (Printable BinOp) where
+  toPrint op = case op of
+    Add -> "+"
+    Minus -> "-"
+    Mul -> "*"
+    Div -> "/"
+    Mod -> "%"
+    And -> "&&"
+    Or -> "||"
+    Eq -> "=="
+    Gr -> ">"
+    Le -> "<"
+    Gre -> ">="
+    Leq -> "<="
+    Neq -> "!="
+
+instance (Printable GoValue) where
+  toPrint x = case x of 
+    (VInt v)       -> show v
+    (VString v)    -> v
+    (VBool True)   -> "true"
+    (VBool False)  -> "false" 
+    VNil           -> "Nil"
+    _ -> unexpectedInternalError

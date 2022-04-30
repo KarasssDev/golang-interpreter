@@ -7,16 +7,39 @@ import Data.Map (Map, lookup, empty, insert)
 import Runtime
 import BaseFunc
 import Errors
+import Types
 
-
-typeCheck :: GoValue -> GoType -> () -> ()
-typeCheck v t f = if eq v t then () else f
-  where
--- fix me (arrays, funcs and channels)
-    eq (VInt x) TInt = True
-    eq (VString s) TString = True
-    eq (VBool b) TBool = True
-    eq _ _ = True
+opTypeCheck :: BinOp -> GoValue -> GoValue -> Runtime ()
+opTypeCheck op v1 v2
+  | op `elem` [Minus, Mul, Div, Mod, Gr, Le, Gre, Leq] = do
+    let isIntV1 = typeCheckVT v1 TInt
+    let isIntV2 = typeCheckVT v2 TInt
+    if isIntV1 && isIntV2 then 
+      return () 
+    else 
+      throwError $ errorUnexpectedTypes v1 v2 op "int" "int"
+  | op `elem` [And, Or] = do
+    let isBoolV1 = typeCheckVT v1 TBool
+    let isBoolV2 = typeCheckVT v2 TBool
+    if isBoolV1 && isBoolV2 then 
+      return () 
+    else 
+      throwError $ errorUnexpectedTypes v1 v2 op "bool" "bool"
+  | op `elem` [Eq, Neq] = do
+    if typeCheckVV v1 v2 then 
+      return () 
+    else 
+      throwError $ errorUnexpectedTypes v1 v2 op "t" "t"
+  | op == Add = do
+    let isIntV1 = typeCheckVT v1 TInt
+    let isIntV2 = typeCheckVT v2 TInt
+    let isStringV1 = typeCheckVT v1 TString
+    let isStringV2 = typeCheckVT v2 TString
+    if isIntV1 && isIntV2 || isStringV1 && isStringV2 then 
+      return () 
+    else 
+      throwError $ errorUnexpectedTypes v1 v2 op "int | string" "int | string"
+  | otherwise = undefined
 
 checkIfSt :: GoExpr -> Runtime () -> Runtime () -> Runtime ()
 checkIfSt e tr fl = do
@@ -24,7 +47,7 @@ checkIfSt e tr fl = do
   case res of
     (VBool True) -> tr
     (VBool False) -> fl
-    _ -> errorNotBoolInIf res
+    _ -> throwError $ errorNotBoolInIf res
 
 evalBinOp :: BinOp -> GoValue -> GoValue -> GoValue
 evalBinOp op v1 v2 = case op of
@@ -50,13 +73,12 @@ evalUnOp op v = case op of
   UnMinus -> -v
   Not     -> goNot v
 
-
-
 evalExpr :: GoExpr -> Runtime GoValue
 
 evalExpr (GoBinOp op e1 e2)  = do
   v1 <- evalExpr e1
   v2 <- evalExpr e2
+  opTypeCheck op v1 v2
   return $ evalBinOp op v1 v2
 
 evalExpr (GoUnOp op e) = do
@@ -73,17 +95,18 @@ evalExpr (GetByInd arr ind) = do
   varr <- evalExpr arr
   vind <- evalExpr ind
   case (varr, vind) of
-    (VArray lst, VInt i) -> return $ safeInd lst i
+    (VArray lst _, VInt i) -> safeInd lst i
     _                        -> undefined -- видимо должен поймать парсер
   where
+    safeInd :: Map Int GoValue -> Int -> Runtime GoValue
     safeInd lst i = case lookup i lst of
-      (Just v) -> v
-      Nothing  -> errorIndexOutOfRange i
+      (Just v) -> return v
+      Nothing  -> throwError $ errorIndexOutOfRange i
 
 evalExpr (FuncCall id arge) = do -- add check (f == func)
   f <- getVarValue id
   case f of
-    (VFunc args body) -> do
+    (VFunc args _ body) -> do
       argv <- forM arge evalExpr
       pushFrame
       pushScope
@@ -99,13 +122,17 @@ evalStatement :: GoStatement -> Runtime ()
 
 evalStatement (VarDecl id t e) = do
   res <- evalExpr e
-  return $ typeCheck res t (errorAssigmnetsType id res t)
-  putVar id (t, res)
+  if not (typeCheckVT res t)  then
+    throwError $ errorAssigmnetsType id res t
+  else
+    putVar id (t, res)
 
 evalStatement (ConstDecl id t e) = do
   res <- evalExpr e
-  return $ typeCheck res t (errorAssigmnetsType id res t)
-  putConst id (t, res)
+  if not (typeCheckVT res t)  then
+    throwError $ errorAssigmnetsType id res t
+  else
+    putConst id (t, res)
 
 evalStatement (Block b) = do
   j <- getJumpSt
@@ -124,7 +151,7 @@ evalStatement (Block b) = do
 
 evalStatement (Print e) = do
   res <- evalExpr e
-  lift $ lift $ print res
+  lift $ lift $ putStrLn $ toPrint res
 
 evalStatement (If e s) = do
   pushScope
@@ -141,10 +168,10 @@ evalStatement (Assign id e) = do
   t   <- getVarType id
   s   <- isConst id
   if s then
-    errorAssignToConst id
+    throwError $ errorAssignToConst id
   else
     if showValueType res /= showType t then
-      errorAssigmnetsType id res t
+      throwError $ errorAssigmnetsType id res t
     else
       changeVar id res
 
@@ -173,7 +200,7 @@ evalStatement (For init cont di act) = do
         Nothing -> checkIfSt cont (for cont di act) (return ())
 
 evalStatement (FuncDecl id args rt body) = do -- add check body == Block
-  let v = VFunc args body
+  let v = VFunc args rt body
   let t = TFunc args rt
   putVar id (t, v)
 
@@ -184,8 +211,8 @@ evalStatement (SetByInd id ind e) = do
   v   <- evalExpr e
   -- fix me (add assign type check)
   case (arr, vind) of
-    (VArray arr, VInt i) -> do
-      let res = insert i v arr in evalStatement (Assign id (Val (VArray res)))
+    (VArray arr sizes, VInt i) -> do
+      let res = insert i v arr in evalStatement (Assign id (Val (VArray res sizes)))
     _                        -> undefined -- видимо должен поймать парсер
 
 evalStatement (Jump (Return e)) = do
@@ -198,9 +225,6 @@ evalStatement (Jump s) = putJumpSt $ Just s
 evalStatement (Expr e) = do
   evalExpr e
   return ()
-
-evalStatement _ = undefined
-
 
 evalGoProgram :: GoProgram -> Runtime ()
 evalGoProgram (GoProgram (x:xs)) = do

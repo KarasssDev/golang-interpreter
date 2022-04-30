@@ -59,12 +59,14 @@ containVar id sc = case lookupVarInScope id sc of
   Just v  -> True
   Nothing -> False
 
-getOrError :: Id -> GoRuntime -> RVar
-getOrError id r = case lookupVar id scs of
-  Just x -> x
-  Nothing -> errorVarNotInScope id
-  where
-    scs = scopes (head (frameStack r) emptyFrame) ++ [scope r]
+getOrError :: Id -> Runtime RVar
+getOrError id = do
+  r <- get
+  let scs = scopes (headOr (frameStack r) emptyFrame) ++ [scope r]
+  case lookupVar id scs of
+    Just x  -> return x
+    Nothing -> throwError $ errorVarNotInScope id
+
 
 
 type Runtime a = ExceptT String (StateT GoRuntime IO) a
@@ -77,36 +79,42 @@ pushFrame = do
 popFrame :: Runtime Frame
 popFrame = do
   r <- get
-  let f = head (frameStack r) internalErrorEmptyFrameStack
-  put $ r {frameStack = tail (frameStack r)}
-  return f
+  case head (frameStack r) of
+    (Just fr) -> do  
+      put $ r {frameStack = tail (frameStack r)}
+      return fr
+    Nothing   -> throwError internalErrorEmptyFrameStack
 
 pushScope :: Runtime ()
-pushScope = do
-  r <- get
-  let stack    = frameStack r
-  let topFrame = head stack (error "fix me")
-  let newFrame = topFrame {scopes = empty : scopes topFrame}
-  put $ r {frameStack = newFrame:tail stack}
+pushScope = changeScopes (empty:)
 
 popScope :: Runtime ()
-popScope = do
+popScope = changeScopes tail
+
+changeScopes :: ([Scope] -> [Scope]) -> Runtime ()
+changeScopes f = do
   r <- get
   let stack    = frameStack r
-  let topFrame = head stack (error "fix me")
-  let newFrame = topFrame {scopes = tail (scopes topFrame)}
-  put $ r {frameStack = newFrame:tail stack}
+  case head stack of
+    (Just topFrame) -> do
+        let newFrame = topFrame {scopes = f (scopes topFrame)}
+        put $ r {frameStack = newFrame:tail stack}
+    Nothing         -> error "fix me"
+
 
 getVarValue :: Id -> Runtime GoValue
-getVarValue id = gets (getRVarValue . getOrError id)
+getVarValue id = do
+  x <- getOrError id
+  return $ getRVarValue x
 
 getVarType :: Id -> Runtime GoType
-getVarType id = gets (getRVarType . getOrError id)
+getVarType id = do
+  x <- getOrError id
+  return $ getRVarType x
 
 isConst :: Id -> Runtime Bool
 isConst id = do
-  r <- get
-  let rv = getOrError id r
+  rv <-  getOrError id
   case getRVarRType rv  of
         RConst -> return True
         RVar   -> return False
@@ -118,11 +126,13 @@ putRVar id v = do
   let stack = frameStack r
   case stack of
     []     -> put $ r {scope = insert id v (scope r)}
-    (x:xs) -> do
-      let scope    = head (scopes x) (error "empty scopes")
-      let newScope = insert id v scope
-      let newFrame = x {scopes = newScope:tail (scopes x) }
-      put $ r {frameStack = newFrame : xs}
+    (x:xs) -> case head (scopes x) of
+      (Just scope) -> do
+        let newScope = insert id v scope
+        let newFrame = x {scopes = newScope:tail (scopes x) }
+        put $ r {frameStack = newFrame : xs}
+      Nothing -> throwError $ error "fix me"
+
 
 putVar :: Id -> (GoType, GoValue) -> Runtime ()
 putVar id (t, v) = putRVar id (t, v, RVar)
@@ -132,19 +142,22 @@ putConst id (t, v) = do
   r <- get
   isCs <- isConst id
   if isCs then
-    errorRedeclarationConst id
+    throwError $ errorRedeclarationConst id
   else
     putRVar id (t, v, RConst)
 
 changeVar :: Id -> GoValue -> Runtime () -- add type check
 changeVar id v = do
   r <- get
-  let (t,_,_) = getOrError id r
+  (t,_,_) <- getOrError id
   if containVar id (scope r) then
     put $ r {scope = insert id (t,v,RVar) (scope r)}
   else do
-    newFrame <- changeVarInFrame id v (head (frameStack r) internalErrorEmptyFrameStack)
-    put $ r {frameStack = newFrame : tail (frameStack r)}
+    case head (frameStack r) of
+      (Just x) -> do
+        newFrame <- changeVarInFrame id v x
+        put $ r {frameStack = newFrame : tail (frameStack r)}
+      Nothing -> throwError internalErrorEmptyFrameStack
 
 changeVarInFrame :: Id -> GoValue -> Frame -> Runtime Frame
 changeVarInFrame id v fr = case scopes fr of
@@ -152,7 +165,7 @@ changeVarInFrame id v fr = case scopes fr of
     t <- getVarType id
     let newScopes = changeElem lst (containVar id) (insert id (t,v,RVar))
     return $ fr {scopes = newScopes}
-  []     -> errorVarNotInScope id
+  []     -> throwError $ errorVarNotInScope id
 
 
 
@@ -160,7 +173,9 @@ changeVarInFrame id v fr = case scopes fr of
 getJumpSt :: Runtime (Maybe JumpStatement)
 getJumpSt = do
   r <- get
-  return $ jumpSt $ head (frameStack r) internalErrorEmptyFrameStack
+  case head (frameStack r) of
+    Just x -> return  $ jumpSt x
+    Nothing -> throwError internalErrorEmptyFrameStack
 
 putJumpSt :: Maybe JumpStatement  -> Runtime ()
 putJumpSt s = changeTopFrame (\x -> x {jumpSt = s})
@@ -196,10 +211,17 @@ changeTopFrame :: (Frame -> Frame) -> Runtime ()
 changeTopFrame f = do
   r <- get
   let fs = frameStack r
-  let topFrame = head fs internalErrorEmptyFrameStack
-  let newFrame = f topFrame
-  put $ r { frameStack = newFrame:tail fs}
+  case head fs of
+      (Just topFrame) -> do
+        let newFrame = f topFrame
+        put $ r { frameStack = newFrame:tail fs}
+      Nothing  -> throwError internalErrorEmptyFrameStack
+  
 
-head :: [a] -> a -> a
-head (x:xs) e = x
-head []     e = e
+head :: [a] -> Maybe a
+head (x:xs) = Just x
+head []     = Nothing
+
+headOr :: [a] -> a -> a
+headOr (x:xs) e = x
+headOr []     e = e

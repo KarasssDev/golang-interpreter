@@ -40,20 +40,20 @@ exceptionUnexpectedTypes v1 v2 op t1 t2 =
     "\nactual types: " ++ showValueType v1 ++ " " ++ showValueType v2
 
 exceptionVarNotInScope :: Id -> String
-exceptionVarNotInScope id = "Var " ++ id ++ " not in scope"
+exceptionVarNotInScope idr = "Var " ++ idr ++ " not in scope"
 
 exceptionAssigmnetsType :: Id -> GoValue -> GoType -> String
-exceptionAssigmnetsType id v t = baseExceptionMessage ++ "x = expr, type x = " ++ showValueType v
+exceptionAssigmnetsType idr v t = baseExceptionMessage ++ "x = expr, type x = " ++ showValueType v
   ++ "; type expr = " ++ showType t
 
 exceptionRedeclarationConst :: Id -> String
-exceptionRedeclarationConst id = "redeclaration const " ++ id
+exceptionRedeclarationConst idr = "redeclaration const " ++ idr
 
 exceptionNotBoolInIf :: GoValue -> String
 exceptionNotBoolInIf v = baseExceptionMessage ++ "not bool type in if: " ++ showValueType v
 
 exceptionAssignToConst :: Id -> String
-exceptionAssignToConst id = baseExceptionMessage ++ "assign to const " ++ id
+exceptionAssignToConst idr = baseExceptionMessage ++ "assign to const " ++ idr
 
 exceptionNotBoolExprInFor :: String
 exceptionNotBoolExprInFor = baseExceptionMessage ++ "not bool expression in for"

@@ -50,23 +50,23 @@ lookupVarInScope :: Id -> Scope -> Maybe RVar
 lookupVarInScope = lookup
 
 lookupVar :: Id -> [Scope] -> Maybe RVar
-lookupVar id [] = Nothing
-lookupVar id (x:xs) = case lookupVarInScope id x of
+lookupVar idr [] = Nothing
+lookupVar idr (x:xs) = case lookupVarInScope idr x of
   Just v  -> Just v
-  Nothing -> lookupVar id xs
+  Nothing -> lookupVar idr xs
 
 containVar :: Id -> Scope -> Bool
-containVar id sc = case lookupVarInScope id sc of
+containVar idr sc = case lookupVarInScope idr sc of
   Just v  -> True
   Nothing -> False
 
 getOrError :: Id -> Runtime RVar
-getOrError id = do
+getOrError idr = do
   r <- get
   let scs = scopes (headOr (frameStack r) emptyFrame) ++ [scope r]
-  case lookupVar id scs of
+  case lookupVar idr scs of
     Just x  -> return x
-    Nothing -> throwError $ exceptionVarNotInScope id
+    Nothing -> throwError $ exceptionVarNotInScope idr
 
 
 
@@ -104,72 +104,72 @@ changeScopes f = do
 
 
 getVarValue :: Id -> Runtime GoValue
-getVarValue id = do
-  x <- getOrError id
+getVarValue idr = do
+  x <- getOrError idr
   return $ getRVarValue x
 
 getVarType :: Id -> Runtime GoType
-getVarType id = do
-  x <- getOrError id
+getVarType idr = do
+  x <- getOrError idr
   return $ getRVarType x
 
 isConst :: Id -> Runtime Bool
-isConst id = do
-  rv <-  getOrError id
+isConst idr = do
+  rv <-  getOrError idr
   case getRVarRType rv  of
         RConst -> return True
         RVar   -> return False
 
 
 putRVar :: Id -> RVar -> Runtime ()
-putRVar id v = do
+putRVar idr v = do
   r <- get
   let stack = frameStack r
   case stack of
-    []     -> put $ r {scope = insert id v (scope r)}
+    []     -> put $ r {scope = insert idr v (scope r)}
     (x:xs) -> case head (scopes x) of
       (Just scope) -> do
-        let newScope = insert id v scope
+        let newScope = insert idr v scope
         let newFrame = x {scopes = newScope:tail (scopes x) }
         put $ r {frameStack = newFrame : xs}
       Nothing -> throwError $ error "fix me"
 
 
 putVar :: Id -> (GoType, GoValue) -> Runtime ()
-putVar id (t, v) = putRVar id (t, v, RVar)
+putVar idr (t, v) = putRVar idr (t, v, RVar)
 
 putConst :: Id -> (GoType, GoValue) -> Runtime ()
-putConst id (t, v) = do
+putConst idr (t, v) = do
   r <- get
-  isCs <- isConst id
+  isCs <- isConst idr
   if isCs then
-    throwError $ exceptionRedeclarationConst id
+    throwError $ exceptionRedeclarationConst idr
   else
-    putRVar id (t, v, RConst)
+    putRVar idr (t, v, RConst)
 
 changeVar :: Id -> GoValue -> Runtime ()
-changeVar id v = do
+changeVar idr v = do
   r <- get
-  (t,_,_) <- getOrError id
+  (t,_,_) <- getOrError idr
   if not (typeCheckVT v t) then 
-    throwError $ exceptionAssigmnetsType id v t
+    throwError $ exceptionAssigmnetsType idr v t
   else
-    if containVar id (scope r) then
-      put $ r {scope = insert id (t,v,RVar) (scope r)}
+    if containVar idr (scope r) then
+      put $ r {scope = insert idr (t,v,RVar) (scope r)}
     else do
       case head (frameStack r) of
         (Just x) -> do
-          newFrame <- changeVarInFrame id v x
+          newFrame <- changeVarInFrame idr v x
           put $ r {frameStack = newFrame : tail (frameStack r)}
         Nothing -> throwError internalErrorEmptyFrameStack
 
 changeVarInFrame :: Id -> GoValue -> Frame -> Runtime Frame
-changeVarInFrame id v fr = case scopes fr of
+changeVarInFrame idr v fr = case scopes fr of
   lst@(x:xs) -> do
-    t <- getVarType id
-    let newScopes = changeElem lst (containVar id) (insert id (t,v,RVar))
+    t <- getVarType idr
+    let newScopes = changeElem lst (containVar idr) (insert idr (t,v,RVar))
     return $ fr {scopes = newScopes}
-  []     -> throwError $ exceptionVarNotInScope id
+  []     -> throwError $ exceptionVarNotInScope idr
 
 
 
@@ -191,8 +191,8 @@ putArgs argv argsign = do
   putAll args
   where
     putAll [] = return ()
-    putAll ((id,t,v):xs) = do
-      putVar id (t,v)
+    putAll ((idr,t,v):xs) = do
+      putVar idr (t,v)
       putAll xs
 
 putReturnValue :: GoValue -> Runtime ()

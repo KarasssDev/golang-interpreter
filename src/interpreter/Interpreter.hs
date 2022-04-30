@@ -85,7 +85,7 @@ evalExpr (GoUnOp op e) = do
   v <- evalExpr e
   return $ evalUnOp op v
 
-evalExpr (Var id)  = getVarValue id
+evalExpr (Var idr)  = getVarValue idr
 
 evalExpr (Val v)   = return v
 
@@ -103,8 +103,8 @@ evalExpr (GetByInd arr ind) = do -- fix for multid array
       (Just v) -> return v
       Nothing  -> throwError $ exceptionIndexOutOfRange i
 
-evalExpr (FuncCall id arge) = do
-  f <- getVarValue id
+evalExpr (FuncCall idr arge) = do
+  f <- getVarValue idr
   case f of
     (VFunc args _ body) -> do
       argv <- forM arge evalExpr
@@ -113,26 +113,26 @@ evalExpr (FuncCall id arge) = do
       putArgs argv args
       evalStatement body
       returnVal <$> popFrame
-    _                 -> throwError $ exceptionCallNotFunc id
+    _                 -> throwError $ exceptionCallNotFunc idr
 
 evalExpr _ = undefined
 
 
 evalStatement :: GoStatement -> Runtime ()
 
-evalStatement (VarDecl id t e) = do
+evalStatement (VarDecl idr t e) = do
   res <- evalExpr e
   if not (typeCheckVT res t)  then
-    throwError $ exceptionAssigmnetsType id res t
+    throwError $ exceptionAssigmnetsType idr res t
   else
-    putVar id (t, res)
+    putVar idr (t, res)
 
-evalStatement (ConstDecl id t e) = do
+evalStatement (ConstDecl idr t e) = do
   res <- evalExpr e
   if not (typeCheckVT res t)  then
-    throwError $ exceptionAssigmnetsType id res t
+    throwError $ exceptionAssigmnetsType idr res t
   else
-    putConst id (t, res)
+    putConst idr (t, res)
 
 evalStatement (Block b) = do
   j <- getJumpSt
@@ -163,17 +163,17 @@ evalStatement(IfElse e s1 s2) = do
   checkIfSt e (evalStatement s1) (evalStatement s2)
   popScope
 
-evalStatement (Assign id e) = do
+evalStatement (Assign idr e) = do
   res <- evalExpr e
-  t   <- getVarType id
-  s   <- isConst id
+  t   <- getVarType idr
+  s   <- isConst idr
   if s then
-    throwError $ exceptionAssignToConst id
+    throwError $ exceptionAssignToConst idr
   else
     if not (typeCheckVT res t) then
-      throwError $ exceptionAssigmnetsType id res t
+      throwError $ exceptionAssigmnetsType idr res t
     else
-      changeVar id res
+      changeVar idr res
 
 evalStatement EmptyStatement = return ()
 
@@ -199,17 +199,17 @@ evalStatement (For init cont di act) = do
             return ()
         Nothing -> checkIfSt cont (for cont di act) (return ())
 
-evalStatement (FuncDecl id args rt body) = do
+evalStatement (FuncDecl idr args rt body) = do
   case body of 
     (Block _) -> do
       let v = VFunc args rt body
       let t = TFunc args rt
-      putVar id (t, v)
+      putVar idr (t, v)
     _         -> unexpectedInternalError -- тут точно должен поймать парсер
 
 
-evalStatement (SetByInd id ind e) = do
-  arr <- evalExpr (Var id)
+evalStatement (SetByInd idr ind e) = do
+  arr <- evalExpr (Var idr)
   vind <- evalExpr ind
   v   <- evalExpr e
   if typeCheckVT v (getArrayElemType arr) then 
@@ -217,7 +217,7 @@ evalStatement (SetByInd id ind e) = do
   else
     case (arr, vind) of
       (VArray arr sizes, VInt i) -> do
-        let res = insert i v arr in evalStatement (Assign id (Val (VArray res sizes)))
+        let res = insert i v arr in evalStatement (Assign idr (Val (VArray res sizes)))
       _                        -> throwError "[arr name] doesnt array" -- fix me
 
 evalStatement (Jump (Return e)) = do

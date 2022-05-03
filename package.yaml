@@ -40,6 +40,11 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -Wall 
+    - -Wcompat 
+    - -Wincomplete-record-updates
+    - -Wincomplete-uni-patterns 
+    - -Wredundant-constraints
     dependencies:
     - Golang
 

@@ -82,11 +82,11 @@ pushFrame = do
 popFrame :: Runtime Frame
 popFrame = do
   r <- get
-  case head (frameStack r) of
-    (Just fr) -> do
-      put $ r {frameStack = tail (frameStack r)}
+  case frameStack r of
+    (fr:frs) -> do
+      put $ r {frameStack = frs}
       return fr
-    Nothing   -> throwError internalErrorEmptyFrameStack
+    []   -> throwError internalErrorEmptyFrameStack
 
 pushScope :: Runtime ()
 pushScope = changeScopes (empty:)
@@ -97,12 +97,11 @@ popScope = changeScopes tail
 changeScopes :: ([Scope] -> [Scope]) -> Runtime ()
 changeScopes f = do
   r <- get
-  let stack    = frameStack r
-  case head stack of
-    (Just topFrame) -> do
-        let newFrame = topFrame {scopes = f (scopes topFrame)}
-        put $ r {frameStack = newFrame:tail stack}
-    Nothing         -> error "fix me"
+  case frameStack r of
+    (fr:frs) -> do
+        let newFrame = fr {scopes = f (scopes fr)}
+        put $ r {frameStack = newFrame:frs}
+    []         -> error "fix me"
 
 
 getVarValue :: Id -> Runtime GoValue
@@ -129,12 +128,12 @@ putRVar idr v = do
   let stack = frameStack r
   case stack of
     []     -> put $ r {scope = insert idr v (scope r)}
-    (x:xs) -> case head (scopes x) of
-      (Just scope) -> do
-        let newScope = insert idr v scope
-        let newFrame = x {scopes = newScope:tail (scopes x) }
+    (x:xs) -> case scopes x of
+      (sc:scs) -> do
+        let newScope = insert idr v sc
+        let newFrame = x {scopes = newScope:scs}
         put $ r {frameStack = newFrame : xs}
-      Nothing -> throwError $ error "fix me"
+      [] -> throwError $ error "fix me"
 
 
 putVar :: Id -> (GoType, GoValue) -> Runtime ()
@@ -159,11 +158,11 @@ changeVar idr v = do
     if containVar idr (scope r) then
       put $ r {scope = insert idr (t,v,RVar) (scope r)}
     else do
-      case head (frameStack r) of
-        (Just x) -> do
-          newFrame <- changeVarInFrame idr v x
-          put $ r {frameStack = newFrame : tail (frameStack r)}
-        Nothing -> throwError internalErrorEmptyFrameStack
+      case frameStack r of
+        (fr:frs) -> do
+          newFrame <- changeVarInFrame idr v fr
+          put $ r {frameStack = newFrame : frs}
+        [] -> throwError internalErrorEmptyFrameStack
 
 changeVarInFrame :: Id -> GoValue -> Frame -> Runtime Frame
 changeVarInFrame idr v fr = case scopes fr of
@@ -178,9 +177,9 @@ changeVarInFrame idr v fr = case scopes fr of
 getJumpSt :: Runtime (Maybe JumpStatement)
 getJumpSt = do
   r <- get
-  case head (frameStack r) of
-    Just x -> return  $ jumpSt x
-    Nothing -> throwError internalErrorEmptyFrameStack
+  case frameStack r of
+    (fr:frs) -> return  $ jumpSt fr
+    [] -> throwError internalErrorEmptyFrameStack
 
 putJumpSt :: Maybe JumpStatement  -> Runtime ()
 putJumpSt s = changeTopFrame (\x -> x {jumpSt = s})
@@ -213,16 +212,12 @@ changeTopFrame :: (Frame -> Frame) -> Runtime ()
 changeTopFrame f = do
   r <- get
   let fs = frameStack r
-  case head fs of
-      (Just topFrame) -> do
-        let newFrame = f topFrame
-        put $ r { frameStack = newFrame:tail fs}
-      Nothing  -> throwError internalErrorEmptyFrameStack
+  case fs of
+      (fr:frs) -> do
+        let newFrame = f fr
+        put $ r { frameStack = newFrame:frs}
+      []  -> throwError internalErrorEmptyFrameStack
 
-
-head :: [a] -> Maybe a
-head (x:xs) = Just x
-head []     = Nothing
 
 headOr :: [a] -> a -> a
 headOr (x:xs) e = x

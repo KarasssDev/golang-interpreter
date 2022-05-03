@@ -189,12 +189,7 @@ putJumpSt s = changeTopFrame (\x -> x {jumpSt = s})
 putArgs :: [GoValue] -> [(Id, GoType)] -> Runtime ()
 putArgs argv argsign = do
   let args = zip3 (map fst argsign) (map snd argsign) argv
-  putAll args
-  where
-    putAll [] = return ()
-    putAll ((idr,t,v):xs) = do
-      putVar idr (t,v)
-      putAll xs
+  forM_ args (\(idr, t, v) -> putVar idr (t,v))
 
 putReturnValue :: GoValue -> Runtime ()
 putReturnValue v = changeTopFrame (\x -> x {returnVal = v})

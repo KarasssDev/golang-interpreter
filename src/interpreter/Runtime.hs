@@ -38,13 +38,13 @@ emptyGoRuntime = GoRuntime {
 }
 
 getRVarType :: RVar -> GoType
-getRVarType (t, v, rt) = t
+getRVarType (t, _, _) = t
 
 getRVarValue :: RVar -> GoValue
-getRVarValue (t, v, rt) = v
+getRVarValue (_, v, _) = v
 
 getRVarRType :: RVar -> RVarType
-getRVarRType (t, v, rt) = rt
+getRVarRType (_, _, rt) = rt
 
 lookupVarInScope :: Id -> Scope -> Maybe RVar
 lookupVarInScope = lookup
@@ -63,10 +63,12 @@ containVar idr sc = case lookupVarInScope idr sc of
 getOrError :: Id -> Runtime RVar
 getOrError idr = do
   r <- get
-  let scs = scopes (headOr (frameStack r) emptyFrame) ++ [scope r]
-  case lookupVar idr scs of
-    Just x  -> return x
-    Nothing -> throwError $ exceptionVarNotInScope idr
+  let scs = scopes (headOr (frameStack r) emptyFrame)
+  case (lookupVar idr scs, lookupVarInScope idr (scope r)) of
+    (Just x, Just y)  -> return x
+    (Just x, Nothing) -> return x
+    (Nothing, Just y) ->  return y
+    (Nothing, Nothing) -> throwError $ exceptionVarNotInScope idr
 
 
 
@@ -81,7 +83,7 @@ popFrame :: Runtime Frame
 popFrame = do
   r <- get
   case head (frameStack r) of
-    (Just fr) -> do  
+    (Just fr) -> do
       put $ r {frameStack = tail (frameStack r)}
       return fr
     Nothing   -> throwError internalErrorEmptyFrameStack
@@ -151,7 +153,7 @@ changeVar :: Id -> GoValue -> Runtime ()
 changeVar idr v = do
   r <- get
   (t,_,_) <- getOrError idr
-  if not (typeCheckVT v t) then 
+  if not (typeCheckVT v t) then
     throwError $ exceptionAssigmnetsType idr v t
   else
     if containVar idr (scope r) then
@@ -167,12 +169,11 @@ changeVarInFrame :: Id -> GoValue -> Frame -> Runtime Frame
 changeVarInFrame idr v fr = case scopes fr of
   lst@(x:xs) -> do
     t <- getVarType idr
-    let newScopes = changeElem lst (containVar idr) (insert idr (t,v,RVar))
-    return $ fr {scopes = newScopes}
+    let newScopes = changeElem (containVar idr) lst (insert idr (t,v,RVar))
+    case newScopes of
+      Just s  -> return $ fr {scopes = s}
+      Nothing -> throwError $ exceptionVarNotInScope idr
   []     -> throwError $ exceptionVarNotInScope idr
-
-
-
 
 getJumpSt :: Runtime (Maybe JumpStatement)
 getJumpSt = do
@@ -200,16 +201,18 @@ putReturnValue v = changeTopFrame (\x -> x {returnVal = v})
 
 
 -- helper functions
-splitBy :: [a] -> (a -> Bool) -> ([a], a, [a])
-splitBy lst p = helper lst p []
-  where
-    helper (x:xs) p l = if p x then (l, x, xs) else helper xs p (l ++ [x])
-    helper []     p l = undefined
+splitBy :: (a -> Bool) -> [a] -> Maybe ([a], a, [a])
+splitBy p lst = case find p lst of
+    Just x  -> Just (takeWhile (not . p) lst, x, tail (dropWhile (not . p) lst))
+    Nothing -> Nothing
+    where
+      find p (x:xs) = if p x then Just x else find p xs
+      find p []     = Nothing
 
-changeElem :: [a] -> (a -> Bool) -> (a -> a) -> [a]
-changeElem lst p f = l ++ [f x] ++ r
-  where
-    (l,x,r) = splitBy lst p
+changeElem :: (a -> Bool) -> [a] -> (a -> a) -> Maybe [a]
+changeElem p lst f = case splitBy p lst of
+    Just (l,x,r) -> Just $ l ++ [f x] ++ r
+    Nothing      -> Nothing
 
 changeTopFrame :: (Frame -> Frame) -> Runtime ()
 changeTopFrame f = do
@@ -220,7 +223,7 @@ changeTopFrame f = do
         let newFrame = f topFrame
         put $ r { frameStack = newFrame:tail fs}
       Nothing  -> throwError internalErrorEmptyFrameStack
-  
+
 
 head :: [a] -> Maybe a
 head (x:xs) = Just x

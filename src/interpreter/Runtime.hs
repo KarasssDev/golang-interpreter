@@ -101,7 +101,7 @@ changeScopes f = do
     (fr:frs) -> do
         let newFrame = fr {scopes = f (scopes fr)}
         put $ r {frameStack = newFrame:frs}
-    []         -> error "fix me"
+    []         -> throwError internalErrorEmptyFrameStack
 
 
 getVarValue :: Id -> Runtime GoValue
@@ -133,7 +133,7 @@ putRVar idr v = do
         let newScope = insert idr v sc
         let newFrame = x {scopes = newScope:scs}
         put $ r {frameStack = newFrame : xs}
-      [] -> throwError $ error "fix me"
+      [] -> throwError internalErrorEmptyScopes
 
 
 putVar :: Id -> (GoType, GoValue) -> Runtime ()

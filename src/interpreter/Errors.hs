@@ -58,7 +58,7 @@ exceptionAssignToConst idr = baseExceptionMessage ++ "assign to const " ++ idr
 exceptionNotBoolExprInFor :: String
 exceptionNotBoolExprInFor = baseExceptionMessage ++ "not bool expression in for"
 
-exceptionIndexOutOfRange :: Int ->  String
+exceptionIndexOutOfRange :: Int -> String
 exceptionIndexOutOfRange i = baseExceptionMessage ++ "index out of range: " ++ show i
 
 exceptionCallNotFunc :: String -> String
@@ -68,6 +68,9 @@ exceptionCallNotFunc name = baseExceptionMessage ++ name ++ "is not func"
 
 internalErrorEmptyFrameStack :: String
 internalErrorEmptyFrameStack = baseInternalErrorMessage ++ "empty frame stack"
+
+internalErrorEmptyScopes :: String
+internalErrorEmptyScopes = baseInternalErrorMessage ++ "empty scope list"
 
 unexpectedInternalError :: a
 unexpectedInternalError = error $ baseInternalErrorMessage ++ "unexpexted error"

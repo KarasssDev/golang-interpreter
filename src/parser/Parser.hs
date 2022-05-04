@@ -285,5 +285,3 @@ cleanFile s = helper s ""
 
 goParse :: String -> Either ParseError GoProgram
 goParse = parse program ""
-
-p = parseTest for

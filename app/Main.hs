@@ -1,15 +1,11 @@
 module Main where
 
-import Control.Monad.State.Lazy
-import Data.Map
 
-import Interpreter
-import Ast
-import Errors
-import Runtime hiding (head)
-import Parser
-import System.Environment
+import Interpreter ( exec )
+import Parser ( goParse, cleanFile )
+import System.Environment ( getArgs )
 
+main :: IO ()
 main = do
   args     <- getArgs
   let fileName = head args
@@ -18,7 +14,7 @@ main = do
   case goParse prog of
     Left err -> print err
     Right p  -> do
-      (res, r) <- exec p
+      (res, _) <- exec p
       case res of 
         (Left err) -> print err
         (Right _)  -> return ()

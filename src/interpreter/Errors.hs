@@ -64,6 +64,12 @@ exceptionIndexOutOfRange i = baseExceptionMessage ++ "index out of range: " ++ s
 exceptionCallNotFunc :: String -> String
 exceptionCallNotFunc name = baseExceptionMessage ++ name ++ "is not func" 
 
+exceptionExpectedCodeBlock :: String -> String
+exceptionExpectedCodeBlock name = baseExceptionMessage ++ "expected code block after declatration func " ++ name 
+
+exceptionTypeNotSubscriptable :: GoType -> String
+exceptionTypeNotSubscriptable t = baseExceptionMessage ++ showType t ++ "doesnt subscriptable"
+
 -- errrors
 
 internalErrorEmptyFrameStack :: String

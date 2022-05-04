@@ -205,20 +205,21 @@ evalStatement (FuncDecl idr args rt body) = do
       let v = VFunc args rt body
       let t = TFunc args rt
       putVar idr (t, v)
-    _         -> unexpectedInternalError -- тут точно должен поймать парсер
+    _         -> throwError $ exceptionExpectedCodeBlock idr
 
 
 evalStatement (SetByInd idr ind e) = do
-  arr <- evalExpr (Var idr)
+  arr  <- evalExpr (Var idr)
   vind <- evalExpr ind
-  v   <- evalExpr e
+  v    <- evalExpr e
   if typeCheckVT v (getArrayElemType arr) then 
-    throwError "[type] doesnt subs" -- fix me
+    throwError $ exceptionAssigmnetsType idr v (getArrayElemType arr)
   else
     case (arr, vind) of
       (VArray arr sizes, VInt i) -> do
         let res = insert i v arr in evalStatement (Assign idr (Val (VArray res sizes)))
-      _                        -> throwError "[arr name] doesnt array" -- fix me
+      (VArray _ _, ind)          -> throwError $ exceptionUnexpectedType ind "[i]" "int"
+      (v, _)                     -> throwError $ exceptionTypeNotSubscriptable (getType v)
 
 evalStatement (Jump (Return e)) = do
   v <- evalExpr e

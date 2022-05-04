@@ -112,17 +112,17 @@ gtype = try tint <|> try tbool <|> return TNil
 tint :: Parser GoType
 tint = do
     try $ reserved "int"
-    return $ TInt
+    return TInt
 
 tbool :: Parser GoType
 tbool = do
     try $ reserved "bool"
-    return $ TBool
+    return TBool
 
 tstring :: Parser GoType
 tstring = do
     try $ reserved "string"
-    return $ TString
+    return TString
 
 -- for
 
@@ -253,7 +253,7 @@ vbool = (toVTrue <$> try (reserved "true")) <|> (toVFalse <$> try (reserved "fal
 vstring :: Parser GoValue
 vstring = do
   syms <- try $ between (sym "\"") (sym "\"") (many letter)
-  return $ VString $ syms
+  return $ VString syms
 
 -- var
 

@@ -39,7 +39,7 @@ opTypeCheck op v1 v2
       return () 
     else 
       throwError $ exceptionUnexpectedTypes v1 v2 op "int | string" "int | string"
-  | otherwise = undefined
+  | otherwise = return ()
 
 checkIfSt :: GoExpr -> Runtime () -> Runtime () -> Runtime ()
 checkIfSt e tr fl = do

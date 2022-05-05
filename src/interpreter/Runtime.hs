@@ -11,6 +11,7 @@ data RVarType = RConst | RVar
 type RVar = (GoType, GoValue, RVarType)
 type Scope = Map Id RVar
 
+type Exception = String
 
 data Frame = Frame {
     scopes    :: [Scope],
@@ -63,30 +64,83 @@ containVar idr sc = case lookupVarInScope idr sc of
 getOrError :: Id -> Runtime RVar
 getOrError idr = do
   r <- get
-  let scs = scopes (headOr (frameStack r) emptyFrame)
+  let scs = scopes (headOrValue (frameStack r) emptyFrame)
   case (lookupVar idr scs, lookupVarInScope idr (scope r)) of
     (Just x, Just y)  -> return x
     (Just x, Nothing) -> return x
     (Nothing, Just y) ->  return y
     (Nothing, Nothing) -> throwError $ exceptionVarNotInScope idr
 
-
-
 type Runtime a = ExceptT String (StateT GoRuntime IO) a
 
-pushFrame :: Runtime ()
-pushFrame = do
+-- Frames 
+
+changeFrames :: ([Frame] -> [Frame]) -> Runtime ()
+changeFrames f = do
   r <- get
-  put $ r {frameStack = emptyFrame:frameStack r }
+  let newFrames = f $ frameStack r
+  put $ r { frameStack = newFrames }
+
+
+changeTopFrame :: (Frame -> Frame) -> Runtime ()
+changeTopFrame f = do
+  r <- get
+  let fs = frameStack r
+  case fs of
+      (fr:frs) -> do
+        let newFrame = f fr
+        put $ r { frameStack = newFrame:frs}
+      []  -> throwError internalErrorEmptyFrameStack
+
+getFrame :: Runtime Frame
+getFrame = do
+  frames <- getFrames
+  case frames of
+    (fr:frs) -> return fr
+    []       -> throwError internalErrorEmptyFrameStack
+
+getFrames :: Runtime [Frame]
+getFrames = frameStack <$> get
+
+pushFrame :: Runtime ()
+pushFrame = changeFrames (emptyFrame:)
 
 popFrame :: Runtime Frame
 popFrame = do
+  fr <- getFrame
+  changeFrames tail
+  return fr
+
+isEmptyStack :: Runtime Bool
+isEmptyStack = do
   r <- get
   case frameStack r of
-    (fr:frs) -> do
-      put $ r {frameStack = frs}
-      return fr
-    []   -> throwError internalErrorEmptyFrameStack
+    (fr:frs) -> return False
+    []       -> return True
+
+-- Scopes 
+
+changeGlobalScope :: (Scope -> Scope) -> Runtime ()
+changeGlobalScope f = do
+  r <- get
+  put $ r { scope = f $ scope r }
+
+changeScopes :: ([Scope] -> [Scope]) -> Runtime ()
+changeScopes f = do
+  r <- get
+  changeTopFrame $ \fr -> fr {scopes = f (scopes fr)}
+
+getScope :: Runtime Scope
+getScope =  getScopes >>= headOrException internalErrorEmptyScopes
+
+getScopes :: Runtime [Scope]
+getScopes = scopes <$> getFrame
+
+changeScope :: (Scope -> Scope) -> Runtime ()
+changeScope f = do
+  scs <- getScopes
+  newScs <- changeHeadOrException f internalErrorEmptyScopes scs
+  changeScopes $ const newScs
 
 pushScope :: Runtime ()
 pushScope = changeScopes (empty:)
@@ -94,15 +148,7 @@ pushScope = changeScopes (empty:)
 popScope :: Runtime ()
 popScope = changeScopes tail
 
-changeScopes :: ([Scope] -> [Scope]) -> Runtime ()
-changeScopes f = do
-  r <- get
-  case frameStack r of
-    (fr:frs) -> do
-        let newFrame = fr {scopes = f (scopes fr)}
-        put $ r {frameStack = newFrame:frs}
-    []         -> throwError internalErrorEmptyFrameStack
-
+-- vars and consts 
 
 getVarValue :: Id -> Runtime GoValue
 getVarValue idr = do
@@ -121,20 +167,12 @@ isConst idr = do
         RConst -> return True
         RVar   -> return False
 
-
 putRVar :: Id -> RVar -> Runtime ()
 putRVar idr v = do
-  r <- get
-  let stack = frameStack r
-  case stack of
-    []     -> put $ r {scope = insert idr v (scope r)}
-    (x:xs) -> case scopes x of
-      (sc:scs) -> do
-        let newScope = insert idr v sc
-        let newFrame = x {scopes = newScope:scs}
-        put $ r {frameStack = newFrame : xs}
-      [] -> throwError internalErrorEmptyScopes
-
+  frames <- getFrames
+  case frames of
+    []       -> changeGlobalScope $ insert idr v
+    (fr:frs) -> changeScope $ insert idr v
 
 putVar :: Id -> (GoType, GoValue) -> Runtime ()
 putVar idr (t, v) = putRVar idr (t, v, RVar)
@@ -150,40 +188,29 @@ putConst idr (t, v) = do
 
 changeVar :: Id -> GoValue -> Runtime ()
 changeVar idr v = do
-  r <- get
-  (t,_,_) <- getOrError idr
-  if not (typeCheckVT v t) then
-    throwError $ exceptionAssigmnetsType idr v t
-  else
-    if containVar idr (scope r) then
-      put $ r {scope = insert idr (t,v,RVar) (scope r)}
-    else do
-      case frameStack r of
-        (fr:frs) -> do
-          newFrame <- changeVarInFrame idr v fr
-          put $ r {frameStack = newFrame : frs}
-        [] -> throwError internalErrorEmptyFrameStack
-
-changeVarInFrame :: Id -> GoValue -> Frame -> Runtime Frame
-changeVarInFrame idr v fr = case scopes fr of
-  lst@(x:xs) -> do
+    r <- get
     t <- getVarType idr
-    let newScopes = changeElem (containVar idr) lst (insert idr (t,v,RVar))
-    case newScopes of
-      Just s  -> return $ fr {scopes = s}
-      Nothing -> throwError $ exceptionVarNotInScope idr
-  []     -> throwError $ exceptionVarNotInScope idr
+    let typeCh = typeCheckVT v t
+    let exep   = exceptionAssigmnetsType idr v t
+    checkWithException typeCh exep
+    if containVar idr (scope r) then
+      changeGlobalScope $ insert idr (t,v,RVar)
+    else do
+      scs <- getScopes
+      let newScope = changeElem (containVar idr) (insert idr (t,v,RVar)) scs
+      case newScope of
+        Just v  -> changeScopes $ const v
+        Nothing -> throwError $ exceptionVarNotInScope idr
+
+-- jump statements 
 
 getJumpSt :: Runtime (Maybe JumpStatement)
-getJumpSt = do
-  r <- get
-  case frameStack r of
-    (fr:frs) -> return  $ jumpSt fr
-    [] -> throwError internalErrorEmptyFrameStack
+getJumpSt = jumpSt <$> getFrame
 
 putJumpSt :: Maybe JumpStatement  -> Runtime ()
 putJumpSt s = changeTopFrame (\x -> x {jumpSt = s})
 
+-- functions
 
 putArgs :: [GoValue] -> [(Id, GoType)] -> Runtime ()
 putArgs argv argsign = do
@@ -195,6 +222,7 @@ putReturnValue v = changeTopFrame (\x -> x {returnVal = v})
 
 
 -- helper functions
+
 splitBy :: (a -> Bool) -> [a] -> Maybe ([a], a, [a])
 splitBy p lst = case find p lst of
     Just x  -> Just (takeWhile (not . p) lst, x, tail (dropWhile (not . p) lst))
@@ -203,22 +231,22 @@ splitBy p lst = case find p lst of
       find p (x:xs) = if p x then Just x else find p xs
       find p []     = Nothing
 
-changeElem :: (a -> Bool) -> [a] -> (a -> a) -> Maybe [a]
-changeElem p lst f = case splitBy p lst of
+changeElem :: (a -> Bool) -> (a -> a) -> [a] -> Maybe [a]
+changeElem p f lst = case splitBy p lst of
     Just (l,x,r) -> Just $ l ++ [f x] ++ r
     Nothing      -> Nothing
 
-changeTopFrame :: (Frame -> Frame) -> Runtime ()
-changeTopFrame f = do
-  r <- get
-  let fs = frameStack r
-  case fs of
-      (fr:frs) -> do
-        let newFrame = f fr
-        put $ r { frameStack = newFrame:frs}
-      []  -> throwError internalErrorEmptyFrameStack
+headOrValue :: [a] -> a -> a
+headOrValue (x:xs) v = x
+headOrValue []     v = v
 
+headOrException :: Exception -> [a] -> Runtime a
+headOrException e (x:xs) = return x
+headOrException e []     = throwError e
 
-headOr :: [a] -> a -> a
-headOr (x:xs) e = x
-headOr []     e = e
+changeHeadOrException :: (a -> a) -> Exception -> [a] -> Runtime [a]
+changeHeadOrException  _ e []     = throwError e
+changeHeadOrException  f _ (x:xs) = return  $ f x:xs
+
+checkWithException :: Bool -> Exception -> Runtime ()
+checkWithException flag e = if flag then return () else throwError e 

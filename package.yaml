@@ -25,6 +25,8 @@ dependencies:
 - containers
 - array
 - parsec
+- parallel
+- stm
 
 library:
   source-dirs: 

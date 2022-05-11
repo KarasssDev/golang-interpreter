@@ -27,6 +27,8 @@ dependencies:
 - parsec
 - parallel
 - stm
+- async
+- time
 
 library:
   source-dirs: 

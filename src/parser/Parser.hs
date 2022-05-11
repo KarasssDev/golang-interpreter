@@ -32,6 +32,7 @@ statement =
     try gif    <|>
     try for    <|>
     try assign <|>
+    try goFuncCall <|>
     try stExpr
 
 -- declarations
@@ -203,6 +204,15 @@ ifelse = do
   b2 <- try statement
   return $ IfElse e b1 b2
 
+-- go
+
+goFuncCall :: Parser GoStatement
+goFuncCall = do
+    try $ reserved "go"
+    id <- try identifier
+    args <- parens $ try listExpr
+    return $ GoFuncCall id args
+
 -- expressions
 
 expr :: Parser GoExpr
@@ -296,5 +306,5 @@ cleanFile s = helper s ""
 goParse :: String -> Either ParseError GoProgram
 goParse = parse program ""
 
-pp :: String -> Either ParseError GoType
-pp = parse gtype ""
+
+pp = parse statement ""

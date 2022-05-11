@@ -56,7 +56,6 @@ data GoExpr = -- e
     | Get Id                      -- <- ch
     | Var Id                      -- x
     | FuncCall Id [GoExpr]        -- f(e1,...,en)
-    | GoFuncCall Id [GoExpr]      -- go f(e1,...,en)
     | GetByInd GoExpr GoExpr      -- arr[e] (arr is e)
     | Val GoValue                 -- 3 = Val (VInt 3)
     | EmptyCondition              -- for s;;s (empty condition in for loop)
@@ -84,6 +83,7 @@ data GoStatement = -- s
     | EmptyStatement                                 -- for ;e; (empty statement in for loop)
     | Jump JumpStatement                             -- j
     | Put Id GoExpr                                  -- ch <- e
+    | GoFuncCall Id [GoExpr]                         -- go f(e1,...,en)
     deriving Show
 
 newtype GoProgram = GoProgram [GoStatement] deriving Show

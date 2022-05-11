@@ -54,7 +54,6 @@ data GoExpr = -- e
       GoUnOp UnOp GoExpr          -- op e
     | GoBinOp BinOp GoExpr GoExpr -- e1 op e2
     | Get Id                      -- <- ch
-    | Put Id GoExpr               -- ch <- e
     | Var Id                      -- x
     | FuncCall Id [GoExpr]        -- f(e1,...,en)
     | GoFuncCall Id [GoExpr]      -- go f(e1,...,en)
@@ -84,6 +83,7 @@ data GoStatement = -- s
     | SetByInd Id GoExpr GoExpr                      -- arr[e1] = e2 
     | EmptyStatement                                 -- for ;e; (empty statement in for loop)
     | Jump JumpStatement                             -- j
+    | Put Id GoExpr                                  -- ch <- e
     deriving Show
 
 newtype GoProgram = GoProgram [GoStatement] deriving Show

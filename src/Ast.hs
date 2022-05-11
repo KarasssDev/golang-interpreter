@@ -1,5 +1,6 @@
 module Ast where
 import Data.Map
+import Control.Concurrent.Chan
 
 type Id = String
 
@@ -52,8 +53,8 @@ data UnOp =
 data GoExpr = -- e
       GoUnOp UnOp GoExpr          -- op e
     | GoBinOp BinOp GoExpr GoExpr -- e1 op e2
-    | Get -- TODO
-    | Put -- TODO
+    | Get Id                      -- <- ch
+    | Put Id GoExpr               -- ch <- e
     | Var Id                      -- x
     | FuncCall Id [GoExpr]        -- f(e1,...,en)
     | GoFuncCall Id [GoExpr]      -- go f(e1,...,en)

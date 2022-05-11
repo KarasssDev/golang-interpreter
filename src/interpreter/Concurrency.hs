@@ -1,44 +1,18 @@
-import Control.Concurrent.STM
-import Control.Concurrent
-import Control.Monad.State (StateT, liftIO, MonadTrans (lift))
-import Control.Monad (join, forM_)
-import GHC.IO (unsafePerformIO)
-import Runtime (Runtime)
+module Concurrency where
+import Control.Concurrent (MVar, newMVar, withMVar, forkIO, ThreadId, threadDelay, takeMVar, putMVar, newEmptyMVar, forkFinally)
+import Control.Concurrent.STM (TChan, newTChanIO, atomically, readTChan, writeTChan)
 
--- mutex for print
+-- mutex
 
 type Mutex = MVar ()
 
-createMutex :: IO Mutex
-createMutex = newMVar ()
+newMutex :: IO Mutex
+newMutex = newMVar ()
 
-createSafePrint :: Mutex -> String -> IO ()
-createSafePrint mutex = withMVar mutex . const . putStrLn
+safePrint :: Mutex -> String -> IO ()
+safePrint mutex = withMVar mutex . const . putStrLn
 
--- base concurrency
-
-children :: MVar [MVar ()]
-{-# NOINLINE children #-}
-children = unsafePerformIO (newMVar [])
-
-waitForChildren :: IO ()
-waitForChildren = do
-    cs <- takeMVar children
-    case cs of
-        []   -> return ()
-        m:ms -> do
-            putMVar children ms
-            takeMVar m
-            waitForChildren
-
-go :: IO () -> IO ThreadId
-go io = do
-    mvar <- newEmptyMVar
-    childs <- takeMVar children
-    putMVar children (mvar:childs)
-    forkFinally io (\_ -> putMVar mvar ())
-
--- chanells 
+-- channels
 
 makeCh :: IO (TChan a)
 makeCh = newTChanIO
@@ -49,20 +23,32 @@ readCh = atomically . readTChan
 writeCh :: TChan a -> a -> IO ()
 writeCh ch v = atomically $ writeTChan ch v
 
+-- threads
 
--- consumer :: TChan Int -> MVar () -> STM (IO ())
--- consumer ch mu = do
---     v <- readTChan ch
---     return $ createSafePrint mu (show v)
+fork :: IO () -> IO Mutex
+fork f = do
+    handle <- newEmptyMVar
+    _ <- forkFinally f (\_ -> putMVar handle ())
+    return handle
 
--- producer :: TChan Int -> Int -> STM ()
--- producer = writeTChan
+wait :: Mutex -> IO ()
+wait = takeMVar
 
--- main :: IO ()
--- main = do
---     mutex <- newMVar ()
---     c1 <- newTChanIO
---     forM_ [0..5]  (forkChild . atomically . producer c1)
---     forM_ [0..10] (const $ forkChild $ join $ atomically $ consumer c1 mutex)
---     forM_ [0..5]  (forkChild . atomically . producer c1)
---     waitForChildren
+-- must be deleted 
+
+act :: Mutex -> Int -> String -> IO ()
+act m t s = do
+    threadDelay t
+    safePrint m s
+
+withDelay :: Int -> IO () -> IO ()
+withDelay t f = threadDelay t >> f
+
+cmain :: IO ()
+cmain = do
+    m <- newMutex
+    let pr = safePrint m
+    fork $ withDelay 1000 $ pr "lol"
+    x <- fork $ withDelay 2000 $ pr "kek"
+    fork $ withDelay 3000 $ pr "lmao"
+    wait x

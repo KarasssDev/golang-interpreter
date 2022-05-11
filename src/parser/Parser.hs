@@ -107,7 +107,7 @@ gprint = do
 -- type
 
 gtype :: Parser GoType
-gtype = try tint <|> try tbool <|> return TNil
+gtype = try tint <|> try tbool <|> try tstring <|> try tchan <|>  return TNil
 
 tint :: Parser GoType
 tint = do
@@ -124,8 +124,14 @@ tstring = do
     try $ reserved "string"
     return TString
 
--- for
+tchan :: Parser GoType
+tchan = do
+    try $ reserved "chan"
+    t <- try gtype
+    return $ TChan t 
 
+-- for
+for :: Parser GoStatement
 for = try for1 <|> try for2
 
 for1 :: Parser GoStatement
@@ -196,10 +202,13 @@ ifelse = do
   try $ reserved "else"
   b2 <- try statement
   return $ IfElse e b1 b2
+
 -- expressions
 
+expr :: Parser GoExpr
 expr = Ex.buildExpressionParser table term
 
+term :: Parser GoExpr
 term = parens (try expr) <|> try value <|> try funcCall <|> try var
 
 -- operations
@@ -261,6 +270,7 @@ var :: Parser GoExpr
 var = Var <$> identifier
 
 -- func call
+
 funcCall :: Parser GoExpr
 funcCall = do
     id <- try identifier
@@ -285,3 +295,6 @@ cleanFile s = helper s ""
 
 goParse :: String -> Either ParseError GoProgram
 goParse = parse program ""
+
+pp :: String -> Either ParseError GoType
+pp = parse gtype ""

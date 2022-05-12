@@ -20,4 +20,6 @@ jobs:
       run: stack build 
 
     - name: Run tests
-      run: ./demos/runTest
+      run: |
+        ./demos/runTest
+        ./demos/runNDTest

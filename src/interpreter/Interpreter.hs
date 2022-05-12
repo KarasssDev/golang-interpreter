@@ -120,14 +120,14 @@ evalExpr (Get idr) = do
   gch <- getVarValue idr
   case gch of
     (VChan t ch) -> liftIO $ readCh ch
-    _            -> error "fix me" -- add type check
+    _            -> throwError $ exceptionExpectedChv gch
 
 evalExpr (MakeCh t) = do
   case t of
     (TChan tch) -> do
       ch <- liftIO makeCh
       return $ VChan tch ch
-    _           -> error "fix me"
+    _           -> throwError $ exceptionExpectedCht t
 
 
 
@@ -252,7 +252,7 @@ evalStatement (Put idr e) = do
   v   <- evalExpr e
   case gch of
     (VChan t ch) -> liftIO $ writeCh ch v
-    _            -> error "fix me" -- add type check
+    _            -> throwError $ exceptionExpectedChv gch
 
 evalStatement (GoFuncCall idr arge) = do
   s <- get

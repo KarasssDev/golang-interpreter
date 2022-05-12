@@ -70,6 +70,12 @@ exceptionExpectedCodeBlock name = baseExceptionMessage ++ "expected code block a
 exceptionTypeNotSubscriptable :: GoType -> String
 exceptionTypeNotSubscriptable t = baseExceptionMessage ++ showType t ++ "doesnt subscriptable"
 
+exceptionExpectedChv :: GoValue -> String
+exceptionExpectedChv v = baseExceptionMessage ++ "expected: chan t, actual: " ++  showType (getType v)
+
+exceptionExpectedCht :: GoType -> String
+exceptionExpectedCht t = baseExceptionMessage ++ "expected: chan t, actual: " ++  showType t
+
 -- errrors
 
 internalErrorEmptyFrameStack :: String

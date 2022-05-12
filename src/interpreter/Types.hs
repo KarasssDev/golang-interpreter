@@ -9,7 +9,7 @@ getType (VInt _)      = TInt
 getType (VBool _)     = TBool
 getType (VString _)   = TString
 getType arr@(VArray mp sizes)   = TArray sizes (getArrayElemType arr)
-getType (VChan x t)   = TChan t
+getType (VChan t _)   = TChan t
 getType (VFunc signs t _) = TFunc signs t
 getType VNil = TNil
 

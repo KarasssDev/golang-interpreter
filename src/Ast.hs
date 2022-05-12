@@ -1,6 +1,9 @@
+{-# LANGUAGE FlexibleInstances #-}
 module Ast where
 import Data.Map
 import Control.Concurrent.Chan
+import Control.Concurrent.STM (TChan)
+
 
 type Id = String
 
@@ -14,12 +17,15 @@ data GoType =  -- t
     | TNil
     deriving (Show, Eq)
 
+instance (Show (TChan GoValue)) where
+  show _ = "chan"
+
 data GoValue =
       VInt Int
     | VString String
     | VBool Bool
     | VArray (Map Int GoValue) [Int]
-    | VChan Int GoType
+    | VChan GoType (TChan GoValue)
     | VFunc [(Id, GoType)] GoType GoStatement
     | VNil
     deriving Show
@@ -59,6 +65,7 @@ data GoExpr = -- e
     | GetByInd GoExpr GoExpr      -- arr[e] (arr is e)
     | Val GoValue                 -- 3 = Val (VInt 3)
     | EmptyCondition              -- for s;;s (empty condition in for loop)
+    | MakeCh GoType               -- make(chan int);
     deriving Show
 
 

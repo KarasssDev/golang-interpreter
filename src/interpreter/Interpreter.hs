@@ -92,12 +92,12 @@ evalExpr (Val v)   = return v
 
 evalExpr EmptyCondition = return $ VBool True
 
-evalExpr (GetByInd arr ind) = do -- fix for multid array
+evalExpr (GetByInd arr ind) = do
   varr <- evalExpr arr
   vind <- evalExpr ind
   case (varr, vind) of
-    (VArray lst _, VInt i) -> safeInd lst i
-    _                      -> unexpectedInternalError
+    (VArray lst _ _, VInt i) -> safeInd lst i
+    _                        -> unexpectedInternalError
   where
     safeInd :: Map Int GoValue -> Int -> Runtime GoValue
     safeInd lst i = case lookup i lst of
@@ -128,7 +128,7 @@ evalExpr (MakeCh t) = do
       ch <- liftIO makeCh
       return $ VChan tch ch
     _           -> error "fix me"
-  
+
 
 
 
@@ -226,14 +226,15 @@ evalStatement (SetByInd idr ind e) = do
   arr  <- evalExpr (Var idr)
   vind <- evalExpr ind
   v    <- evalExpr e
-  if typeCheckVT v (getArrayElemType arr) then
-    throwError $ exceptionAssigmnetsType idr v (getArrayElemType arr)
-  else
-    case (arr, vind) of
-      (VArray arr sizes, VInt i) -> do
-        let res = insert i v arr in evalStatement (Assign idr (Val (VArray res sizes)))
-      (VArray _ _, ind)          -> throwError $ exceptionUnexpectedType ind "[i]" "int"
+  case (arr, vind) of
+      (VArray arr sizes t, VInt i) -> if typeCheckVT v t then
+        throwError $ exceptionAssigmnetsType idr v t
+      else
+        let res = insert i v arr in evalStatement (Assign idr (Val (VArray res sizes t)))
+      (VArray {}, ind)           -> throwError $ exceptionUnexpectedType ind "[i]" "int"
       (v, _)                     -> throwError $ exceptionTypeNotSubscriptable (getType v)
+
+    
 
 evalStatement (Jump (Return e)) = do
   v <- evalExpr e
@@ -254,7 +255,7 @@ evalStatement (Put idr e) = do
     _            -> error "fix me" -- add type check
 
 evalStatement (GoFuncCall idr arge) = do
-  s <- get 
+  s <- get
   liftIO $ fork $ do
     run (evalStatement (Expr (FuncCall idr arge))) s
     return ()

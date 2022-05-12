@@ -24,7 +24,7 @@ data GoValue =
       VInt Int
     | VString String
     | VBool Bool
-    | VArray (Map Int GoValue) [Int]
+    | VArray (Map Int GoValue) [Int] GoType
     | VChan GoType (TChan GoValue)
     | VFunc [(Id, GoType)] GoType GoStatement
     | VNil

@@ -6,7 +6,7 @@ instance (Eq GoValue) where
   VInt x == VInt y = x == y
   VString x == VString y = x == y
   VBool x == VBool y = x == y
-  VArray x xs == VArray y ys = x == y && xs == ys
+  VArray x xs xt == VArray y ys yt = x == y && xs == ys
   x == y = unexpectedInternalError
 
 instance (Ord GoValue) where

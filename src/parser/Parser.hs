@@ -33,6 +33,7 @@ statement =
     try for    <|>
     try assign <|>
     try goFuncCall <|>
+    try putInCh <|>
     try stExpr
 
 -- declarations
@@ -211,7 +212,18 @@ goFuncCall = do
     try $ reserved "go"
     id <- try identifier
     args <- parens $ try listExpr
+    try semi;
     return $ GoFuncCall id args
+
+-- put in chanell
+
+putInCh :: Parser GoStatement
+putInCh = do
+  id <- try identifier
+  try $ reserved "<-"
+  e <- try expr
+  try semi;
+  return $ Put id e
 
 -- expressions
 
@@ -219,7 +231,7 @@ expr :: Parser GoExpr
 expr = Ex.buildExpressionParser table term
 
 term :: Parser GoExpr
-term = parens (try expr) <|> try value <|> try funcCall <|> try var
+term = parens (try expr) <|> try value <|> try funcCall <|> try var <|> try getFromCh
 
 -- operations
 
@@ -290,6 +302,14 @@ funcCall = do
 listExpr :: Parser [GoExpr]
 listExpr = commaSep $ try expr
 
+-- get from chan
+
+getFromCh :: Parser GoExpr
+getFromCh = do
+  try $ reserved "<-"
+  id <- try identifier
+  return $ Get id
+  
 
 -- parse
 

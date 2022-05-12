@@ -231,7 +231,7 @@ expr :: Parser GoExpr
 expr = Ex.buildExpressionParser table term
 
 term :: Parser GoExpr
-term = parens (try expr) <|> try value <|> try funcCall <|> try var <|> try getFromCh
+term = parens (try expr) <|> try value <|> try funcCall <|> try var <|> try getFromCh <|> try makeCh
 
 -- operations
 
@@ -302,13 +302,19 @@ funcCall = do
 listExpr :: Parser [GoExpr]
 listExpr = commaSep $ try expr
 
--- get from chan
+-- chan
 
 getFromCh :: Parser GoExpr
 getFromCh = do
   try $ reserved "<-"
   id <- try identifier
   return $ Get id
+
+makeCh :: Parser GoExpr
+makeCh = do
+  try $ reserved "make"
+  t <- parens $ try gtype
+  return $ MakeCh t
   
 
 -- parse

@@ -1,7 +1,7 @@
 #!/bin/bash 
 
 cd demos
-tests=$(find . -type f -name "*.go" -not -name "nd_*.go")
+tests=$(find . -type f -name "nd_*.go")
 stack build
 
 RED='\033[0;31m'
@@ -13,8 +13,8 @@ NC='\033[0m'
 
 for test in $tests
 do
-    go run $test &> expected
-    stack run $test > actual
+    go run $test |& sort -o expected
+    stack run $test | sort -o actual
     dif=$(diff expected actual)
     if [ $? -eq 0 ] ; then
         echo -e "${GREEN}[Test $test] done${NC}"

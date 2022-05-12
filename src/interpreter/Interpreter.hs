@@ -8,36 +8,37 @@ import Runtime
 import BaseFunc
 import Errors
 import Types
+import Concurrency
 
 opTypeCheck :: BinOp -> GoValue -> GoValue -> Runtime ()
 opTypeCheck op v1 v2
   | op `elem` [Minus, Mul, Div, Mod, Gr, Le, Gre, Leq] = do
     let isIntV1 = typeCheckVT v1 TInt
     let isIntV2 = typeCheckVT v2 TInt
-    if isIntV1 && isIntV2 then 
-      return () 
-    else 
+    if isIntV1 && isIntV2 then
+      return ()
+    else
       throwError $ exceptionUnexpectedTypes v1 v2 op "int" "int"
   | op `elem` [And, Or] = do
     let isBoolV1 = typeCheckVT v1 TBool
     let isBoolV2 = typeCheckVT v2 TBool
-    if isBoolV1 && isBoolV2 then 
-      return () 
-    else 
+    if isBoolV1 && isBoolV2 then
+      return ()
+    else
       throwError $ exceptionUnexpectedTypes v1 v2 op "bool" "bool"
   | op `elem` [Eq, Neq] = do
-    if typeCheckVV v1 v2 then 
-      return () 
-    else 
+    if typeCheckVV v1 v2 then
+      return ()
+    else
       throwError $ exceptionUnexpectedTypes v1 v2 op "t" "t"
   | op == Add = do
     let isIntV1 = typeCheckVT v1 TInt
     let isIntV2 = typeCheckVT v2 TInt
     let isStringV1 = typeCheckVT v1 TString
     let isStringV2 = typeCheckVT v2 TString
-    if isIntV1 && isIntV2 || isStringV1 && isStringV2 then 
-      return () 
-    else 
+    if isIntV1 && isIntV2 || isStringV1 && isStringV2 then
+      return ()
+    else
       throwError $ exceptionUnexpectedTypes v1 v2 op "int | string" "int | string"
   | otherwise = return ()
 
@@ -115,7 +116,20 @@ evalExpr (FuncCall idr arge) = do
       returnVal <$> popFrame
     _                 -> throwError $ exceptionCallNotFunc idr
 
-evalExpr _ = undefined
+evalExpr (Get idr) = do
+  gch <- getVarValue idr
+  case gch of
+    (VChan t ch) -> liftIO $ readCh ch
+    _            -> error "fix me" -- add type check
+
+evalExpr (MakeCh t) = do
+  case t of
+    (TChan tch) -> do
+      ch <- liftIO makeCh
+      return $ VChan tch ch
+    _           -> error "fix me"
+  
+
 
 
 evalStatement :: GoStatement -> Runtime ()
@@ -151,7 +165,7 @@ evalStatement (Block b) = do
 
 evalStatement (Print e) = do
   res <- evalExpr e
-  lift $ lift $ putStrLn $ toPrint res
+  liftIO $ putStrLn $ toPrint res
 
 evalStatement (If e s) = do
   pushScope
@@ -200,7 +214,7 @@ evalStatement (For init cont di act) = do
         Nothing -> checkIfSt cont (for cont di act) (return ())
 
 evalStatement (FuncDecl idr args rt body) = do
-  case body of 
+  case body of
     (Block _) -> do
       let v = VFunc args rt body
       let t = TFunc args rt
@@ -212,7 +226,7 @@ evalStatement (SetByInd idr ind e) = do
   arr  <- evalExpr (Var idr)
   vind <- evalExpr ind
   v    <- evalExpr e
-  if typeCheckVT v (getArrayElemType arr) then 
+  if typeCheckVT v (getArrayElemType arr) then
     throwError $ exceptionAssigmnetsType idr v (getArrayElemType arr)
   else
     case (arr, vind) of
@@ -232,14 +246,30 @@ evalStatement (Expr e) = do
   evalExpr e
   return ()
 
+evalStatement (Put idr e) = do
+  gch <- getVarValue idr
+  v   <- evalExpr e
+  case gch of
+    (VChan t ch) -> liftIO $ writeCh ch v
+    _            -> error "fix me" -- add type check
+
+evalStatement (GoFuncCall idr arge) = do
+  s <- get 
+  liftIO $ fork $ do
+    run (evalStatement (Expr (FuncCall idr arge))) s
+    return ()
+  return ()
+
 evalGoProgram :: GoProgram -> Runtime ()
 evalGoProgram (GoProgram (x:xs)) = do
   evalStatement x
   evalGoProgram $ GoProgram xs
 evalGoProgram (GoProgram []) = return ()
 
+run :: Runtime () -> GoRuntime -> IO (Either String (), GoRuntime)
+run r = runStateT (runExceptT r)
 
-exec :: GoProgram -> IO (Either String GoValue, GoRuntime)
-exec p = runStateT (runExceptT  (evalGoProgram p >> evalExpr goMain)) emptyGoRuntime
+exec :: GoProgram -> IO (Either String (), GoRuntime)
+exec p = run (evalGoProgram p >> evalExpr goMain >> return ()) emptyGoRuntime
   where
     goMain = FuncCall "main" []

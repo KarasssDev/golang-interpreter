@@ -1,58 +1,22 @@
-# ФП 2021. Репо для домашек
+### An implementaion of Golang mini-language
 
-Домашки по курсу ФП 2021 оформлять **в виде пулл-реквестов к этому репо**.
+This is a homework for functional programming course.
 
-В директории `/Lambda` лежит шаблон-скелет, его нужно скопипастить и исправить под свои нужды:
-- переименовать нужные файлы под свой мини-язык;
-- пофикисить имя автора и т.п.
-- ну и сделать реализацию с тестами.
+License: LGPL for implementation code + WTFPL for test examles in miniLanguage
 
-Ожидается примерно следующая структура репозитория
-- `/Lambda` -- шаблон проекта домашки, который редактирует только препод;
-- `/CSharpExc` -- реализация мини-С# c исключениями, на основе шаблона `/Lambda`;
-- `/Java` -- реализация мини-Java, снова на основе шаблона `/Lambda`;
-- и т.д.
+Author: Viktor Karasev, karasssdev@gmail.com
 
-Для Merge Requests настроен CI, который смотрит в какой директории (проекте) произошли последние изменения, 
-и именно в этой директории запускает сборку и тесты. Например, если поменялся файл `Lambda/src/Parser.ml`, то запустятся все тесты из директории проекта `Lambda`, а тесты из проекта `Java` запускаться не будут.
+Features done:
 
-Также CI собирает документацию к миниязыку и выкладывает её в https://kakadu.github.io/fp2021/doc/LANGUAGE (например в https://kakadu.github.io/fp2021/doc/Lambda)
+- One dimensional arrays
+- Integer, boolean, string types with operations
+- Function (with recursion) 
+- Consts and variables
+- For loop
+- If&Else conditional statements
 
-###### N.B. Не удаляйте директорию Lambda. Это шаблон!
+Features in progress (and TODOs):
 
-
-### Подготовка окружения
-
-Далее инструкции по найстройки всего под GNU/Linux. Но на Windows+WSL2 тоже должно работать.
-
-Во-первых, нужен пакетный менеджер opam версии 2.х. С помощью него будем устанавливать OCaml 4.12.1 и необходимые пакеты. Системный OCaml (установленный, например, из репозиториев Ubuntu) использовать не рекомендуется. 
-
-После установки opam следует установить правильный компилятор командой (у меня обычно вместо SWITCHNAME используется `4.12.1+flambda`)
-
-    opam switch create SWITCHNAME --packages=ocaml-variants.4.12.1+options,ocaml-option-flambda
-    
-Перед этим можно удалить другие switch'и, если они есть, с помощью команды `opam switch remove SWITCHNAME`.
-
-После установки у вас будет рабочий компилятор по-умолчанию в директории `~/.opam/SWITCHNAME/bin`. В конце установки opam вам предложит что-то добавить в ~/.bashrc, чтобы пути к компилятору автоматически подхватывались. Рекомендую это сделать.
-
-Если что-то пошло не так, то всегда можно указать нужный свитч руками командой, например:
-
-    export OPAMSWITCH=SWITCHNAME && eval $(opam env)
-    
-и затем убедиться, что путь до компилятора правильный
-
-    $ which ocamlc                                    
-    /home/username/.opam/SWITCHNAME/bin/ocamlc
-   
-Замечание. Когда вы будете запускать VsCode, то информация об  окружении opam из файла ~/.bashrc автоматически применяться не будет, потому что так это работает в UNIX системах из покон веков. Рекомендуется, либо запускать VsCode из-под opam командой `opam exec -- code`, либо прописать в месте запуска правильную переменную среды OPAMSWITCH, и запускать opam через sh: `sh -c 'eval $(opam env) && code'`
-
-Когда VsCode запустится, её плагин https://marketplace.visualstudio.com/items?itemName=ocamllabs.ocaml-platform слева снизу должен показать, что правильная версия компилятора подцепилась.
-
-В процессе работы вам также понадобится автоформаттер кода. Он устанавливается с помощью `opam install ocamlformat` в 
-
-     $ which ocamlformat  
-     /home/username/.opam/SWITCHNAME/bin/ocamlformat
-     
-Необходимо также в VsCode включить автоформатирование: Settings->Text Editor->Formatting->Format On Paste и Format on Save. 
-
+- Anonymous function
+- Gorutine
 

@@ -1,7 +1,6 @@
-.merlin
-.vscode
-_build
-
-.bloop
-.metals
-/install_linter.sh
+.stack-work/
+.vscode/
+.idea/
+*.iml
+*.cabal
+*~

@@ -14,9 +14,7 @@ Features done:
 - Consts and variables
 - For loop
 - If&Else conditional statements
-
-Features in progress (and TODOs):
-
-- Anonymous function
 - Gorutine
+
+
 
